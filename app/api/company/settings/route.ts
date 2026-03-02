@@ -1,0 +1,88 @@
+import { NextRequest, NextResponse } from "next/server";
+import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+
+type Body = {
+  office_lat?: number | null;
+  office_lon?: number | null;
+  office_radius_m?: number | null;
+};
+
+function normalizeNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export async function GET(req: NextRequest) {
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const context = await getCompanyAdminContext(token);
+  if (!context.ok) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
+
+  const { data, error } = await context.admin
+    .from("companies")
+    .select("office_lat,office_lon,office_radius_m")
+    .eq("id", context.companyId)
+    .maybeSingle();
+
+  if (error) {
+    return NextResponse.json({ error: error.message || "Unable to load company settings." }, { status: 400 });
+  }
+
+  return NextResponse.json({
+    office_lat: data?.office_lat ?? null,
+    office_lon: data?.office_lon ?? null,
+    office_radius_m: data?.office_radius_m ?? null,
+  });
+}
+
+export async function PUT(req: NextRequest) {
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const context = await getCompanyAdminContext(token);
+  if (!context.ok) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
+
+  const body = (await req.json().catch(() => ({}))) as Body;
+  const officeLat = normalizeNumber(body.office_lat);
+  const officeLon = normalizeNumber(body.office_lon);
+  const officeRadiusM = normalizeNumber(body.office_radius_m);
+
+  const isAllBlank = officeLat == null && officeLon == null && officeRadiusM == null;
+  const isAllPresent = officeLat != null && officeLon != null && officeRadiusM != null;
+  if (!isAllBlank && !isAllPresent) {
+    return NextResponse.json(
+      { error: "Office latitude, longitude, and radius must be provided together." },
+      { status: 400 }
+    );
+  }
+
+  if (officeLat != null && (officeLat < -90 || officeLat > 90)) {
+    return NextResponse.json({ error: "Office latitude is invalid." }, { status: 400 });
+  }
+  if (officeLon != null && (officeLon < -180 || officeLon > 180)) {
+    return NextResponse.json({ error: "Office longitude is invalid." }, { status: 400 });
+  }
+  if (officeRadiusM != null && (officeRadiusM < 10 || officeRadiusM > 5000)) {
+    return NextResponse.json({ error: "Office radius must be between 10 and 5000 meters." }, { status: 400 });
+  }
+
+  const payload = {
+    office_lat: officeLat,
+    office_lon: officeLon,
+    office_radius_m: officeRadiusM == null ? null : Math.round(officeRadiusM),
+  };
+
+  const { error } = await context.admin.from("companies").update(payload).eq("id", context.companyId);
+  if (error) {
+    return NextResponse.json({ error: error.message || "Unable to save company settings." }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

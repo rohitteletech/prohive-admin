@@ -1,0 +1,638 @@
+﻿"use client";
+
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CompanyEmployee,
+  getManagerOptions,
+  loadCompanyEmployees,
+  loadCompanyEmployeesSupabase,
+  nextEmployeeId,
+} from "@/lib/companyEmployees";
+import { COMPANY_SHIFT_STORAGE_KEY, loadActiveShiftNames } from "@/lib/companyShifts";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+
+type EmploymentType = "full_time" | "contract" | "intern";
+
+type EmployeeDraft = {
+  full_name: string;
+  mobile: string;
+  designation: string;
+  department: string;
+  shift_name: string;
+  joining_date: string;
+  employee_code: string;
+  reporting_manager: string;
+  email: string;
+  perm_address: string;
+  temp_address: string;
+  pan: string;
+  aadhaar_last4: string;
+  emergency_name: string;
+  emergency_mobile: string;
+  employment_type: EmploymentType | "";
+  attendance_mode: "office_only" | "field_staff";
+};
+
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+const DESIGNATION_OPTIONS = [
+  "Software Engineer",
+  "Senior Engineer",
+  "Team Lead",
+  "Manager",
+  "HR Executive",
+  "Accountant",
+  "Sales Executive",
+  "Operations Executive",
+];
+
+const DEPARTMENT_OPTIONS = [
+  "Engineering",
+  "HR",
+  "Accounts",
+  "Sales",
+  "Operations",
+  "Support",
+  "Administration",
+];
+
+function nextEmployeeCode(rows: CompanyEmployee[]) {
+  const max = rows.reduce((acc, row) => {
+    const match = row.employee_code.toUpperCase().match(/^EMP-(\d+)$/);
+    if (!match) return acc;
+    const value = Number(match[1]);
+    return Number.isFinite(value) ? Math.max(acc, value) : acc;
+  }, 0);
+
+  return `EMP-${String(max + 1).padStart(6, "0")}`;
+}
+
+export default function NewEmployeePage() {
+  const router = useRouter();
+  const initialShiftOptions = loadActiveShiftNames();
+  const initialEmployees = loadCompanyEmployees();
+  const [toast, setToast] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
+  const [shiftOptions, setShiftOptions] = useState<string[]>(initialShiftOptions);
+  const [form, setForm] = useState<EmployeeDraft>({
+    full_name: "",
+    mobile: "",
+    designation: "",
+    department: "",
+    shift_name: initialShiftOptions[0] || "",
+    joining_date: todayISO(),
+    employee_code: nextEmployeeCode(initialEmployees),
+    reporting_manager: "Admin",
+    email: "",
+    perm_address: "",
+    temp_address: "",
+    pan: "",
+    aadhaar_last4: "",
+    emergency_name: "",
+    emergency_mobile: "",
+    employment_type: "",
+    attendance_mode: "office_only",
+  });
+
+  const managerOptions = useMemo(
+    () => getManagerOptions(allEmployees, form.full_name),
+    [allEmployees, form.full_name]
+  );
+
+  useEffect(() => {
+    let ignore = false;
+    async function hydrateEmployees() {
+      const rows = await loadCompanyEmployeesSupabase();
+      if (!ignore) {
+        setAllEmployees(rows);
+        setForm((prev) =>
+          prev.employee_code === nextEmployeeCode(initialEmployees) || !prev.employee_code.trim()
+            ? { ...prev, employee_code: nextEmployeeCode(rows) }
+            : prev
+        );
+      }
+    }
+    hydrateEmployees();
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key && e.key !== COMPANY_SHIFT_STORAGE_KEY) return;
+      const names = loadActiveShiftNames();
+      setShiftOptions(names);
+      setForm((prev) => (names.includes(prev.shift_name) ? prev : { ...prev, shift_name: names[0] || "" }));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => {
+      ignore = true;
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
+
+  function showToast(msg: string) {
+    setToast(msg);
+    window.setTimeout(() => setToast(null), 1800);
+  }
+
+  function setField<K extends keyof EmployeeDraft>(key: K, value: EmployeeDraft[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function validate() {
+    if (form.full_name.trim().length < 2) return "Full Name is required";
+    if (form.mobile.trim().length < 8) return "Mobile is required";
+    if (form.department.trim().length < 2) return "Department is required";
+    if (form.designation.trim().length < 2) return "Designation is required";
+    if (!form.joining_date) return "Joining Date is required";
+    if (form.joining_date > todayISO()) return "Joining Date cannot be in the future";
+    if (!form.employee_code.trim()) return "Employee Code is required";
+    if (form.employee_code.trim().length < 6) return "Employee Code is too short";
+    if (
+      allEmployees.some(
+        (row) => row.employee_code.trim().toUpperCase() === form.employee_code.trim().toUpperCase()
+      )
+    ) {
+      return "Employee Code already exists";
+    }
+    if (form.aadhaar_last4 && form.aadhaar_last4.length !== 4) return "Aadhaar must be last 4 digits";
+    return null;
+  }
+
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const err = validate();
+    if (err) {
+      showToast(err);
+      return;
+    }
+
+    setSaving(true);
+
+    const next: CompanyEmployee = {
+      id: nextEmployeeId(allEmployees),
+      full_name: form.full_name.trim(),
+      email: form.email.trim() || undefined,
+      employee_code: form.employee_code.trim(),
+      mobile: form.mobile.trim(),
+      designation: form.designation.trim(),
+      department: form.department.trim(),
+      shift_name: form.shift_name,
+      status: "active",
+      joined_on: form.joining_date,
+      reporting_manager: form.reporting_manager || "Admin",
+      perm_address: form.perm_address.trim() || undefined,
+      temp_address: form.temp_address.trim() || undefined,
+      pan: form.pan.trim().toUpperCase() || undefined,
+      aadhaar_last4: form.aadhaar_last4.trim() || undefined,
+      emergency_name: form.emergency_name.trim() || undefined,
+      emergency_mobile: form.emergency_mobile.trim() || undefined,
+      employment_type: form.employment_type || undefined,
+      attendance_mode: form.attendance_mode,
+    };
+
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token;
+    if (!accessToken) {
+      setSaving(false);
+      showToast("Company session not found. Please login again.");
+      return;
+    }
+
+    const response = await fetch("/api/company/employees", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify(next),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setSaving(false);
+    if (!response.ok || !result.ok) {
+      showToast(result.error || "Unable to create employee");
+      return;
+    }
+
+    setAllEmployees(await loadCompanyEmployeesSupabase());
+    showToast("Employee created");
+    router.push("/company/employees");
+  }
+
+  return (
+    <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Add Employee</h1>
+          <p className="mt-2 text-sm text-zinc-600">
+            Create employee profile using the same data model as Manage Employee.
+          </p>
+        </div>
+        <Link href="/company/employees" className="text-sm font-semibold text-zinc-700 hover:text-zinc-900">
+          Back to Employees
+        </Link>
+      </div>
+
+      {toast && (
+        <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
+          {toast}
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} className="space-y-6" autoComplete="off">
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-zinc-900">Profile</h2>
+          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <Input label="Full Name *" value={form.full_name} onChange={(v) => setField("full_name", v)} autoComplete="off" />
+            <Input label="Mobile Number *" value={form.mobile} onChange={(v) => setField("mobile", v)} autoComplete="off" />
+            <DragDropPicker
+              label="Department *"
+              value={form.department}
+              options={DEPARTMENT_OPTIONS}
+              placeholder="Select or type department"
+              onChange={(v) => setField("department", v)}
+            />
+            <DragDropPicker
+              label="Designation *"
+              value={form.designation}
+              options={DESIGNATION_OPTIONS}
+              placeholder="Select or type designation"
+              onChange={(v) => setField("designation", v)}
+            />
+            <div>
+              <div className="mb-1 text-xs font-medium text-zinc-700">Shift *</div>
+              <select
+                value={form.shift_name}
+                onChange={(e) => setField("shift_name", e.target.value)}
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
+              >
+                {!shiftOptions.length && <option value="">No shift configured</option>}
+                {shiftOptions.map((shift) => (
+                  <option key={shift} value={shift}>
+                    {shift}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Input
+              label="Employee Code *"
+              value={form.employee_code}
+              onChange={(v) => setField("employee_code", v.toUpperCase())}
+              autoComplete="off"
+            />
+            <Input
+              label="Email (Optional)"
+              value={form.email}
+              onChange={(v) => setField("email", v)}
+              placeholder="name@company.com"
+              autoComplete="off"
+            />
+
+            <ManagerPicker
+              label="Reporting Manager"
+              value={form.reporting_manager}
+              options={managerOptions}
+              onChange={(v) => setField("reporting_manager", v)}
+            />
+
+            <TextArea
+              label="Permanent Address (Optional)"
+              value={form.perm_address}
+              onChange={(v) => setField("perm_address", v)}
+              placeholder="Permanent address..."
+            />
+            <TextArea
+              label="Temporary/Current Address (Optional)"
+              value={form.temp_address}
+              onChange={(v) => setField("temp_address", v)}
+              placeholder="Current address..."
+            />
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
+          <h2 className="text-base font-semibold text-zinc-900">Employment and IDs</h2>
+          <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <DateInput
+              label="Joining Date *"
+              value={form.joining_date}
+              onChange={(v) => setField("joining_date", v)}
+              max={todayISO()}
+            />
+            <div>
+              <div className="mb-1 text-xs font-medium text-zinc-700">Employment Type (Optional)</div>
+              <select
+                value={form.employment_type}
+                onChange={(e) => setField("employment_type", e.target.value as EmployeeDraft["employment_type"])}
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
+              >
+                <option value="">-</option>
+                <option value="full_time">Full-time</option>
+                <option value="contract">Contract</option>
+                <option value="intern">Intern</option>
+              </select>
+            </div>
+            <div>
+              <div className="mb-1 text-xs font-medium text-zinc-700">Attendance Mode *</div>
+              <select
+                value={form.attendance_mode}
+                onChange={(e) => setField("attendance_mode", e.target.value as EmployeeDraft["attendance_mode"])}
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
+              >
+                <option value="office_only">Office Only</option>
+                <option value="field_staff">Field Staff</option>
+              </select>
+              <div className="mt-2 text-xs text-zinc-500">
+                Office Only employees must punch inside office radius. Field Staff can punch from any location.
+              </div>
+            </div>
+            <Input
+              label="PAN (Optional)"
+              value={form.pan}
+              onChange={(v) => setField("pan", v.toUpperCase())}
+              placeholder="ABCDE1234F"
+              autoComplete="off"
+            />
+            <Input
+              label="Aadhaar Last 4 (Optional)"
+              value={form.aadhaar_last4}
+              onChange={(v) => setField("aadhaar_last4", v.replace(/\D/g, "").slice(0, 4))}
+              placeholder="1234"
+              autoComplete="off"
+            />
+            <Input
+              label="Emergency Contact Name (Optional)"
+              value={form.emergency_name}
+              onChange={(v) => setField("emergency_name", v)}
+              autoComplete="off"
+            />
+            <Input
+              label="Emergency Contact Mobile (Optional)"
+              value={form.emergency_mobile}
+              onChange={(v) => setField("emergency_mobile", v)}
+              autoComplete="off"
+            />
+          </div>
+        </section>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="submit"
+            disabled={saving}
+            className={[
+              "rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm",
+              saving ? "bg-zinc-400 cursor-not-allowed" : "bg-zinc-900 hover:bg-zinc-800",
+            ].join(" ")}
+          >
+            {saving ? "Creating..." : "Create Employee"}
+          </button>
+          <Link
+            href="/company/employees"
+            className="rounded-xl border border-zinc-200 bg-white px-5 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm hover:bg-zinc-50"
+          >
+            Cancel
+          </Link>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Input({
+  label,
+  value,
+  onChange,
+  placeholder,
+  autoComplete,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  autoComplete?: string;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+      <input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        autoComplete={autoComplete ?? "off"}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
+      />
+    </div>
+  );
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+}) {
+  return (
+    <div className="sm:col-span-2">
+      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+      <textarea
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        rows={3}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
+      />
+    </div>
+  );
+}
+
+function DateInput({
+  label,
+  value,
+  onChange,
+  disabled,
+  max,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  max?: string;
+}) {
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        disabled={disabled}
+        max={max}
+        autoComplete="off"
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm disabled:bg-zinc-50"
+      />
+    </div>
+  );
+}
+
+function DragDropPicker({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  placeholder: string;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div>
+      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+      <div
+        className="rounded-2xl border border-zinc-200 bg-white"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const picked = e.dataTransfer.getData("text/plain");
+          if (picked) onChange(picked);
+        }}
+      >
+        <div className="flex items-center gap-2 px-4 py-2">
+          <input
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="w-full bg-transparent py-1 text-sm text-zinc-900 outline-none"
+          />
+          <button type="button" onClick={() => setOpen((v) => !v)} className="text-zinc-400" aria-label="Toggle">
+            v
+          </button>
+        </div>
+        {open && (
+          <div className="border-t border-zinc-200 bg-zinc-50 p-2">
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
+              {options.map((opt) => (
+                <button
+                  key={opt}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", opt)}
+                  onClick={() => {
+                    onChange(opt);
+                    setOpen(false);
+                  }}
+                  className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-sm text-zinc-800 hover:bg-zinc-50 last:border-b-0"
+                >
+                  {opt}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <button
+            key={`${label}-${opt}`}
+            type="button"
+            draggable
+            onDragStart={(e) => e.dataTransfer.setData("text/plain", opt)}
+            onClick={() => onChange(opt)}
+            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+          >
+            {opt}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManagerPicker({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: { name: string; designation: string }[];
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="sm:col-span-2">
+      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+
+      <div
+        className="rounded-2xl border border-zinc-200 bg-white"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          const manager = e.dataTransfer.getData("text/plain");
+          if (manager) onChange(manager);
+        }}
+      >
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm"
+        >
+          <span className={value ? "text-zinc-900" : "text-zinc-500"}>{value || "Select reporting manager"}</span>
+          <span className="text-zinc-400">v</span>
+        </button>
+
+        {open && (
+          <div className="border-t border-zinc-200 bg-zinc-50 p-2">
+            <div className="max-h-48 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
+              {options.map((opt) => (
+                <button
+                  key={opt.name}
+                  type="button"
+                  draggable
+                  onDragStart={(e) => e.dataTransfer.setData("text/plain", opt.name)}
+                  onClick={() => {
+                    onChange(opt.name);
+                    setOpen(false);
+                  }}
+                  className="flex w-full items-center justify-between border-b border-zinc-100 px-3 py-2 text-left text-sm hover:bg-zinc-50 last:border-b-0"
+                >
+                  <span className="font-medium text-zinc-900">{opt.name}</span>
+                  <span className="text-xs text-zinc-500">{opt.designation}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+        <span>Admin stays at top.</span>
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          className="rounded border border-zinc-200 bg-white px-2 py-0.5 font-semibold text-zinc-700 hover:bg-zinc-50"
+        >
+          Clear
+        </button>
+      </div>
+    </div>
+  );
+}
