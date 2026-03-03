@@ -5,6 +5,7 @@ type Database = any;
 let adminClient: SupabaseClient<Database> | null = null;
 
 function isServiceRoleKey(key: string) {
+  if (key.startsWith("sb_secret_")) return true;
   try {
     const parts = key.split(".");
     if (parts.length < 2) return false;
