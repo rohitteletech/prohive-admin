@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 
 type EventRow = {
   id: string;
@@ -50,14 +51,7 @@ function normalizeDateParam(value: string | null) {
 }
 
 function normalizeTimeZone(value: string | null) {
-  const timeZone = (value || "").trim();
-  if (!timeZone) return "UTC";
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
-    return timeZone;
-  } catch {
-    return "UTC";
-  }
+  return normalizeTimeZoneToIndia(value);
 }
 
 function buildQueryWindow(date: string) {
@@ -99,7 +93,7 @@ function isoDateInTimeZone(iso: string, timeZone: string) {
 
 function displayDateInTimeZone(iso: string, timeZone: string) {
   const parts = partsInTimeZone(iso, timeZone);
-  return `${parts.day}-${parts.month}-${parts.year}`;
+  return `${parts.day}/${parts.month}/${parts.year}`;
 }
 
 function displayTimeInTimeZone(iso: string, timeZone: string) {
@@ -210,7 +204,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Valid date is required." }, { status: 400 });
   }
 
-  const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone"));
+  const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
   const { fromIso, toIso } = buildQueryWindow(date);
 
   const { data, error } = await context.admin

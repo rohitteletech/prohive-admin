@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
 function yearRange(year: number) {
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
 
-  const currentYear = new Date().getFullYear();
+  const currentYear = Number(todayISOInIndia().slice(0, 4));
   const range = yearRange(currentYear);
 
   const [policyResult, requestResult, holidayResult] = await Promise.all([
@@ -113,17 +114,17 @@ export async function POST(req: NextRequest) {
       id: row.id,
       leavePolicyCode: row.leave_policy_code,
       leaveName: row.leave_name_snapshot,
-      fromDate: row.from_date,
-      toDate: row.to_date,
+      fromDate: formatDisplayDate(row.from_date),
+      toDate: formatDisplayDate(row.to_date),
       days: Number(row.days || 0),
       reason: row.reason,
       status: row.status,
       adminRemark: row.admin_remark,
-      submittedAt: row.submitted_at,
+      submittedAt: formatDisplayDateTime(row.submitted_at),
     })),
     holidays: (holidayResult.data || []).map((row) => ({
       id: row.id,
-      date: row.holiday_date,
+      date: formatDisplayDate(row.holiday_date),
       name: row.name,
       type: row.type,
     })),

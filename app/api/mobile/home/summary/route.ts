@@ -1,32 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
 
 function normalizeTimeZone(value: unknown) {
-  const timeZone = String(value || "").trim();
-  if (!timeZone) return "UTC";
-  try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
-    return timeZone;
-  } catch {
-    return "UTC";
-  }
-}
-
-function isoDateInTimeZone(iso: string, timeZone: string) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(iso));
-  const lookup = (type: string) => parts.find((part) => part.type === type)?.value || "";
-  return `${lookup("year")}-${lookup("month")}-${lookup("day")}`;
+  return normalizeTimeZoneToIndia(value);
 }
 
 function currentDateInTimeZone(timeZone: string) {
-  return isoDateInTimeZone(new Date().toISOString(), timeZone);
+  return isoDateInIndia(new Date().toISOString());
 }
 
 function buildQueryWindow(date: string) {
@@ -64,7 +47,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
 
-  const timeZone = normalizeTimeZone(body.timeZone);
+  const timeZone = normalizeTimeZone(body.timeZone || INDIA_TIME_ZONE);
   const today = currentDateInTimeZone(timeZone);
   const { fromIso, toIso } = buildQueryWindow(today);
 
@@ -107,7 +90,7 @@ export async function POST(req: NextRequest) {
     server_received_at: string;
   }>).filter((row) => {
     const punchAt = row.effective_punch_at || row.server_received_at;
-    return punchAt ? isoDateInTimeZone(punchAt, timeZone) === today : false;
+    return punchAt ? isoDateInIndia(punchAt) === today : false;
   });
 
   const firstIn = events.find((row) => row.punch_type === "in") || null;

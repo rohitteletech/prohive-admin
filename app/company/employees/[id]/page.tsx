@@ -10,6 +10,7 @@ import {
   loadCompanyEmployees,
   loadCompanyEmployeesSupabase,
 } from "@/lib/companyEmployees";
+import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { COMPANY_SHIFT_STORAGE_KEY, loadActiveShiftNames } from "@/lib/companyShifts";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -85,13 +86,7 @@ function formatDateTime(value?: string) {
   if (!value) return "-";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleString("en-IN", {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return formatDisplayDateTime(parsed);
 }
 
 function maskDeviceId(value?: string) {
@@ -110,14 +105,6 @@ function deviceInfoFromEmployee(employee?: CompanyEmployee): EmployeeModel["devi
     bound_at: formatDateTime(employee.bound_device_at),
     last_seen: formatDateTime(employee.mobile_last_login_at),
   };
-}
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
 }
 
 const DESIGNATION_OPTIONS = [
@@ -231,7 +218,7 @@ export default function EmployeeDetailPage() {
     if (!desigOk) return showToast("Designation is required");
     if (!deptOk) return showToast("Department is required");
     if (!joinOk) return showToast("Joining date is required");
-    if (draft.joining_date > todayISO()) return showToast("Joining date cannot be in the future");
+    if (draft.joining_date > todayISOInIndia()) return showToast("Joining date cannot be in the future");
 
     if (draft.status === "inactive" && !draft.exit_date) {
       return showToast("Exit date required for Inactive employee");
@@ -309,7 +296,7 @@ export default function EmployeeDetailPage() {
     if (v === "active") {
       setDraft((p) => ({ ...p, status: "active", exit_date: undefined }));
     } else {
-      setDraft((p) => ({ ...p, status: "inactive", exit_date: p.exit_date || todayISO() }));
+      setDraft((p) => ({ ...p, status: "inactive", exit_date: p.exit_date || todayISOInIndia() }));
     }
   }
 
@@ -695,7 +682,7 @@ export default function EmployeeDetailPage() {
               value={data.joining_date}
               editable={isEditing}
               onChange={(v) => setField("joining_date", v)}
-              max={todayISO()}
+                  max={todayISOInIndia()}
             />
 
             <div>
@@ -1191,7 +1178,7 @@ function DateField({
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
       {!editable ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-          {value || "â€”"}
+          {value ? formatDisplayDate(value) : "â€”"}
         </div>
       ) : (
         <input

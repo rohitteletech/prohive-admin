@@ -1,3 +1,5 @@
+import { formatDisplayDate, formatDisplayTime } from "@/lib/dateTime";
+
 export type LeavePolicy = {
   id: string;
   name: string;
@@ -142,15 +144,15 @@ export function leaveRequestFromDb(row: Record<string, unknown>): LeaveRequestRo
     employeeCode: String(employee.employee_code || ""),
     leaveTypeCode: String(row.leave_policy_code || ""),
     leaveTypeName: String(row.leave_name_snapshot || ""),
-    fromDate: String(row.from_date || ""),
-    toDate: String(row.to_date || ""),
+    fromDate: formatDisplayDate(String(row.from_date || "")),
+    toDate: formatDisplayDate(String(row.to_date || "")),
     days: Number(row.days || 0),
     reason: String(row.reason || ""),
     submittedAt: String(row.submitted_at || ""),
-    submittedDate: Number.isNaN(submittedAt.getTime()) ? "" : submittedAt.toLocaleDateString(),
+    submittedDate: Number.isNaN(submittedAt.getTime()) ? "" : formatDisplayDate(submittedAt),
     submittedTime: Number.isNaN(submittedAt.getTime())
       ? ""
-      : submittedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      : formatDisplayTime(submittedAt),
     status: (row.status === "approved" || row.status === "rejected" ? row.status : "pending") as LeaveRequestStatus,
     adminRemark: normalizeText(row.admin_remark) || undefined,
   };

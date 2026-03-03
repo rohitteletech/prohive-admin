@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useMemo, useState } from "react";
+import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 
 type ClaimStatus = "pending" | "approved" | "rejected";
 
@@ -17,14 +18,6 @@ type ClaimRow = {
   status: ClaimStatus;
 };
 
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function statusChip(status: ClaimStatus) {
   if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
@@ -38,7 +31,7 @@ function typeLabel(type: ClaimRow["claimType"]) {
 }
 
 export default function Page() {
-  const today = todayISO();
+  const today = todayISOInIndia();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | ClaimStatus>("all");
   const [date, setDate] = useState(today);
@@ -129,6 +122,7 @@ export default function Page() {
             <option value="rejected">Rejected</option>
           </select>
         </div>
+        <p className="mt-2 text-[11px] text-slate-500">Selected date: {formatDisplayDate(date)} (IST)</p>
       </section>
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">

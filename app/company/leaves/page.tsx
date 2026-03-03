@@ -3,15 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { LeavePolicy, LeaveRequestRow, LeaveRequestStatus } from "@/lib/companyLeaves";
 import { loadCompanyEmployeesSupabase, type CompanyEmployee } from "@/lib/companyEmployees";
+import { formatDisplayDate, isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 function statusChip(status: LeaveRequestStatus) {
   if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -20,7 +13,7 @@ function statusChip(status: LeaveRequestStatus) {
 }
 
 export default function Page() {
-  const today = todayISO();
+  const [today] = useState(() => todayISOInIndia());
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | LeaveRequestStatus>("all");
   const [date, setDate] = useState("");
@@ -93,7 +86,7 @@ export default function Page() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [today]);
 
   function showToast(message: string) {
     setToast(message);
@@ -106,7 +99,7 @@ export default function Page() {
       const statusOk = status === "all" ? true : r.status === status;
       const text = `${r.id} ${r.employee} ${r.employeeCode} ${r.reason} ${r.leaveTypeCode} ${r.leaveTypeName}`.toLowerCase();
       const searchOk = q ? text.includes(q) : true;
-      const dateOk = date ? r.submittedAt.slice(0, 10) === date : true;
+      const dateOk = date ? isoDateInIndia(r.submittedAt) === date : true;
       return statusOk && searchOk && dateOk;
     });
   }, [rows, search, status, date]);
@@ -329,6 +322,7 @@ export default function Page() {
             <option value="rejected">Rejected</option>
           </select>
         </div>
+        <p className="mt-2 text-[11px] text-slate-500">Selected date: {date ? formatDisplayDate(date) : "All dates"} (IST)</p>
       </section>
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">

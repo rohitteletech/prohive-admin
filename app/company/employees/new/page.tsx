@@ -10,6 +10,7 @@ import {
   loadCompanyEmployeesSupabase,
   nextEmployeeId,
 } from "@/lib/companyEmployees";
+import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 import { COMPANY_SHIFT_STORAGE_KEY, loadActiveShiftNames } from "@/lib/companyShifts";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -34,14 +35,6 @@ type EmployeeDraft = {
   employment_type: EmploymentType | "";
   attendance_mode: "office_only" | "field_staff";
 };
-
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
 
 const DESIGNATION_OPTIONS = [
   "Software Engineer",
@@ -77,8 +70,8 @@ function nextEmployeeCode(rows: CompanyEmployee[]) {
 
 export default function NewEmployeePage() {
   const router = useRouter();
-  const initialShiftOptions = loadActiveShiftNames();
-  const initialEmployees = loadCompanyEmployees();
+  const [initialShiftOptions] = useState(() => loadActiveShiftNames());
+  const [initialEmployees] = useState(() => loadCompanyEmployees());
   const [toast, setToast] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
@@ -89,7 +82,7 @@ export default function NewEmployeePage() {
     designation: "",
     department: "",
     shift_name: initialShiftOptions[0] || "",
-    joining_date: todayISO(),
+    joining_date: todayISOInIndia(),
     employee_code: nextEmployeeCode(initialEmployees),
     reporting_manager: "Admin",
     email: "",
@@ -134,7 +127,7 @@ export default function NewEmployeePage() {
       ignore = true;
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [initialEmployees]);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -151,7 +144,7 @@ export default function NewEmployeePage() {
     if (form.department.trim().length < 2) return "Department is required";
     if (form.designation.trim().length < 2) return "Designation is required";
     if (!form.joining_date) return "Joining Date is required";
-    if (form.joining_date > todayISO()) return "Joining Date cannot be in the future";
+    if (form.joining_date > todayISOInIndia()) return "Joining Date cannot be in the future";
     if (!form.employee_code.trim()) return "Employee Code is required";
     if (form.employee_code.trim().length < 6) return "Employee Code is too short";
     if (
@@ -324,8 +317,9 @@ export default function NewEmployeePage() {
               label="Joining Date *"
               value={form.joining_date}
               onChange={(v) => setField("joining_date", v)}
-              max={todayISO()}
+              max={todayISOInIndia()}
             />
+            <div className="mt-2 text-xs text-zinc-500">Display format: {formatDisplayDate(form.joining_date)} (IST)</div>
             <div>
               <div className="mb-1 text-xs font-medium text-zinc-700">Employment Type (Optional)</div>
               <select

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { formatDisplayDate, INDIA_TIME_ZONE, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type AttendanceStatus = "present" | "late" | "absent";
@@ -27,14 +28,6 @@ function statusChip(status: AttendanceStatus) {
   return "border-rose-200 bg-rose-50 text-rose-700";
 }
 
-function todayISO() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 function readStoredCompanyId() {
   if (typeof window === "undefined") return "";
   try {
@@ -48,7 +41,7 @@ function readStoredCompanyId() {
 }
 
 export default function Page() {
-  const today = todayISO();
+  const today = todayISOInIndia();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | AttendanceStatus>("all");
   const [shift, setShift] = useState("all");
@@ -77,7 +70,7 @@ export default function Page() {
         return;
       }
 
-      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const timeZone = INDIA_TIME_ZONE;
 
       try {
         const response = await fetch(`/api/company/attendance?date=${encodeURIComponent(date)}&timeZone=${encodeURIComponent(timeZone)}`, {
@@ -207,6 +200,7 @@ export default function Page() {
             <option value="absent">Absent</option>
           </select>
         </div>
+        <p className="mt-2 text-[11px] text-slate-500">Selected date: {formatDisplayDate(date)} (IST)</p>
       </section>
 
       <section className="mt-4 w-full max-w-full rounded-2xl border border-slate-200 bg-white shadow-sm">

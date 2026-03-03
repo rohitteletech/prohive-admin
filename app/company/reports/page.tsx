@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 
 type ReportType = "attendance" | "leave" | "claims" | "employee" | "compliance";
 type ExportFormat = "pdf" | "xlsx" | "csv";
@@ -53,7 +54,7 @@ function buildLast3CompleteMonths(today: Date): MonthOption[] {
     const { startISO, endISO } = getMonthBounds(y, m);
     out.push({
       key,
-      label: `${monthNames[m]}-${String(y).slice(-2)}`,
+      label: `${monthNames[m]} ${y}`,
       startISO,
       endISO,
     });
@@ -64,7 +65,7 @@ function buildLast3CompleteMonths(today: Date): MonthOption[] {
 const REPORT_AVAILABLE_FROM = "2025-11-01";
 
 export default function Page() {
-  const today = useMemo(() => new Date(), []);
+  const today = useMemo(() => new Date(`${todayISOInIndia()}T00:00:00+05:30`), []);
   const yesterday = useMemo(() => {
     const d = new Date(today);
     d.setDate(d.getDate() - 1);
@@ -145,7 +146,7 @@ export default function Page() {
   function handleDownload(row: ReportRow) {
     const criteria = criteriaByReport[row.id];
     if (criteria?.mode === "date_range") {
-      showToast(`Download started: ${row.name}.${row.format} (${criteria.startDate} to ${criteria.endDate})`);
+      showToast(`Download started: ${row.name}.${row.format} (${formatDisplayDate(criteria.startDate)} to ${formatDisplayDate(criteria.endDate)})`);
       return;
     }
     const label = monthMeta(criteria?.monthKey || defaultMonth.key).label;
@@ -206,6 +207,7 @@ export default function Page() {
                   startDate: REPORT_AVAILABLE_FROM,
                   endDate: yesterdayISO,
                 };
+                const monthLabel = monthMeta(criteria.monthKey).label;
                 return (
                   <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
                     <td className="px-3 py-3 font-semibold text-slate-900">{row.name}</td>
@@ -271,6 +273,11 @@ export default function Page() {
                       )}
                     </td>
                     <td className="px-3 py-3 text-right">
+                      <div className="mb-1 text-[11px] text-slate-500">
+                        {criteria.mode === "date_range"
+                          ? `${formatDisplayDate(criteria.startDate)} to ${formatDisplayDate(criteria.endDate)}`
+                          : monthLabel}
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleDownload(row)}
