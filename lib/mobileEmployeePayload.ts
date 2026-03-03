@@ -8,10 +8,12 @@ export type MobileEmployeeBase = {
   employee_code: string;
   full_name: string;
   mobile?: string | null;
+  designation?: string | null;
   attendance_mode?: "office_only" | "field_staff" | null;
 };
 
 type CompanyAttendanceRow = {
+  name: string | null;
   office_lat: number | null;
   office_lon: number | null;
   office_radius_m: number | null;
@@ -20,7 +22,7 @@ type CompanyAttendanceRow = {
 export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId: string) {
   const { data } = await admin
     .from("companies")
-    .select("office_lat,office_lon,office_radius_m")
+    .select("name,office_lat,office_lon,office_radius_m")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -28,13 +30,26 @@ export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId:
 }
 
 export async function buildMobileEmployeePayload(admin: AdminClient, employee: MobileEmployeeBase) {
+  let designation = (employee.designation || "").trim();
+  if (!designation) {
+    const { data } = await admin
+      .from("employees")
+      .select("designation")
+      .eq("id", employee.id)
+      .eq("company_id", employee.company_id)
+      .maybeSingle();
+    designation = typeof data?.designation === "string" ? data.designation.trim() : "";
+  }
+
   const company = await loadCompanyAttendanceConfig(admin, employee.company_id);
 
   return {
     id: employee.id,
     companyId: employee.company_id,
+    companyName: company?.name?.trim() || "",
     employeeCode: employee.employee_code,
     fullName: employee.full_name,
+    ...(designation ? { designation } : {}),
     ...(employee.mobile ? { mobile: employee.mobile } : {}),
     attendanceMode: employee.attendance_mode === "office_only" ? "office_only" : "field_staff",
     ...(company?.office_lat != null ? { officeLat: company.office_lat } : {}),
