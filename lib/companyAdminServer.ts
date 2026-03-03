@@ -14,6 +14,10 @@ export type CompanyAdminContext =
       error: string;
     };
 
+function normalizeEmail(value: string | null | undefined) {
+  return (value || "").trim().toLowerCase();
+}
+
 export async function getCompanyAdminContext(token: string): Promise<CompanyAdminContext> {
   if (!token) {
     return { ok: false, status: 401, error: "Missing auth token." };
@@ -27,7 +31,7 @@ export async function getCompanyAdminContext(token: string): Promise<CompanyAdmi
 
   const authClient = createClient(url, anonKey);
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
-  const email = authData.user?.email?.toLowerCase();
+  const email = normalizeEmail(authData.user?.email);
   if (authError || !email) {
     return { ok: false, status: 401, error: "Unauthorized." };
   }
@@ -37,13 +41,21 @@ export async function getCompanyAdminContext(token: string): Promise<CompanyAdmi
     return { ok: false, status: 500, error: "Supabase service role is not configured." };
   }
 
-  const { data: company, error: companyError } = await admin
+  const { data: companies, error: companyError } = await admin
     .from("companies")
     .select("id,status,admin_email")
-    .eq("admin_email", email)
-    .maybeSingle();
+    .not("admin_email", "is", null);
 
-  if (companyError || !company?.id) {
+  if (companyError) {
+    return { ok: false, status: 403, error: "Company admin mapping not found." };
+  }
+
+  const company =
+    (companies as Array<{ id: string; status: string; admin_email: string | null }> | null)?.find(
+      (row) => normalizeEmail(row.admin_email) === email
+    ) || null;
+
+  if (!company?.id) {
     return { ok: false, status: 403, error: "Company admin mapping not found." };
   }
 
