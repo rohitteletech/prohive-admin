@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
 
 const COMPANY_LOGO_STORAGE_KEY = "phv_company_logo_v1";
@@ -16,7 +16,7 @@ function loadStoredLogo() {
   }
 }
 
-export default function CompanySettingsPage() {
+function CompanySettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const forcePassword = searchParams.get("forcePassword") === "1";
@@ -337,5 +337,15 @@ export default function CompanySettingsPage() {
         </button>
       </section>
     </div>
+  );
+}
+
+export default function CompanySettingsPage() {
+  return (
+    <Suspense
+      fallback={<div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0" />}
+    >
+      <CompanySettingsPageContent />
+    </Suspense>
   );
 }
