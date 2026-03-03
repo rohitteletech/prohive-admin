@@ -144,6 +144,7 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
         const mustChangePassword = Boolean(data.user.user_metadata?.must_change_password);
 
         setCookie("prohive_company", "1");
+        setCookie("prohive_company_id", company.id);
         target = mustChangePassword ? "/company/settings?forcePassword=1" : "/company/dashboard";
         role = "company_admin";
 

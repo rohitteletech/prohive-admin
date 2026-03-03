@@ -35,6 +35,18 @@ function todayISO() {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+function readStoredCompanyId() {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem("phv_company");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { id?: string | null };
+    return parsed?.id || "";
+  } catch {
+    return "";
+  }
+}
+
 export default function Page() {
   const today = todayISO();
   const [query, setQuery] = useState("");
@@ -55,6 +67,7 @@ export default function Page() {
       const supabase = getSupabaseBrowserClient("company");
       const sessionResult = supabase ? await supabase.auth.getSession() : null;
       const accessToken = sessionResult?.data.session?.access_token || "";
+      const companyId = readStoredCompanyId();
       if (!accessToken) {
         if (!ignore) {
           setRows([]);
@@ -68,7 +81,10 @@ export default function Page() {
 
       try {
         const response = await fetch(`/api/company/attendance?date=${encodeURIComponent(date)}&timeZone=${encodeURIComponent(timeZone)}`, {
-          headers: { authorization: `Bearer ${accessToken}` },
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            ...(companyId ? { "x-company-id": companyId } : {}),
+          },
         });
         const json = (await response.json().catch(() => ({}))) as { rows?: AttendanceRow[]; error?: string };
         if (!response.ok) {

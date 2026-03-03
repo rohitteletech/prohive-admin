@@ -18,7 +18,10 @@ function normalizeEmail(value: string | null | undefined) {
   return (value || "").trim().toLowerCase();
 }
 
-export async function getCompanyAdminContext(token: string): Promise<CompanyAdminContext> {
+export async function getCompanyAdminContext(
+  token: string,
+  options?: { companyIdHint?: string | null }
+): Promise<CompanyAdminContext> {
   if (!token) {
     return { ok: false, status: 401, error: "Missing auth token." };
   }
@@ -41,22 +44,37 @@ export async function getCompanyAdminContext(token: string): Promise<CompanyAdmi
     return { ok: false, status: 500, error: "Supabase service role is not configured." };
   }
 
-  const { data: companies, error: companyError } = await admin
+  const { data: companyByEmail, error: companyError } = await admin
     .from("companies")
     .select("id,status,admin_email")
-    .not("admin_email", "is", null);
+    .eq("admin_email", email)
+    .maybeSingle();
 
   if (companyError) {
-    return { ok: false, status: 403, error: "Company admin mapping not found." };
+    return { ok: false, status: 400, error: companyError.message || "Unable to load company admin mapping." };
   }
 
-  const company =
-    (companies as Array<{ id: string; status: string; admin_email: string | null }> | null)?.find(
-      (row) => normalizeEmail(row.admin_email) === email
-    ) || null;
+  let company = companyByEmail;
+
+  const hintedCompanyId = (options?.companyIdHint || "").trim();
+  if (!company?.id && hintedCompanyId) {
+    const { data: companyById, error: companyByIdError } = await admin
+      .from("companies")
+      .select("id,status,admin_email")
+      .eq("id", hintedCompanyId)
+      .maybeSingle();
+
+    if (companyByIdError) {
+      return { ok: false, status: 400, error: companyByIdError.message || "Unable to load company admin mapping." };
+    }
+
+    if (companyById?.id && normalizeEmail(companyById.admin_email) === email) {
+      company = companyById;
+    }
+  }
 
   if (!company?.id) {
-    return { ok: false, status: 403, error: "Company admin mapping not found." };
+    return { ok: false, status: 403, error: `Company admin mapping not found for ${email || "unknown user"}.` };
   }
 
   if (company.status === "suspended") {

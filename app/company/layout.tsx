@@ -66,27 +66,52 @@ export default function CompanyLayout({
   const pathname = usePathname();
 
   useEffect(() => {
-    if (pathname === "/login") return;
+    let active = true;
 
-    try {
-      const raw = localStorage.getItem("phv_company_session");
-      if (!raw) {
-        router.replace("/login");
-        return;
-      }
+    async function validateCompanySession() {
+      if (pathname === "/login") return;
 
-      const session = JSON.parse(raw);
-      if (!session || session.role !== "company_admin") {
+      try {
+        const raw = localStorage.getItem("phv_company_session");
+        if (!raw) {
+          router.replace("/login");
+          return;
+        }
+
+        const session = JSON.parse(raw);
+        if (!session || session.role !== "company_admin") {
+          router.replace("/login");
+          return;
+        }
+
+        const supabase = getSupabaseBrowserClient("company");
+        const { data } = (await supabase?.auth.getUser()) || { data: { user: null } };
+        const authEmail = data.user?.email?.trim().toLowerCase() || "";
+        const sessionEmail = String(session.email || "").trim().toLowerCase();
+
+        if (!authEmail || (sessionEmail && authEmail !== sessionEmail)) {
+          localStorage.removeItem("phv_company_session");
+          localStorage.removeItem("phv_company");
+          localStorage.removeItem("phv-sb-company-auth");
+          document.cookie = "prohive_company=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+          document.cookie = "prohive_company_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+          if (active) router.replace("/login");
+          return;
+        }
+
+        if (session.must_change_password && pathname !== "/company/settings") {
+          router.replace("/company/settings?forcePassword=1");
+        }
+      } catch {
         router.replace("/login");
-        return;
       }
-      if (session.must_change_password && pathname !== "/company/settings") {
-        router.replace("/company/settings?forcePassword=1");
-        return;
-      }
-    } catch {
-      router.replace("/login");
     }
+
+    validateCompanySession();
+
+    return () => {
+      active = false;
+    };
   }, [router, pathname]);
 
   async function handleLogout() {
@@ -95,7 +120,9 @@ export default function CompanyLayout({
       await supabase?.auth.signOut();
       localStorage.removeItem("phv_company_session");
       localStorage.removeItem("phv_company");
+      localStorage.removeItem("phv-sb-company-auth");
       document.cookie = "prohive_company=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+      document.cookie = "prohive_company_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
     } finally {
       router.replace("/login");
     }

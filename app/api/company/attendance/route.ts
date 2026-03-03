@@ -198,7 +198,9 @@ function aggregateRows(events: EventRow[], selectedDate: string, timeZone: strin
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const context = await getCompanyAdminContext(token);
+  const context = await getCompanyAdminContext(token, {
+    companyIdHint: req.headers.get("x-company-id") || req.cookies.get("prohive_company_id")?.value || "",
+  });
   if (!context.ok) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
