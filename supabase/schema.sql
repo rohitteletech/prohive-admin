@@ -18,6 +18,7 @@ create table if not exists public.companies (
   pin_code text,
   admin_email text,
   admin_password text,
+  company_logo_url text,
   office_lat double precision,
   office_lon double precision,
   office_radius_m integer,
@@ -28,6 +29,9 @@ create table if not exists public.companies (
 
 alter table public.companies
   alter column id set default gen_random_uuid();
+
+alter table public.companies
+  add column if not exists company_logo_url text;
 
 alter table public.companies enable row level security;
 

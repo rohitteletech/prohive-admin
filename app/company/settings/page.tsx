@@ -5,17 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
 
-const COMPANY_LOGO_STORAGE_KEY = "phv_company_logo_v1";
-
-function loadStoredLogo() {
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage.getItem(COMPANY_LOGO_STORAGE_KEY);
-  } catch {
-    return null;
-  }
-}
-
 function CompanySettingsPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -23,13 +12,14 @@ function CompanySettingsPageContent() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [savedLogo, setSavedLogo] = useState<string | null>(() => loadStoredLogo());
-  const [logoPreview, setLogoPreview] = useState<string | null>(() => loadStoredLogo());
+  const [savedLogo, setSavedLogo] = useState<string | null>(null);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [officeLat, setOfficeLat] = useState("");
   const [officeLon, setOfficeLon] = useState("");
   const [officeRadiusM, setOfficeRadiusM] = useState("");
   const [savingAttendance, setSavingAttendance] = useState(false);
+  const [savingLogo, setSavingLogo] = useState(false);
 
   function showToast(message: string) {
     setToast(message);
@@ -53,11 +43,30 @@ function CompanySettingsPageContent() {
         office_lat?: number | null;
         office_lon?: number | null;
         office_radius_m?: number | null;
+        company_logo_url?: string | null;
       };
       if (!response.ok || ignore) return;
       setOfficeLat(result.office_lat == null ? "" : String(result.office_lat));
       setOfficeLon(result.office_lon == null ? "" : String(result.office_lon));
       setOfficeRadiusM(result.office_radius_m == null ? "" : String(result.office_radius_m));
+      setSavedLogo(result.company_logo_url || null);
+      setLogoPreview(result.company_logo_url || null);
+
+      try {
+        const raw = localStorage.getItem("phv_company");
+        if (raw) {
+          const company = JSON.parse(raw);
+          localStorage.setItem(
+            "phv_company",
+            JSON.stringify({
+              ...company,
+              company_logo_url: result.company_logo_url || null,
+            })
+          );
+        }
+      } catch {
+        // Ignore localStorage parse failures.
+      }
     }
     loadAttendanceSettings();
     return () => {
@@ -140,14 +149,49 @@ function CompanySettingsPageContent() {
   }
 
   function handleSaveLogo() {
-    if (!logoPreview) return showToast("Please select a logo first.");
-    try {
-      window.localStorage.setItem(COMPANY_LOGO_STORAGE_KEY, logoPreview);
+    void (async () => {
+      if (!logoPreview) return showToast("Please select a logo first.");
+
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) return showToast("Company session not found. Please login again.");
+
+      setSavingLogo(true);
+      const response = await fetch("/api/company/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          company_logo_url: logoPreview,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      setSavingLogo(false);
+      if (!response.ok || !result.ok) {
+        return showToast(result.error || "Unable to save logo.");
+      }
+
       setSavedLogo(logoPreview);
+      try {
+        const raw = localStorage.getItem("phv_company");
+        if (raw) {
+          const company = JSON.parse(raw);
+          localStorage.setItem(
+            "phv_company",
+            JSON.stringify({
+              ...company,
+              company_logo_url: logoPreview,
+            })
+          );
+        }
+      } catch {
+        // Ignore localStorage parse failures.
+      }
       showToast("Company logo saved.");
-    } catch {
-      showToast("Unable to save logo.");
-    }
+    })();
   }
 
   async function handleSaveAttendanceSettings() {
@@ -303,15 +347,15 @@ function CompanySettingsPageContent() {
           <button
             type="button"
             onClick={handleSaveLogo}
-            disabled={!logoPreview || logoPreview === savedLogo}
+            disabled={savingLogo || !logoPreview || logoPreview === savedLogo}
             className={[
               "rounded-lg px-3 py-2 text-sm font-semibold",
-              !logoPreview || logoPreview === savedLogo
+              savingLogo || !logoPreview || logoPreview === savedLogo
                 ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
                 : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
             ].join(" ")}
           >
-            Save Logo
+            {savingLogo ? "Saving..." : "Save Logo"}
           </button>
           {logoPreview && (
             <Image

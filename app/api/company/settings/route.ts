@@ -5,6 +5,7 @@ type Body = {
   office_lat?: number | null;
   office_lon?: number | null;
   office_radius_m?: number | null;
+  company_logo_url?: string | null;
 };
 
 function normalizeNumber(value: unknown) {
@@ -14,6 +15,19 @@ function normalizeNumber(value: unknown) {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+function normalizeLogoValue(value: unknown) {
+  if (value == null) return null;
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function isValidLogoValue(value: string) {
+  if (!value) return true;
+  if (value.length > 1_500_000) return false;
+  return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value) || /^https?:\/\//.test(value);
 }
 
 export async function GET(req: NextRequest) {
@@ -26,7 +40,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("companies")
-    .select("office_lat,office_lon,office_radius_m")
+    .select("office_lat,office_lon,office_radius_m,company_logo_url")
     .eq("id", context.companyId)
     .maybeSingle();
 
@@ -38,6 +52,7 @@ export async function GET(req: NextRequest) {
     office_lat: data?.office_lat ?? null,
     office_lon: data?.office_lon ?? null,
     office_radius_m: data?.office_radius_m ?? null,
+    company_logo_url: data?.company_logo_url ?? null,
   });
 }
 
@@ -50,34 +65,59 @@ export async function PUT(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as Body;
-  const officeLat = normalizeNumber(body.office_lat);
-  const officeLon = normalizeNumber(body.office_lon);
-  const officeRadiusM = normalizeNumber(body.office_radius_m);
+  const hasOfficeLat = Object.prototype.hasOwnProperty.call(body, "office_lat");
+  const hasOfficeLon = Object.prototype.hasOwnProperty.call(body, "office_lon");
+  const hasOfficeRadiusM = Object.prototype.hasOwnProperty.call(body, "office_radius_m");
+  const hasAttendanceUpdate = hasOfficeLat || hasOfficeLon || hasOfficeRadiusM;
+  const hasLogoUpdate = Object.prototype.hasOwnProperty.call(body, "company_logo_url");
 
-  const isAllBlank = officeLat == null && officeLon == null && officeRadiusM == null;
-  const isAllPresent = officeLat != null && officeLon != null && officeRadiusM != null;
-  if (!isAllBlank && !isAllPresent) {
-    return NextResponse.json(
-      { error: "Office latitude, longitude, and radius must be provided together." },
-      { status: 400 }
-    );
+  if (!hasAttendanceUpdate && !hasLogoUpdate) {
+    return NextResponse.json({ error: "No settings fields provided." }, { status: 400 });
   }
 
-  if (officeLat != null && (officeLat < -90 || officeLat > 90)) {
-    return NextResponse.json({ error: "Office latitude is invalid." }, { status: 400 });
-  }
-  if (officeLon != null && (officeLon < -180 || officeLon > 180)) {
-    return NextResponse.json({ error: "Office longitude is invalid." }, { status: 400 });
-  }
-  if (officeRadiusM != null && (officeRadiusM < 10 || officeRadiusM > 5000)) {
-    return NextResponse.json({ error: "Office radius must be between 10 and 5000 meters." }, { status: 400 });
+  const payload: {
+    office_lat?: number | null;
+    office_lon?: number | null;
+    office_radius_m?: number | null;
+    company_logo_url?: string | null;
+  } = {};
+
+  if (hasAttendanceUpdate) {
+    const officeLat = normalizeNumber(body.office_lat);
+    const officeLon = normalizeNumber(body.office_lon);
+    const officeRadiusM = normalizeNumber(body.office_radius_m);
+
+    const isAllBlank = officeLat == null && officeLon == null && officeRadiusM == null;
+    const isAllPresent = officeLat != null && officeLon != null && officeRadiusM != null;
+    if (!isAllBlank && !isAllPresent) {
+      return NextResponse.json(
+        { error: "Office latitude, longitude, and radius must be provided together." },
+        { status: 400 }
+      );
+    }
+
+    if (officeLat != null && (officeLat < -90 || officeLat > 90)) {
+      return NextResponse.json({ error: "Office latitude is invalid." }, { status: 400 });
+    }
+    if (officeLon != null && (officeLon < -180 || officeLon > 180)) {
+      return NextResponse.json({ error: "Office longitude is invalid." }, { status: 400 });
+    }
+    if (officeRadiusM != null && (officeRadiusM < 10 || officeRadiusM > 5000)) {
+      return NextResponse.json({ error: "Office radius must be between 10 and 5000 meters." }, { status: 400 });
+    }
+
+    payload.office_lat = officeLat;
+    payload.office_lon = officeLon;
+    payload.office_radius_m = officeRadiusM == null ? null : Math.round(officeRadiusM);
   }
 
-  const payload = {
-    office_lat: officeLat,
-    office_lon: officeLon,
-    office_radius_m: officeRadiusM == null ? null : Math.round(officeRadiusM),
-  };
+  if (hasLogoUpdate) {
+    const logo = normalizeLogoValue(body.company_logo_url);
+    if (logo && !isValidLogoValue(logo)) {
+      return NextResponse.json({ error: "Company logo must be a valid image upload." }, { status: 400 });
+    }
+    payload.company_logo_url = logo;
+  }
 
   const { error } = await context.admin.from("companies").update(payload).eq("id", context.companyId);
   if (error) {

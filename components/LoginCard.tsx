@@ -125,7 +125,7 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
 
         const { data: company, error: companyError } = await supabase
           .from("companies")
-          .select("id,name,status,admin_email")
+          .select("id,name,status,admin_email,company_logo_url")
           .eq("admin_email", e1)
           .maybeSingle();
 
@@ -155,6 +155,7 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
             name: company.name,
             admin_email: company.admin_email,
             status: company.status,
+            company_logo_url: company.company_logo_url || null,
           })
         );
         localStorage.setItem(
