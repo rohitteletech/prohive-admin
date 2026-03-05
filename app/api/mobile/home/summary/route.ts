@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,company_logo_url")
+      .select("name,company_logo_url,company_logo_header_url")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -101,7 +101,7 @@ export async function POST(req: NextRequest) {
   const checkOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
   const currentStatus = checkInAt ? (checkOutAt ? "COMPLETED" : "PUNCHED_IN") : "NOT_PUNCHED_IN";
   const companyLogoUrl = buildCompanyLogoUrl({
-    logoValue: companyResult.data?.company_logo_url,
+    logoValue: companyResult.data?.company_logo_header_url || companyResult.data?.company_logo_url,
     companyId: session.employee.company_id,
     requestOrigin,
   });

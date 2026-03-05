@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await admin
     .from("companies")
-    .select("company_logo_url")
+    .select("company_logo_url,company_logo_header_url")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unable to load company logo." }, { status: 400 });
   }
 
-  const logo = (data?.company_logo_url || "").trim();
+  const logo = (data?.company_logo_header_url || data?.company_logo_url || "").trim();
   if (!logo) {
     return NextResponse.json({ error: "Company logo not found." }, { status: 404 });
   }

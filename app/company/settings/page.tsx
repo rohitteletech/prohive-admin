@@ -14,12 +14,17 @@ function CompanySettingsPageContent() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [savedLogo, setSavedLogo] = useState<string | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [savedHeaderLogo, setSavedHeaderLogo] = useState<string | null>(null);
+  const [headerLogoPreview, setHeaderLogoPreview] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [officeLat, setOfficeLat] = useState("");
   const [officeLon, setOfficeLon] = useState("");
   const [officeRadiusM, setOfficeRadiusM] = useState("");
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingLogo, setSavingLogo] = useState(false);
+  const [savingHeaderLogo, setSavingHeaderLogo] = useState(false);
+
+  const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
   function showToast(message: string) {
     setToast(message);
@@ -44,6 +49,7 @@ function CompanySettingsPageContent() {
         office_lon?: number | null;
         office_radius_m?: number | null;
         company_logo_url?: string | null;
+        company_logo_header_url?: string | null;
       };
       if (!response.ok || ignore) return;
       setOfficeLat(result.office_lat == null ? "" : String(result.office_lat));
@@ -51,6 +57,8 @@ function CompanySettingsPageContent() {
       setOfficeRadiusM(result.office_radius_m == null ? "" : String(result.office_radius_m));
       setSavedLogo(result.company_logo_url || null);
       setLogoPreview(result.company_logo_url || null);
+      setSavedHeaderLogo(result.company_logo_header_url || null);
+      setHeaderLogoPreview(result.company_logo_header_url || null);
 
       try {
         const raw = localStorage.getItem("phv_company");
@@ -61,6 +69,7 @@ function CompanySettingsPageContent() {
             JSON.stringify({
               ...company,
               company_logo_url: result.company_logo_url || null,
+              company_logo_header_url: result.company_logo_header_url || null,
             })
           );
         }
@@ -140,10 +149,29 @@ function CompanySettingsPageContent() {
     if (!file.type.startsWith("image/")) {
       return showToast("Please select an image file.");
     }
+    if (file.size > MAX_LOGO_BYTES) {
+      return showToast("Logo must be 2 MB or smaller.");
+    }
     const reader = new FileReader();
     reader.onload = () => {
       setLogoPreview(typeof reader.result === "string" ? reader.result : null);
       showToast("Logo selected. Click Save Logo to apply.");
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleHeaderLogoChange(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      return showToast("Please select an image file.");
+    }
+    if (file.size > MAX_LOGO_BYTES) {
+      return showToast("Header logo must be 2 MB or smaller.");
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setHeaderLogoPreview(typeof reader.result === "string" ? reader.result : null);
+      showToast("Header logo selected. Click Save Header Logo to apply.");
     };
     reader.readAsDataURL(file);
   }
@@ -191,6 +219,52 @@ function CompanySettingsPageContent() {
         // Ignore localStorage parse failures.
       }
       showToast("Company logo saved.");
+    })();
+  }
+
+  function handleSaveHeaderLogo() {
+    void (async () => {
+      if (!headerLogoPreview) return showToast("Please select a header logo first.");
+
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) return showToast("Company session not found. Please login again.");
+
+      setSavingHeaderLogo(true);
+      const response = await fetch("/api/company/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          company_logo_header_url: headerLogoPreview,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      setSavingHeaderLogo(false);
+      if (!response.ok || !result.ok) {
+        return showToast(result.error || "Unable to save header logo.");
+      }
+
+      setSavedHeaderLogo(headerLogoPreview);
+      try {
+        const raw = localStorage.getItem("phv_company");
+        if (raw) {
+          const company = JSON.parse(raw);
+          localStorage.setItem(
+            "phv_company",
+            JSON.stringify({
+              ...company,
+              company_logo_header_url: headerLogoPreview,
+            })
+          );
+        }
+      } catch {
+        // Ignore localStorage parse failures.
+      }
+      showToast("Header logo saved.");
     })();
   }
 
@@ -329,6 +403,64 @@ function CompanySettingsPageContent() {
         >
           {savingAttendance ? "Saving..." : "Save Office Attendance Settings"}
         </button>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="text-base font-semibold text-slate-900">Mobile Header Logo</h2>
+        <p className="mt-1 text-sm text-slate-600">Upload a horizontal brand logo for the Android app top section.</p>
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
+          <li>Use horizontal logo ratio (recommended 4:1 to 6:1).</li>
+          <li>Use PNG/WebP with transparent background for best results.</li>
+          <li>Minimum recommended size: 1200 x 240 px.</li>
+          <li>Avoid very small text or taglines.</li>
+          <li>Max file size: 2 MB.</li>
+        </ul>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <label
+            title="Tip: For best mobile display, use a transparent horizontal logo."
+            className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+          >
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => handleHeaderLogoChange(e.target.files?.[0] || null)}
+            />
+            {savedHeaderLogo ? "Change Header Logo" : "Upload Header Logo"}
+          </label>
+          <button
+            type="button"
+            onClick={handleSaveHeaderLogo}
+            disabled={savingHeaderLogo || !headerLogoPreview || headerLogoPreview === savedHeaderLogo}
+            className={[
+              "rounded-lg px-3 py-2 text-sm font-semibold",
+              savingHeaderLogo || !headerLogoPreview || headerLogoPreview === savedHeaderLogo
+                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
+            ].join(" ")}
+          >
+            {savingHeaderLogo ? "Saving..." : "Save Header Logo"}
+          </button>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Tip: For best mobile display, use a transparent horizontal logo (no solid background box).
+        </p>
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <p className="text-xs font-medium text-slate-700">Mobile Preview (Header Area)</p>
+          <div className="mt-2 flex h-16 w-full items-center justify-center rounded-lg bg-white px-3">
+            {headerLogoPreview ? (
+              <Image
+                src={headerLogoPreview}
+                alt="Header logo preview"
+                width={220}
+                height={44}
+                className="h-11 w-full object-contain"
+              />
+            ) : (
+              <span className="text-xs text-slate-400">No header logo uploaded</span>
+            )}
+          </div>
+        </div>
       </section>
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">

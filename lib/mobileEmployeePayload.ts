@@ -16,6 +16,7 @@ export type MobileEmployeeBase = {
 type CompanyAttendanceRow = {
   name: string | null;
   company_logo_url: string | null;
+  company_logo_header_url: string | null;
   office_lat: number | null;
   office_lon: number | null;
   office_radius_m: number | null;
@@ -24,7 +25,7 @@ type CompanyAttendanceRow = {
 export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId: string) {
   const { data } = await admin
     .from("companies")
-    .select("name,company_logo_url,office_lat,office_lon,office_radius_m")
+    .select("name,company_logo_url,company_logo_header_url,office_lat,office_lon,office_radius_m")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -49,7 +50,7 @@ export async function buildMobileEmployeePayload(
 
   const company = await loadCompanyAttendanceConfig(admin, employee.company_id);
   const companyLogoUrl = buildCompanyLogoUrl({
-    logoValue: company?.company_logo_url,
+    logoValue: company?.company_logo_header_url || company?.company_logo_url,
     companyId: employee.company_id,
     requestOrigin: options?.requestOrigin,
   });

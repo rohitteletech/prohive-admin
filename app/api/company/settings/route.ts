@@ -6,7 +6,10 @@ type Body = {
   office_lon?: number | null;
   office_radius_m?: number | null;
   company_logo_url?: string | null;
+  company_logo_header_url?: string | null;
 };
+
+const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 function normalizeNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -26,8 +29,22 @@ function normalizeLogoValue(value: unknown) {
 
 function isValidLogoValue(value: string) {
   if (!value) return true;
-  if (value.length > 1_500_000) return false;
   return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value) || /^https?:\/\//.test(value);
+}
+
+function bytesFromDataUrl(value: string) {
+  const match = value.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return null;
+  const base64 = match[1];
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.floor((base64.length * 3) / 4) - padding;
+}
+
+function isLogoWithinSizeLimit(value: string) {
+  if (!value) return true;
+  if (/^https?:\/\//.test(value)) return true;
+  const bytes = bytesFromDataUrl(value);
+  return bytes != null && bytes <= MAX_LOGO_BYTES;
 }
 
 export async function GET(req: NextRequest) {
@@ -40,7 +57,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("companies")
-    .select("office_lat,office_lon,office_radius_m,company_logo_url")
+    .select("office_lat,office_lon,office_radius_m,company_logo_url,company_logo_header_url")
     .eq("id", context.companyId)
     .maybeSingle();
 
@@ -53,6 +70,7 @@ export async function GET(req: NextRequest) {
     office_lon: data?.office_lon ?? null,
     office_radius_m: data?.office_radius_m ?? null,
     company_logo_url: data?.company_logo_url ?? null,
+    company_logo_header_url: data?.company_logo_header_url ?? null,
   });
 }
 
@@ -70,8 +88,9 @@ export async function PUT(req: NextRequest) {
   const hasOfficeRadiusM = Object.prototype.hasOwnProperty.call(body, "office_radius_m");
   const hasAttendanceUpdate = hasOfficeLat || hasOfficeLon || hasOfficeRadiusM;
   const hasLogoUpdate = Object.prototype.hasOwnProperty.call(body, "company_logo_url");
+  const hasHeaderLogoUpdate = Object.prototype.hasOwnProperty.call(body, "company_logo_header_url");
 
-  if (!hasAttendanceUpdate && !hasLogoUpdate) {
+  if (!hasAttendanceUpdate && !hasLogoUpdate && !hasHeaderLogoUpdate) {
     return NextResponse.json({ error: "No settings fields provided." }, { status: 400 });
   }
 
@@ -80,6 +99,7 @@ export async function PUT(req: NextRequest) {
     office_lon?: number | null;
     office_radius_m?: number | null;
     company_logo_url?: string | null;
+    company_logo_header_url?: string | null;
   } = {};
 
   if (hasAttendanceUpdate) {
@@ -116,7 +136,21 @@ export async function PUT(req: NextRequest) {
     if (logo && !isValidLogoValue(logo)) {
       return NextResponse.json({ error: "Company logo must be a valid image upload." }, { status: 400 });
     }
+    if (logo && !isLogoWithinSizeLimit(logo)) {
+      return NextResponse.json({ error: "Company logo must be 2 MB or smaller." }, { status: 400 });
+    }
     payload.company_logo_url = logo;
+  }
+
+  if (hasHeaderLogoUpdate) {
+    const logo = normalizeLogoValue(body.company_logo_header_url);
+    if (logo && !isValidLogoValue(logo)) {
+      return NextResponse.json({ error: "Header logo must be a valid image upload." }, { status: 400 });
+    }
+    if (logo && !isLogoWithinSizeLimit(logo)) {
+      return NextResponse.json({ error: "Header logo must be 2 MB or smaller." }, { status: 400 });
+    }
+    payload.company_logo_header_url = logo;
   }
 
   const { error } = await context.admin.from("companies").update(payload).eq("id", context.companyId);
