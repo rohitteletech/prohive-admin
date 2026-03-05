@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
+import { resolveRequestOrigin } from "@/lib/mobileCompanyLogo";
 import { hashPin, isValidPin, normalizeEmployeeCode } from "@/lib/mobileAuth";
 import { validateOtpChallenge } from "@/lib/mobileOtp";
 
 export async function POST(req: NextRequest) {
+  const requestOrigin = resolveRequestOrigin(req);
   const body = (await req.json().catch(() => ({}))) as {
     challengeId?: string;
     employeeCode?: string;
@@ -70,6 +72,6 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     state: "ACTIVATED",
-    employee: await buildMobileEmployeePayload(admin, employee),
+    employee: await buildMobileEmployeePayload(admin, employee, { requestOrigin }),
   });
 }

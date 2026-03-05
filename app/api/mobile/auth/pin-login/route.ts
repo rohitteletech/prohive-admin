@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
+import { resolveRequestOrigin } from "@/lib/mobileCompanyLogo";
 import { hashPin, isValidPin, normalizeEmployeeCode } from "@/lib/mobileAuth";
 
 type EmployeeRow = {
@@ -17,6 +18,7 @@ type EmployeeRow = {
 };
 
 export async function POST(req: NextRequest) {
+  const requestOrigin = resolveRequestOrigin(req);
   const body = (await req.json().catch(() => ({}))) as {
     employeeCode?: string;
     pin?: string;
@@ -87,7 +89,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       state: "PIN_LOGIN_OK",
-      employee: await buildMobileEmployeePayload(admin, exactDeviceEmployee),
+      employee: await buildMobileEmployeePayload(admin, exactDeviceEmployee, { requestOrigin }),
     });
   }
 
@@ -95,7 +97,7 @@ export async function POST(req: NextRequest) {
   if (rebindEmployee) {
     return NextResponse.json({
       state: "REBIND_REQUIRED",
-      employee: await buildMobileEmployeePayload(admin, rebindEmployee),
+      employee: await buildMobileEmployeePayload(admin, rebindEmployee, { requestOrigin }),
     });
   }
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+import { buildCompanyLogoUrl, resolveRequestOrigin } from "@/lib/mobileCompanyLogo";
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
 
@@ -31,6 +32,7 @@ function workMinutes(checkInIso: string | null, checkOutIso: string | null) {
 }
 
 export async function POST(req: NextRequest) {
+  const requestOrigin = resolveRequestOrigin(req);
   const body = (await req.json().catch(() => ({}))) as {
     employeeId?: string;
     companyId?: string;
@@ -60,7 +62,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name")
+      .select("name,company_logo_url")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -98,6 +100,11 @@ export async function POST(req: NextRequest) {
   const checkInAt = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
   const checkOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
   const currentStatus = checkInAt ? (checkOutAt ? "COMPLETED" : "PUNCHED_IN") : "NOT_PUNCHED_IN";
+  const companyLogoUrl = buildCompanyLogoUrl({
+    logoValue: companyResult.data?.company_logo_url,
+    companyId: session.employee.company_id,
+    requestOrigin,
+  });
 
   return NextResponse.json({
     employee: {
@@ -106,6 +113,8 @@ export async function POST(req: NextRequest) {
       fullName: employeeResult.data?.full_name || session.employee.full_name,
       designation: employeeResult.data?.designation || "",
       companyName: companyResult.data?.name || "",
+      companyLogoUrl,
+      company_logo_url: companyLogoUrl,
     },
     today: {
       date: today,

@@ -1,4 +1,5 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { buildCompanyLogoUrl } from "@/lib/mobileCompanyLogo";
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
 
@@ -14,6 +15,7 @@ export type MobileEmployeeBase = {
 
 type CompanyAttendanceRow = {
   name: string | null;
+  company_logo_url: string | null;
   office_lat: number | null;
   office_lon: number | null;
   office_radius_m: number | null;
@@ -22,14 +24,18 @@ type CompanyAttendanceRow = {
 export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId: string) {
   const { data } = await admin
     .from("companies")
-    .select("name,office_lat,office_lon,office_radius_m")
+    .select("name,company_logo_url,office_lat,office_lon,office_radius_m")
     .eq("id", companyId)
     .maybeSingle();
 
   return (data as CompanyAttendanceRow | null) || null;
 }
 
-export async function buildMobileEmployeePayload(admin: AdminClient, employee: MobileEmployeeBase) {
+export async function buildMobileEmployeePayload(
+  admin: AdminClient,
+  employee: MobileEmployeeBase,
+  options?: { requestOrigin?: string }
+) {
   let designation = (employee.designation || "").trim();
   if (!designation) {
     const { data } = await admin
@@ -42,11 +48,18 @@ export async function buildMobileEmployeePayload(admin: AdminClient, employee: M
   }
 
   const company = await loadCompanyAttendanceConfig(admin, employee.company_id);
+  const companyLogoUrl = buildCompanyLogoUrl({
+    logoValue: company?.company_logo_url,
+    companyId: employee.company_id,
+    requestOrigin: options?.requestOrigin,
+  });
 
   return {
     id: employee.id,
     companyId: employee.company_id,
     companyName: company?.name?.trim() || "",
+    companyLogoUrl,
+    company_logo_url: companyLogoUrl,
     employeeCode: employee.employee_code,
     fullName: employee.full_name,
     ...(designation ? { designation } : {}),
