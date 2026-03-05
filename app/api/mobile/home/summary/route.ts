@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,company_logo_url,company_logo_header_url")
+      .select("name,company_tagline,company_logo_url,company_logo_header_url")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -113,6 +113,8 @@ export async function POST(req: NextRequest) {
       fullName: employeeResult.data?.full_name || session.employee.full_name,
       designation: employeeResult.data?.designation || "",
       companyName: companyResult.data?.name || "",
+      companyTagline: companyResult.data?.company_tagline || "",
+      company_tagline: companyResult.data?.company_tagline || "",
       companyLogoUrl,
       company_logo_url: companyLogoUrl,
     },

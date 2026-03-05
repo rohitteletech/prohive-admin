@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
@@ -12,19 +11,14 @@ function CompanySettingsPageContent() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [savedLogo, setSavedLogo] = useState<string | null>(null);
-  const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  const [savedHeaderLogo, setSavedHeaderLogo] = useState<string | null>(null);
-  const [headerLogoPreview, setHeaderLogoPreview] = useState<string | null>(null);
+  const [savedTagline, setSavedTagline] = useState("");
+  const [taglineInput, setTaglineInput] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [officeLat, setOfficeLat] = useState("");
   const [officeLon, setOfficeLon] = useState("");
   const [officeRadiusM, setOfficeRadiusM] = useState("");
   const [savingAttendance, setSavingAttendance] = useState(false);
-  const [savingLogo, setSavingLogo] = useState(false);
-  const [savingHeaderLogo, setSavingHeaderLogo] = useState(false);
-
-  const MAX_LOGO_BYTES = 2 * 1024 * 1024;
+  const [savingTagline, setSavingTagline] = useState(false);
 
   function showToast(message: string) {
     setToast(message);
@@ -33,7 +27,7 @@ function CompanySettingsPageContent() {
 
   useEffect(() => {
     let ignore = false;
-    async function loadAttendanceSettings() {
+    async function loadSettings() {
       const supabase = getSupabaseBrowserClient("company");
       const sessionResult = supabase ? await supabase.auth.getSession() : null;
       const accessToken = sessionResult?.data.session?.access_token;
@@ -48,17 +42,14 @@ function CompanySettingsPageContent() {
         office_lat?: number | null;
         office_lon?: number | null;
         office_radius_m?: number | null;
-        company_logo_url?: string | null;
-        company_logo_header_url?: string | null;
+        company_tagline?: string | null;
       };
       if (!response.ok || ignore) return;
       setOfficeLat(result.office_lat == null ? "" : String(result.office_lat));
       setOfficeLon(result.office_lon == null ? "" : String(result.office_lon));
       setOfficeRadiusM(result.office_radius_m == null ? "" : String(result.office_radius_m));
-      setSavedLogo(result.company_logo_url || null);
-      setLogoPreview(result.company_logo_url || null);
-      setSavedHeaderLogo(result.company_logo_header_url || null);
-      setHeaderLogoPreview(result.company_logo_header_url || null);
+      setSavedTagline(result.company_tagline || "");
+      setTaglineInput(result.company_tagline || "");
 
       try {
         const raw = localStorage.getItem("phv_company");
@@ -68,8 +59,7 @@ function CompanySettingsPageContent() {
             "phv_company",
             JSON.stringify({
               ...company,
-              company_logo_url: result.company_logo_url || null,
-              company_logo_header_url: result.company_logo_header_url || null,
+              company_tagline: result.company_tagline || "",
             })
           );
         }
@@ -77,7 +67,7 @@ function CompanySettingsPageContent() {
         // Ignore localStorage parse failures.
       }
     }
-    loadAttendanceSettings();
+    loadSettings();
     return () => {
       ignore = true;
     };
@@ -144,130 +134,6 @@ function CompanySettingsPageContent() {
     }
   }
 
-  function handleLogoChange(file: File | null) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      return showToast("Please select an image file.");
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      return showToast("Logo must be 2 MB or smaller.");
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setLogoPreview(typeof reader.result === "string" ? reader.result : null);
-      showToast("Logo selected. Click Save Logo to apply.");
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleHeaderLogoChange(file: File | null) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      return showToast("Please select an image file.");
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      return showToast("Header logo must be 2 MB or smaller.");
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setHeaderLogoPreview(typeof reader.result === "string" ? reader.result : null);
-      showToast("Header logo selected. Click Save Header Logo to apply.");
-    };
-    reader.readAsDataURL(file);
-  }
-
-  function handleSaveLogo() {
-    void (async () => {
-      if (!logoPreview) return showToast("Please select a logo first.");
-
-      const supabase = getSupabaseBrowserClient("company");
-      const sessionResult = supabase ? await supabase.auth.getSession() : null;
-      const accessToken = sessionResult?.data.session?.access_token;
-      if (!accessToken) return showToast("Company session not found. Please login again.");
-
-      setSavingLogo(true);
-      const response = await fetch("/api/company/settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          company_logo_url: logoPreview,
-        }),
-      });
-      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      setSavingLogo(false);
-      if (!response.ok || !result.ok) {
-        return showToast(result.error || "Unable to save logo.");
-      }
-
-      setSavedLogo(logoPreview);
-      try {
-        const raw = localStorage.getItem("phv_company");
-        if (raw) {
-          const company = JSON.parse(raw);
-          localStorage.setItem(
-            "phv_company",
-            JSON.stringify({
-              ...company,
-              company_logo_url: logoPreview,
-            })
-          );
-        }
-      } catch {
-        // Ignore localStorage parse failures.
-      }
-      showToast("Company logo saved.");
-    })();
-  }
-
-  function handleSaveHeaderLogo() {
-    void (async () => {
-      if (!headerLogoPreview) return showToast("Please select a header logo first.");
-
-      const supabase = getSupabaseBrowserClient("company");
-      const sessionResult = supabase ? await supabase.auth.getSession() : null;
-      const accessToken = sessionResult?.data.session?.access_token;
-      if (!accessToken) return showToast("Company session not found. Please login again.");
-
-      setSavingHeaderLogo(true);
-      const response = await fetch("/api/company/settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          company_logo_header_url: headerLogoPreview,
-        }),
-      });
-      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      setSavingHeaderLogo(false);
-      if (!response.ok || !result.ok) {
-        return showToast(result.error || "Unable to save header logo.");
-      }
-
-      setSavedHeaderLogo(headerLogoPreview);
-      try {
-        const raw = localStorage.getItem("phv_company");
-        if (raw) {
-          const company = JSON.parse(raw);
-          localStorage.setItem(
-            "phv_company",
-            JSON.stringify({
-              ...company,
-              company_logo_header_url: headerLogoPreview,
-            })
-          );
-        }
-      } catch {
-        // Ignore localStorage parse failures.
-      }
-      showToast("Header logo saved.");
-    })();
-  }
-
   async function handleSaveAttendanceSettings() {
     const hasAny = officeLat.trim() || officeLon.trim() || officeRadiusM.trim();
     if (hasAny && (!officeLat.trim() || !officeLon.trim() || !officeRadiusM.trim())) {
@@ -300,6 +166,55 @@ function CompanySettingsPageContent() {
       return showToast(result.error || "Unable to save office attendance settings.");
     }
     showToast("Office attendance settings saved.");
+  }
+
+  function handleSaveTagline() {
+    void (async () => {
+      const tagline = taglineInput.trim();
+      if (tagline.length > 100) {
+        return showToast("Tagline must be 100 characters or less.");
+      }
+
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) return showToast("Company session not found. Please login again.");
+
+      setSavingTagline(true);
+      const response = await fetch("/api/company/settings", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          company_tagline: tagline || null,
+        }),
+      });
+      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      setSavingTagline(false);
+      if (!response.ok || !result.ok) {
+        return showToast(result.error || "Unable to save company tagline.");
+      }
+
+      setSavedTagline(tagline);
+      try {
+        const raw = localStorage.getItem("phv_company");
+        if (raw) {
+          const company = JSON.parse(raw);
+          localStorage.setItem(
+            "phv_company",
+            JSON.stringify({
+              ...company,
+              company_tagline: tagline,
+            })
+          );
+        }
+      } catch {
+        // Ignore localStorage parse failures.
+      }
+      showToast("Company tagline saved.");
+    })();
   }
 
   return (
@@ -406,99 +321,34 @@ function CompanySettingsPageContent() {
       </section>
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Mobile Header Logo</h2>
-        <p className="mt-1 text-sm text-slate-600">Upload a horizontal brand logo for the Android app top section.</p>
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
-          <li>Use horizontal logo ratio (recommended 4:1 to 6:1).</li>
-          <li>Use PNG/WebP with transparent background for best results.</li>
-          <li>Minimum recommended size: 1200 x 240 px.</li>
-          <li>Avoid very small text or taglines.</li>
-          <li>Max file size: 2 MB.</li>
-        </ul>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label
-            title="Tip: For best mobile display, use a transparent horizontal logo."
-            className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => handleHeaderLogoChange(e.target.files?.[0] || null)}
-            />
-            {savedHeaderLogo ? "Change Header Logo" : "Upload Header Logo"}
-          </label>
-          <button
-            type="button"
-            onClick={handleSaveHeaderLogo}
-            disabled={savingHeaderLogo || !headerLogoPreview || headerLogoPreview === savedHeaderLogo}
-            className={[
-              "rounded-lg px-3 py-2 text-sm font-semibold",
-              savingHeaderLogo || !headerLogoPreview || headerLogoPreview === savedHeaderLogo
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
-            ].join(" ")}
-          >
-            {savingHeaderLogo ? "Saving..." : "Save Header Logo"}
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          Tip: For best mobile display, use a transparent horizontal logo (no solid background box).
+        <h2 className="text-base font-semibold text-slate-900">Company Tagline</h2>
+        <p className="mt-1 text-sm text-slate-600">
+          Add a short line that represents your company. Employees will see it in app branding areas.
         </p>
-        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <p className="text-xs font-medium text-slate-700">Mobile Preview (Header Area)</p>
-          <div className="mt-2 flex h-16 w-full items-center justify-center rounded-lg bg-white px-3">
-            {headerLogoPreview ? (
-              <Image
-                src={headerLogoPreview}
-                alt="Header logo preview"
-                width={220}
-                height={44}
-                className="h-11 w-full object-contain"
-              />
-            ) : (
-              <span className="text-xs text-slate-400">No header logo uploaded</span>
-            )}
-          </div>
-        </div>
-      </section>
-
-      <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Company Logo</h2>
-        <p className="mt-1 text-sm text-slate-600">Upload your company logo to use across the portal.</p>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <label className="inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={(e) => handleLogoChange(e.target.files?.[0] || null)}
-            />
-            {savedLogo ? "Change Company Logo" : "Add Company Logo"}
-          </label>
-          <button
-            type="button"
-            onClick={handleSaveLogo}
-            disabled={savingLogo || !logoPreview || logoPreview === savedLogo}
-            className={[
-              "rounded-lg px-3 py-2 text-sm font-semibold",
-              savingLogo || !logoPreview || logoPreview === savedLogo
-                ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-                : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
-            ].join(" ")}
-          >
-            {savingLogo ? "Saving..." : "Save Logo"}
-          </button>
-          {logoPreview && (
-            <Image
-              src={logoPreview}
-              alt="Company logo preview"
-              width={56}
-              height={56}
-              className="h-14 w-14 rounded-lg border border-slate-200 object-contain bg-white p-1"
-            />
-          )}
-        </div>
+        <label className="mt-3 grid gap-1.5">
+          <span className="text-sm text-slate-700">Tagline (max 100 chars)</span>
+          <input
+            value={taglineInput}
+            onChange={(e) => setTaglineInput(e.target.value)}
+            maxLength={100}
+            placeholder="Example: Trusted service, every day."
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+          />
+        </label>
+        <div className="mt-2 text-xs text-slate-500">{taglineInput.trim().length}/100</div>
+        <button
+          type="button"
+          onClick={handleSaveTagline}
+          disabled={savingTagline || taglineInput.trim() === savedTagline}
+          className={[
+            "mt-4 rounded-lg px-3 py-2 text-sm font-semibold",
+            savingTagline || taglineInput.trim() === savedTagline
+              ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+              : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
+          ].join(" ")}
+        >
+          {savingTagline ? "Saving..." : "Save Tagline"}
+        </button>
       </section>
 
       <section className="mt-4 rounded-2xl border border-rose-200 bg-white p-4 shadow-sm sm:p-5">

@@ -5,11 +5,8 @@ type Body = {
   office_lat?: number | null;
   office_lon?: number | null;
   office_radius_m?: number | null;
-  company_logo_url?: string | null;
-  company_logo_header_url?: string | null;
+  company_tagline?: string | null;
 };
-
-const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 
 function normalizeNumber(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -20,31 +17,11 @@ function normalizeNumber(value: unknown) {
   return null;
 }
 
-function normalizeLogoValue(value: unknown) {
+function normalizeTagline(value: unknown) {
   if (value == null) return null;
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed || null;
-}
-
-function isValidLogoValue(value: string) {
-  if (!value) return true;
-  return /^data:image\/[a-zA-Z0-9.+-]+;base64,/.test(value) || /^https?:\/\//.test(value);
-}
-
-function bytesFromDataUrl(value: string) {
-  const match = value.match(/^data:image\/[a-zA-Z0-9.+-]+;base64,([A-Za-z0-9+/=]+)$/);
-  if (!match) return null;
-  const base64 = match[1];
-  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
-  return Math.floor((base64.length * 3) / 4) - padding;
-}
-
-function isLogoWithinSizeLimit(value: string) {
-  if (!value) return true;
-  if (/^https?:\/\//.test(value)) return true;
-  const bytes = bytesFromDataUrl(value);
-  return bytes != null && bytes <= MAX_LOGO_BYTES;
 }
 
 export async function GET(req: NextRequest) {
@@ -57,7 +34,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("companies")
-    .select("office_lat,office_lon,office_radius_m,company_logo_url,company_logo_header_url")
+    .select("office_lat,office_lon,office_radius_m,company_tagline")
     .eq("id", context.companyId)
     .maybeSingle();
 
@@ -69,8 +46,7 @@ export async function GET(req: NextRequest) {
     office_lat: data?.office_lat ?? null,
     office_lon: data?.office_lon ?? null,
     office_radius_m: data?.office_radius_m ?? null,
-    company_logo_url: data?.company_logo_url ?? null,
-    company_logo_header_url: data?.company_logo_header_url ?? null,
+    company_tagline: data?.company_tagline ?? null,
   });
 }
 
@@ -87,10 +63,9 @@ export async function PUT(req: NextRequest) {
   const hasOfficeLon = Object.prototype.hasOwnProperty.call(body, "office_lon");
   const hasOfficeRadiusM = Object.prototype.hasOwnProperty.call(body, "office_radius_m");
   const hasAttendanceUpdate = hasOfficeLat || hasOfficeLon || hasOfficeRadiusM;
-  const hasLogoUpdate = Object.prototype.hasOwnProperty.call(body, "company_logo_url");
-  const hasHeaderLogoUpdate = Object.prototype.hasOwnProperty.call(body, "company_logo_header_url");
+  const hasTaglineUpdate = Object.prototype.hasOwnProperty.call(body, "company_tagline");
 
-  if (!hasAttendanceUpdate && !hasLogoUpdate && !hasHeaderLogoUpdate) {
+  if (!hasAttendanceUpdate && !hasTaglineUpdate) {
     return NextResponse.json({ error: "No settings fields provided." }, { status: 400 });
   }
 
@@ -98,8 +73,7 @@ export async function PUT(req: NextRequest) {
     office_lat?: number | null;
     office_lon?: number | null;
     office_radius_m?: number | null;
-    company_logo_url?: string | null;
-    company_logo_header_url?: string | null;
+    company_tagline?: string | null;
   } = {};
 
   if (hasAttendanceUpdate) {
@@ -131,26 +105,12 @@ export async function PUT(req: NextRequest) {
     payload.office_radius_m = officeRadiusM == null ? null : Math.round(officeRadiusM);
   }
 
-  if (hasLogoUpdate) {
-    const logo = normalizeLogoValue(body.company_logo_url);
-    if (logo && !isValidLogoValue(logo)) {
-      return NextResponse.json({ error: "Company logo must be a valid image upload." }, { status: 400 });
+  if (hasTaglineUpdate) {
+    const tagline = normalizeTagline(body.company_tagline);
+    if (tagline && tagline.length > 100) {
+      return NextResponse.json({ error: "Company tagline must be 100 characters or less." }, { status: 400 });
     }
-    if (logo && !isLogoWithinSizeLimit(logo)) {
-      return NextResponse.json({ error: "Company logo must be 2 MB or smaller." }, { status: 400 });
-    }
-    payload.company_logo_url = logo;
-  }
-
-  if (hasHeaderLogoUpdate) {
-    const logo = normalizeLogoValue(body.company_logo_header_url);
-    if (logo && !isValidLogoValue(logo)) {
-      return NextResponse.json({ error: "Header logo must be a valid image upload." }, { status: 400 });
-    }
-    if (logo && !isLogoWithinSizeLimit(logo)) {
-      return NextResponse.json({ error: "Header logo must be 2 MB or smaller." }, { status: 400 });
-    }
-    payload.company_logo_header_url = logo;
+    payload.company_tagline = tagline;
   }
 
   const { error } = await context.admin.from("companies").update(payload).eq("id", context.companyId);
