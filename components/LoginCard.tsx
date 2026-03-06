@@ -125,7 +125,7 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
 
         const { data: companyRows, error: companyError } = await supabase
           .from("companies")
-          .select("id,name,status,admin_email,company_logo_url")
+          .select("id,name,status,admin_email")
           .eq("admin_email", e1)
           .order("created_at", { ascending: false })
           .limit(2);
@@ -170,7 +170,6 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
             name: company.name,
             admin_email: company.admin_email,
             status: company.status,
-            company_logo_url: company.company_logo_url || null,
           })
         );
         localStorage.setItem(
