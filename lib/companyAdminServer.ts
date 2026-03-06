@@ -44,17 +44,22 @@ export async function getCompanyAdminContext(
     return { ok: false, status: 500, error: "Supabase service role is not configured." };
   }
 
-  const { data: companyByEmail, error: companyError } = await admin
+  const { data: companyByEmailRows, error: companyError } = await admin
     .from("companies")
     .select("id,status,admin_email")
     .eq("admin_email", email)
-    .maybeSingle();
+    .order("created_at", { ascending: false })
+    .limit(2);
 
   if (companyError) {
     return { ok: false, status: 400, error: companyError.message || "Unable to load company admin mapping." };
   }
 
-  let company = companyByEmail;
+  if (companyByEmailRows && companyByEmailRows.length > 1) {
+    return { ok: false, status: 409, error: `Multiple company mappings found for ${email}.` };
+  }
+
+  let company = companyByEmailRows?.[0] || null;
 
   const hintedCompanyId = (options?.companyIdHint || "").trim();
   if (!company?.id && hintedCompanyId) {

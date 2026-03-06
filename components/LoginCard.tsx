@@ -123,17 +123,32 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
           return;
         }
 
-        const { data: company, error: companyError } = await supabase
+        const { data: companyRows, error: companyError } = await supabase
           .from("companies")
           .select("id,name,status,admin_email,company_logo_url")
           .eq("admin_email", e1)
-          .maybeSingle();
+          .order("created_at", { ascending: false })
+          .limit(2);
 
-        if (companyError || !company) {
+        if (companyError) {
+          await supabase.auth.signOut();
+          setMsg(companyError.message || "Unable to load company admin mapping.");
+          return;
+        }
+
+        if (!companyRows || companyRows.length === 0) {
           await supabase.auth.signOut();
           setMsg("This account is not mapped to any company admin.");
           return;
         }
+
+        if (companyRows.length > 1) {
+          await supabase.auth.signOut();
+          setMsg("Multiple companies are mapped to this admin email. Contact super admin.");
+          return;
+        }
+
+        const company = companyRows[0];
 
         if (company.status === "suspended") {
           await supabase.auth.signOut();
