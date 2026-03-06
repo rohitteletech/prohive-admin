@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { buildCompanyLogoUrl, resolveRequestOrigin } from "@/lib/mobileCompanyLogo";
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
 
@@ -32,7 +31,6 @@ function workMinutes(checkInIso: string | null, checkOutIso: string | null) {
 }
 
 export async function POST(req: NextRequest) {
-  const requestOrigin = resolveRequestOrigin(req);
   const body = (await req.json().catch(() => ({}))) as {
     employeeId?: string;
     companyId?: string;
@@ -60,11 +58,7 @@ export async function POST(req: NextRequest) {
       .eq("id", session.employee.id)
       .eq("company_id", session.employee.company_id)
       .maybeSingle(),
-    session.admin
-      .from("companies")
-      .select("name,company_tagline,company_logo_header_url")
-      .eq("id", session.employee.company_id)
-      .maybeSingle(),
+    session.admin.from("companies").select("name,company_tagline").eq("id", session.employee.company_id).maybeSingle(),
     session.admin
       .from("attendance_punch_events")
       .select("punch_type,effective_punch_at,server_received_at")
@@ -100,11 +94,6 @@ export async function POST(req: NextRequest) {
   const checkInAt = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
   const checkOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
   const currentStatus = checkInAt ? (checkOutAt ? "COMPLETED" : "PUNCHED_IN") : "NOT_PUNCHED_IN";
-  const companyLogoUrl = buildCompanyLogoUrl({
-    logoValue: companyResult.data?.company_logo_header_url,
-    companyId: session.employee.company_id,
-    requestOrigin,
-  });
 
   return NextResponse.json({
     employee: {
@@ -115,8 +104,6 @@ export async function POST(req: NextRequest) {
       companyName: companyResult.data?.name || "",
       companyTagline: companyResult.data?.company_tagline || "",
       company_tagline: companyResult.data?.company_tagline || "",
-      companyLogoUrl,
-      company_logo_url: companyLogoUrl,
     },
     today: {
       date: today,

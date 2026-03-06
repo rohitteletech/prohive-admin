@@ -1,5 +1,4 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import { buildCompanyLogoUrl } from "@/lib/mobileCompanyLogo";
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
 
@@ -16,7 +15,6 @@ export type MobileEmployeeBase = {
 type CompanyAttendanceRow = {
   name: string | null;
   company_tagline: string | null;
-  company_logo_header_url: string | null;
   office_lat: number | null;
   office_lon: number | null;
   office_radius_m: number | null;
@@ -25,7 +23,7 @@ type CompanyAttendanceRow = {
 export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId: string) {
   const { data } = await admin
     .from("companies")
-    .select("name,company_tagline,company_logo_header_url,office_lat,office_lon,office_radius_m")
+    .select("name,company_tagline,office_lat,office_lon,office_radius_m")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -35,7 +33,7 @@ export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId:
 export async function buildMobileEmployeePayload(
   admin: AdminClient,
   employee: MobileEmployeeBase,
-  options?: { requestOrigin?: string }
+  _options?: { requestOrigin?: string }
 ) {
   let designation = (employee.designation || "").trim();
   if (!designation) {
@@ -49,11 +47,6 @@ export async function buildMobileEmployeePayload(
   }
 
   const company = await loadCompanyAttendanceConfig(admin, employee.company_id);
-  const companyLogoUrl = buildCompanyLogoUrl({
-    logoValue: company?.company_logo_header_url,
-    companyId: employee.company_id,
-    requestOrigin: options?.requestOrigin,
-  });
 
   return {
     id: employee.id,
@@ -61,8 +54,6 @@ export async function buildMobileEmployeePayload(
     companyName: company?.name?.trim() || "",
     companyTagline: company?.company_tagline?.trim() || "",
     company_tagline: company?.company_tagline?.trim() || "",
-    companyLogoUrl,
-    company_logo_url: companyLogoUrl,
     employeeCode: employee.employee_code,
     fullName: employee.full_name,
     ...(designation ? { designation } : {}),
