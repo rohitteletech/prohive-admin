@@ -1,6 +1,22 @@
 ﻿export const INDIA_TIME_ZONE = "Asia/Kolkata";
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const INDIA_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const INDIA_TEXT_DATE_RE = /^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})$/;
+
+const MONTH_MAP: Record<string, number> = {
+  jan: 1,
+  feb: 2,
+  mar: 3,
+  apr: 4,
+  may: 5,
+  jun: 6,
+  jul: 7,
+  aug: 8,
+  sep: 9,
+  oct: 10,
+  nov: 11,
+  dec: 12,
+};
 
 function formatParts(date: Date, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -11,6 +27,19 @@ function formatParts(date: Date, options: Intl.DateTimeFormatOptions) {
 
 function lookupPart(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes) {
   return parts.find((part) => part.type === type)?.value || "";
+}
+
+function toDisplayFromParts(year: number, month: number, day: number) {
+  const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month || parsed.getUTCDate() !== day) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: INDIA_TIME_ZONE,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(parsed);
 }
 
 export function todayISOInIndia() {
@@ -28,18 +57,32 @@ export function formatDisplayDate(value: string | Date | null | undefined) {
   if (Number.isNaN(parsed.getTime())) {
     const isoMatch = String(value).match(ISO_DATE_RE);
     if (isoMatch) {
-      return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`;
+      const rendered = toDisplayFromParts(Number(isoMatch[1]), Number(isoMatch[2]), Number(isoMatch[3]));
+      if (rendered) return rendered;
     }
+
     const indiaMatch = String(value).match(INDIA_DATE_RE);
     if (indiaMatch) {
-      return `${indiaMatch[1].padStart(2, "0")}/${indiaMatch[2].padStart(2, "0")}/${indiaMatch[3]}`;
+      const rendered = toDisplayFromParts(Number(indiaMatch[3]), Number(indiaMatch[2]), Number(indiaMatch[1]));
+      if (rendered) return rendered;
     }
+
+    const indiaTextMatch = String(value).match(INDIA_TEXT_DATE_RE);
+    if (indiaTextMatch) {
+      const month = MONTH_MAP[indiaTextMatch[2].toLowerCase()];
+      if (month) {
+        const rendered = toDisplayFromParts(Number(indiaTextMatch[3]), month, Number(indiaTextMatch[1]));
+        if (rendered) return rendered;
+      }
+    }
+
     return String(value);
   }
+
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: INDIA_TIME_ZONE,
     day: "2-digit",
-    month: "2-digit",
+    month: "short",
     year: "numeric",
   }).format(parsed);
 }
@@ -90,13 +133,28 @@ export function normalizeDateInputToIso(value: unknown) {
   if (!input) return "";
 
   const indiaMatch = input.match(INDIA_DATE_RE);
-  if (!indiaMatch) return "";
+  if (indiaMatch) {
+    const day = Number(indiaMatch[1]);
+    const month = Number(indiaMatch[2]);
+    const year = Number(indiaMatch[3]);
+    if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) return "";
+    if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 9999) return "";
 
-  const day = Number(indiaMatch[1]);
-  const month = Number(indiaMatch[2]);
-  const year = Number(indiaMatch[3]);
-  if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) return "";
-  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 9999) return "";
+    const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const parsed = new Date(`${iso}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime())) return "";
+    if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month || parsed.getUTCDate() !== day) return "";
+    return iso;
+  }
+
+  const indiaTextMatch = input.match(INDIA_TEXT_DATE_RE);
+  if (!indiaTextMatch) return "";
+
+  const day = Number(indiaTextMatch[1]);
+  const month = MONTH_MAP[indiaTextMatch[2].toLowerCase()];
+  const year = Number(indiaTextMatch[3]);
+  if (!month || !Number.isInteger(day) || !Number.isInteger(year)) return "";
+  if (day < 1 || day > 31 || year < 1900 || year > 9999) return "";
 
   const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
   const parsed = new Date(`${iso}T00:00:00Z`);
@@ -104,4 +162,3 @@ export function normalizeDateInputToIso(value: unknown) {
   if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month || parsed.getUTCDate() !== day) return "";
   return iso;
 }
-

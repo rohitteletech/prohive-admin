@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   const reason = String(body.reason || "").trim();
 
   if (!correctionDateRaw) return NextResponse.json({ error: "Correction date is required." }, { status: 400 });
-  if (!correctionDate) return NextResponse.json({ error: "Correction date is invalid. Use DD/MM/YYYY." }, { status: 400 });
+  if (!correctionDate) return NextResponse.json({ error: "Correction date is invalid. Use DD MMM YYYY." }, { status: 400 });
   const windowError = validateCorrectionWindow(correctionDate);
   if (windowError) return NextResponse.json({ error: windowError }, { status: 400 });
   if (!requestedCheckIn && !requestedCheckOut) {
@@ -161,4 +161,5 @@ export async function POST(req: NextRequest) {
     },
   });
 }
+
 

@@ -163,8 +163,8 @@ export default function Page() {
     if (form.claimType === "other" && !form.claimTypeOther.trim()) return showToast("Other claim type detail is required.");
     const fromDateIso = normalizeDateInputToIso(form.fromDate);
     const toDateIso = normalizeDateInputToIso(form.toDate);
-    if (!fromDateIso) return showToast("From date is invalid. Use DD/MM/YYYY.");
-    if (!toDateIso) return showToast("To date is invalid. Use DD/MM/YYYY.");
+    if (!fromDateIso) return showToast("From date is invalid. Use DD MMM YYYY.");
+    if (!toDateIso) return showToast("To date is invalid. Use DD MMM YYYY.");
     if (fromDateIso > todayIso || toDateIso > todayIso) return showToast("Dates cannot be in the future.");
     if (toDateIso < fromDateIso) return showToast("To date cannot be before from date.");
 
@@ -271,14 +271,14 @@ export default function Page() {
             type="text"
             value={form.fromDate}
             onChange={(e) => setForm((prev) => ({ ...prev, fromDate: e.target.value }))}
-            placeholder="From (DD/MM/YYYY)"
+            placeholder="From (DD MMM YYYY)"
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
           />
           <input
             type="text"
             value={form.toDate}
             onChange={(e) => setForm((prev) => ({ ...prev, toDate: e.target.value }))}
-            placeholder="To (DD/MM/YYYY)"
+            placeholder="To (DD MMM YYYY)"
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
           />
           <select
@@ -477,4 +477,5 @@ export default function Page() {
     </div>
   );
 }
+
 
