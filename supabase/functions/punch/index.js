@@ -19,6 +19,28 @@ function toIsoFromMs(value) {
   return new Date(value).toISOString();
 }
 
+function normalizeTimeZone(value) {
+  const timeZone = String(value || "").trim();
+  if (!timeZone) return "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+    return timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
+function isoDateInTimeZone(iso, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(iso));
+  const lookup = (type) => parts.find((part) => part.type === type)?.value || "";
+  return `${lookup("year")}-${lookup("month")}-${lookup("day")}`;
+}
+
 function parseReasonCodes(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
@@ -144,6 +166,7 @@ Deno.serve(async (req) => {
     accuracy_m: Number(body.accuracy_m),
     is_offline: Boolean(body.is_offline),
     device_time_ms: Number(body.device_time_ms),
+    device_time_zone: normalizeTimeZone(body.device_time_zone),
     elapsed_ms: Number(body.elapsed_ms),
     estimated_time_ms:
       body.estimated_time_ms == null || body.estimated_time_ms === "" ? null : Number(body.estimated_time_ms),
@@ -216,7 +239,7 @@ Deno.serve(async (req) => {
 
   const { data: lastEvent } = await supabase
     .from("attendance_punch_events")
-    .select("id,punch_type,approval_status")
+    .select("id,punch_type,approval_status,effective_punch_at,server_received_at")
     .eq("company_id", payload.company_id)
     .eq("employee_id", payload.employee_id)
     .neq("approval_status", "rejected")
@@ -229,7 +252,17 @@ Deno.serve(async (req) => {
   }
 
   if (lastEvent?.punch_type === payload.punch_type) {
-    return json({ code: "INVALID_PUNCH_SEQUENCE", error: "Punch sequence is invalid." }, 409);
+    const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
+    const currentPunchAt = toIsoFromMs(payload.device_time_ms) || new Date().toISOString();
+    const isPreviousDayOpenPunch =
+      payload.punch_type === "in" &&
+      Boolean(lastPunchAt) &&
+      isoDateInTimeZone(String(lastPunchAt), payload.device_time_zone) !==
+        isoDateInTimeZone(currentPunchAt, payload.device_time_zone);
+
+    if (!isPreviousDayOpenPunch) {
+      return json({ code: "INVALID_PUNCH_SEQUENCE", error: "Punch sequence is invalid." }, 409);
+    }
   }
 
   let distanceFromOfficeM = null;

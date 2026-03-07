@@ -1,20 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@supabase/supabase-js";
+import { todayISOInIndia } from "@/lib/dateTime";
 
 type PlanType = "trial" | "monthly" | "yearly";
 
-function toISODateLocal(d: Date) {
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
+function addDaysISO(baseIso: string, days: number) {
+  const match = baseIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return baseIso;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const d = new Date(Date.UTC(year, month - 1, day));
+  d.setUTCDate(d.getUTCDate() + days);
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
-}
-
-function addDaysISO(base: Date, days: number) {
-  const d = new Date(base);
-  d.setDate(d.getDate() + days);
-  return toISODateLocal(d);
 }
 
 function superAdminAllowList() {
@@ -76,10 +78,9 @@ export async function POST(req: NextRequest) {
   if (!adminEmail) return NextResponse.json({ error: "Admin email is required." }, { status: 400 });
   if (!adminPassword) return NextResponse.json({ error: "Admin password is required." }, { status: 400 });
 
-  const todayDate = new Date();
-  const today = toISODateLocal(todayDate);
+  const today = todayISOInIndia();
   const durationDays = plan === "trial" ? 7 : plan === "monthly" ? 37 : 372;
-  const planEnd = addDaysISO(todayDate, durationDays);
+  const planEnd = addDaysISO(today, durationDays);
 
   const admin = getSupabaseAdminClient();
   if (!admin) {

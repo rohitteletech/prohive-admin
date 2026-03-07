@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
+import { todayISOInIndia } from "@/lib/dateTime";
 
 type CompanyStatus = "trial_active" | "paid_active" | "grace_paid" | "suspended";
 type PlanType = "trial" | "monthly" | "yearly";
@@ -104,9 +105,8 @@ export default function Page() {
   };
 
   const remainingText = (endDateStr: string) => {
-    const end = new Date(`${endDateStr}T00:00:00`);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const end = new Date(`${endDateStr}T00:00:00Z`);
+    const today = new Date(`${todayISOInIndia()}T00:00:00Z`);
     const msPerDay = 24 * 60 * 60 * 1000;
     const diffDays = Math.round((end.getTime() - today.getTime()) / msPerDay);
 

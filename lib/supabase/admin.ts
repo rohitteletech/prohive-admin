@@ -1,8 +1,6 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-type Database = any;
-
-let adminClient: SupabaseClient<Database> | null = null;
+let adminClient: SupabaseClient | null = null;
 
 function isServiceRoleKey(key: string) {
   if (key.startsWith("sb_secret_")) return true;
@@ -24,7 +22,7 @@ export function getSupabaseAdminClient() {
 
   if (!url || !serviceRoleKey || !isServiceRoleKey(serviceRoleKey)) return null;
 
-  adminClient = createClient<Database>(url, serviceRoleKey, {
+  adminClient = createClient(url, serviceRoleKey, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,

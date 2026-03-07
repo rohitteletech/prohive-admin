@@ -2,11 +2,9 @@
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-type Database = any;
-
 type AuthScope = "super" | "company" | "default";
 
-const browserClients: Partial<Record<AuthScope, SupabaseClient<Database>>> = {};
+const browserClients: Partial<Record<AuthScope, SupabaseClient>> = {};
 
 function env() {
   return {
@@ -21,15 +19,15 @@ export function hasSupabaseEnv() {
 }
 
 export function getSupabaseBrowserClient(scope: AuthScope = "default") {
-  if (browserClients[scope]) return browserClients[scope] as SupabaseClient<Database>;
+  if (browserClients[scope]) return browserClients[scope] as SupabaseClient;
   const { url, anonKey } = env();
   if (!url || !anonKey) return null;
   const storageKey =
     scope === "super" ? "phv-sb-super-auth" : scope === "company" ? "phv-sb-company-auth" : "phv-sb-auth";
-  browserClients[scope] = createClient<Database>(url, anonKey, {
+  browserClients[scope] = createClient(url, anonKey, {
     auth: {
       storageKey,
     },
   });
-  return browserClients[scope] as SupabaseClient<Database>;
+  return browserClients[scope] as SupabaseClient;
 }

@@ -1,22 +1,12 @@
-﻿"use client";
+"use client";
 
-import { useMemo, useState } from "react";
-import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
+import { useEffect, useMemo, useState } from "react";
+import { ClaimRow, ClaimStatus } from "@/lib/companyClaims";
+import { loadCompanyEmployeesSupabase, type CompanyEmployee } from "@/lib/companyEmployees";
+import { formatDisplayDate, isoDateInIndia, normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type ClaimStatus = "pending" | "approved" | "rejected";
-
-type ClaimRow = {
-  id: string;
-  employee: string;
-  date: string;
-  claimType: "travel" | "meal" | "misc";
-  amount: number;
-  reason: string;
-  attachment?: string;
-  submittedDate: string;
-  submittedTime: string;
-  status: ClaimStatus;
-};
+type ClaimType = "travel" | "meal" | "misc" | "other";
 
 function statusChip(status: ClaimStatus) {
   if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -24,29 +14,96 @@ function statusChip(status: ClaimStatus) {
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
-function typeLabel(type: ClaimRow["claimType"]) {
+function typeLabel(type: ClaimType, otherText?: string) {
   if (type === "travel") return "Travel";
   if (type === "meal") return "Meal";
+  if (type === "other") return otherText?.trim() ? `Other - ${otherText.trim()}` : "Other";
   return "Misc";
 }
 
 export default function Page() {
-  const today = todayISOInIndia();
+  const [todayIso] = useState(() => todayISOInIndia());
+  const [todayDisplay] = useState(() => formatDisplayDate(todayIso));
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | ClaimStatus>("all");
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState("");
+  const [rows, setRows] = useState<ClaimRow[]>([]);
+  const [employees, setEmployees] = useState<CompanyEmployee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [form, setForm] = useState({
+    employeeId: "",
+    claimDate: todayDisplay,
+    claimType: "travel" as ClaimType,
+    claimTypeOther: "",
+    amount: "",
+    reason: "",
+    attachmentUrl: "",
+  });
 
-  const rows = useMemo<ClaimRow[]>(() => [], []);
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadClaims() {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) {
+        if (!ignore) {
+          setLoading(false);
+          setToast("Company session not found. Please login again.");
+        }
+        return;
+      }
+
+      const [claimResponse, employeeRows] = await Promise.all([
+        fetch("/api/company/claims", {
+          headers: { authorization: `Bearer ${accessToken}` },
+        }),
+        loadCompanyEmployeesSupabase(),
+      ]);
+
+      const claimResult = (await claimResponse.json().catch(() => ({}))) as { rows?: ClaimRow[]; error?: string };
+      if (ignore) return;
+
+      setLoading(false);
+      if (!claimResponse.ok) {
+        setToast(claimResult.error || "Unable to load claims.");
+        return;
+      }
+
+      const activeEmployees = employeeRows.filter((row) => row.status === "active");
+      setRows(Array.isArray(claimResult.rows) ? claimResult.rows : []);
+      setEmployees(activeEmployees);
+      setForm((prev) => ({
+        ...prev,
+        employeeId: prev.employeeId || activeEmployees[0]?.id || "",
+      }));
+    }
+
+    loadClaims();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 1800);
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       const statusOk = status === "all" ? true : r.status === status;
-      const text = `${r.id} ${r.employee} ${r.reason} ${r.claimType}`.toLowerCase();
+      const text = `${r.id} ${r.employee} ${r.employeeCode} ${r.reason} ${r.claimType} ${r.claimTypeOther || ""}`.toLowerCase();
       const searchOk = q ? text.includes(q) : true;
-      return statusOk && searchOk;
+      const dateOk = date ? isoDateInIndia(r.submittedAt) === date : true;
+      return statusOk && searchOk && dateOk;
     });
-  }, [rows, search, status]);
+  }, [rows, search, status, date]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -60,6 +117,95 @@ export default function Page() {
     return { total, pending, approved, rejected, totalAmount, pendingAmount, approvedAmount, rejectedAmount };
   }, [filtered]);
 
+  async function updateClaimStatus(id: string, nextStatus: "approved" | "rejected") {
+    const remark = window.prompt(
+      nextStatus === "approved" ? "Approval remark (optional)" : "Rejection remark (optional)"
+    );
+    if (remark === null) return;
+
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token;
+    if (!accessToken) return showToast("Company session not found. Please login again.");
+
+    setActionId(id);
+    const response = await fetch(`/api/company/claims/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        status: nextStatus,
+        admin_remark: remark,
+      }),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setActionId(null);
+    if (!response.ok || !result.ok) {
+      return showToast(result.error || "Unable to update claim.");
+    }
+
+    setRows((prev) =>
+      prev.map((row) => (row.id === id ? { ...row, status: nextStatus, adminRemark: remark || undefined } : row))
+    );
+    showToast(nextStatus === "approved" ? "Claim approved." : "Claim rejected.");
+  }
+
+  async function createClaim(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!form.employeeId) return showToast("Employee is required.");
+    if (!form.claimDate) return showToast("Claim date is required.");
+    if (!form.amount.trim()) return showToast("Amount is required.");
+    if (!form.reason.trim()) return showToast("Reason is required.");
+    if (form.claimType === "other" && !form.claimTypeOther.trim()) return showToast("Other claim type detail is required.");
+    const claimDateIso = normalizeDateInputToIso(form.claimDate);
+    if (!claimDateIso) return showToast("Claim date is invalid. Use MM/DD/YYYY.");
+    if (claimDateIso > todayIso) return showToast("Claim date cannot be in the future.");
+
+    const amount = Number(form.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return showToast("Amount must be greater than zero.");
+
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token;
+    if (!accessToken) return showToast("Company session not found. Please login again.");
+
+    setCreating(true);
+    const response = await fetch("/api/company/claims", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        employee_id: form.employeeId,
+        claim_date: form.claimDate.trim(),
+        claim_type: form.claimType,
+        claim_type_other_text: form.claimType === "other" ? form.claimTypeOther.trim() : undefined,
+        amount,
+        reason: form.reason.trim(),
+        attachment_url: form.attachmentUrl.trim() || undefined,
+      }),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; row?: ClaimRow; error?: string };
+    setCreating(false);
+    if (!response.ok || !result.ok || !result.row) {
+      return showToast(result.error || "Unable to create claim.");
+    }
+
+    setRows((prev) => [result.row as ClaimRow, ...prev]);
+    setForm((prev) => ({
+      ...prev,
+      claimDate: todayDisplay,
+      claimTypeOther: "",
+      amount: "",
+      reason: "",
+      attachmentUrl: "",
+    }));
+    showToast("Claim submitted.");
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -70,27 +216,113 @@ export default function Page() {
         </div>
       </section>
 
+      {toast && (
+        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div>
+      )}
+
       <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold tracking-wide text-slate-600">Total Claims</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{stats.total}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.totalAmount}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.totalAmount.toFixed(2)}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold tracking-wide text-slate-600">Pending</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-amber-700">{stats.pending}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.pendingAmount}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.pendingAmount.toFixed(2)}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold tracking-wide text-slate-600">Approved</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-emerald-700">{stats.approved}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.approvedAmount}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.approvedAmount.toFixed(2)}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold tracking-wide text-slate-600">Rejected</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-rose-700">{stats.rejected}</p>
-          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.rejectedAmount}</p>
+          <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.rejectedAmount.toFixed(2)}</p>
         </article>
+      </section>
+
+      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+        <h2 className="text-base font-semibold text-slate-900">Create Claim</h2>
+        <p className="mt-1 text-sm text-slate-600">Use this to add reimbursement requests for employees.</p>
+
+        <form onSubmit={createClaim} className="mt-4 grid gap-3 lg:grid-cols-5">
+          <select
+            value={form.employeeId}
+            onChange={(e) => setForm((prev) => ({ ...prev, employeeId: e.target.value }))}
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          >
+            {!employees.length && <option value="">No active employees</option>}
+            {employees.map((employee) => (
+              <option key={employee.id} value={employee.id}>
+                {employee.full_name} ({employee.employee_code})
+              </option>
+            ))}
+          </select>
+          <input
+            type="text"
+            value={form.claimDate}
+            onChange={(e) => setForm((prev) => ({ ...prev, claimDate: e.target.value }))}
+            placeholder="MM/DD/YYYY"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          />
+          <select
+            value={form.claimType}
+            onChange={(e) =>
+              setForm((prev) => ({
+                ...prev,
+                claimType: e.target.value as ClaimType,
+                claimTypeOther: e.target.value === "other" ? prev.claimTypeOther : "",
+              }))
+            }
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          >
+            <option value="travel">Travel</option>
+            <option value="meal">Meal</option>
+            <option value="misc">Misc</option>
+            <option value="other">Other</option>
+          </select>
+          {form.claimType === "other" && (
+            <input
+              type="text"
+              value={form.claimTypeOther}
+              onChange={(e) => setForm((prev) => ({ ...prev, claimTypeOther: e.target.value }))}
+              placeholder="Other expense type"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+            />
+          )}
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={form.amount}
+            onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
+            placeholder="Amount (INR)"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          />
+          <button
+            type="submit"
+            disabled={creating || !employees.length}
+            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {creating ? "Submitting..." : "Submit Claim"}
+          </button>
+          <input
+            type="url"
+            value={form.attachmentUrl}
+            onChange={(e) => setForm((prev) => ({ ...prev, attachmentUrl: e.target.value }))}
+            placeholder="Attachment URL (optional)"
+            className="lg:col-span-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          />
+          <textarea
+            value={form.reason}
+            onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
+            placeholder="Reason for claim"
+            rows={3}
+            className="lg:col-span-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          />
+        </form>
       </section>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
@@ -104,10 +336,10 @@ export default function Page() {
           <input
             type="date"
             value={date}
-            max={today}
+            max={todayIso}
             onChange={(e) => {
               const next = e.target.value;
-              setDate(next > today ? today : next);
+              setDate(next > todayIso ? todayIso : next);
             }}
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
           />
@@ -122,7 +354,7 @@ export default function Page() {
             <option value="rejected">Rejected</option>
           </select>
         </div>
-        <p className="mt-2 text-[11px] text-slate-500">Selected date: {formatDisplayDate(date)} (IST)</p>
+        <p className="mt-2 text-[11px] text-slate-500">Selected date: {date ? formatDisplayDate(date) : "All dates"} (IST)</p>
       </section>
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -132,7 +364,7 @@ export default function Page() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1100px] w-full text-left">
+          <table className="min-w-[1180px] w-full text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-3 font-semibold">Claim ID</th>
@@ -150,17 +382,32 @@ export default function Page() {
             <tbody>
               {filtered.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
-                  <td className="px-5 py-3 font-semibold text-slate-900">{row.id}</td>
-                  <td className="px-5 py-3 font-semibold text-slate-900">{row.employee}</td>
-                  <td className="px-5 py-3">{row.date}</td>
-                  <td className="px-5 py-3">{typeLabel(row.claimType)}</td>
-                  <td className="px-5 py-3 font-semibold text-slate-900">INR {row.amount}</td>
-                  <td className="px-5 py-3">{row.reason}</td>
+                  <td className="px-5 py-3 font-semibold text-slate-900">{row.id.slice(0, 8).toUpperCase()}</td>
+                  <td className="px-5 py-3">
+                    <div className="leading-tight">
+                      <div className="font-semibold text-slate-900">{row.employee}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">{row.employeeCode}</div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3">{row.claimDate}</td>
+                  <td className="px-5 py-3">{typeLabel(row.claimType, row.claimTypeOther)}</td>
+                  <td className="px-5 py-3 font-semibold text-slate-900">INR {row.amount.toFixed(2)}</td>
+                  <td className="px-5 py-3">
+                    <div className="max-w-[240px]">
+                      <div>{row.reason}</div>
+                      {row.adminRemark && <div className="mt-1 text-xs text-slate-500">Remark: {row.adminRemark}</div>}
+                    </div>
+                  </td>
                   <td className="px-5 py-3">
                     {row.attachment ? (
-                      <button className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                        {row.attachment}
-                      </button>
+                      <a
+                        href={row.attachment}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Open
+                      </a>
                     ) : (
                       <span className="text-xs text-slate-400">No Attachment</span>
                     )}
@@ -179,10 +426,20 @@ export default function Page() {
                   <td className="px-5 py-3">
                     {row.status === "pending" ? (
                       <div className="flex gap-2">
-                        <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        <button
+                          type="button"
+                          disabled={actionId === row.id}
+                          onClick={() => updateClaimStatus(row.id, "approved")}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
+                        >
                           Approve
                         </button>
-                        <button className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                        <button
+                          type="button"
+                          disabled={actionId === row.id}
+                          onClick={() => updateClaimStatus(row.id, "rejected")}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                        >
                           Reject
                         </button>
                       </div>
@@ -192,7 +449,7 @@ export default function Page() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {filtered.length === 0 && !loading && (
                 <tr>
                   <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
                     No claims match current filters.

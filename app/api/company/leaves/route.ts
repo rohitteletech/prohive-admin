@@ -10,10 +10,24 @@ type Body = {
   reason?: string;
 };
 
+function isoDateToUtcMs(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return Number.NaN;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const ms = Date.UTC(year, month - 1, day);
+  const parsed = new Date(ms);
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month || parsed.getUTCDate() !== day) {
+    return Number.NaN;
+  }
+  return ms;
+}
+
 function diffDaysInclusive(fromDate: string, toDate: string) {
-  const start = new Date(`${fromDate}T00:00:00`);
-  const end = new Date(`${toDate}T00:00:00`);
-  const diff = end.getTime() - start.getTime();
+  const start = isoDateToUtcMs(fromDate);
+  const end = isoDateToUtcMs(toDate);
+  const diff = end - start;
   return Math.floor(diff / 86400000) + 1;
 }
 

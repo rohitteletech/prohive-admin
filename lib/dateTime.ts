@@ -1,4 +1,6 @@
 export const INDIA_TIME_ZONE = "Asia/Kolkata";
+const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const US_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
 function formatParts(date: Date, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -24,10 +26,17 @@ export function formatDisplayDate(value: string | Date | null | undefined) {
   if (!value) return "";
   const parsed = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsed.getTime())) {
-    const match = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    return match ? `${match[3]}/${match[2]}/${match[1]}` : String(value);
+    const isoMatch = String(value).match(ISO_DATE_RE);
+    if (isoMatch) {
+      return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`;
+    }
+    const usMatch = String(value).match(US_DATE_RE);
+    if (usMatch) {
+      return `${usMatch[1].padStart(2, "0")}/${usMatch[2].padStart(2, "0")}/${usMatch[3]}`;
+    }
+    return String(value);
   }
-  return new Intl.DateTimeFormat("en-GB", {
+  return new Intl.DateTimeFormat("en-US", {
     timeZone: INDIA_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
@@ -74,4 +83,24 @@ export function isoDateInIndia(value: string | Date) {
     day: "2-digit",
   });
   return `${lookupPart(parts, "year")}-${lookupPart(parts, "month")}-${lookupPart(parts, "day")}`;
+}
+
+export function normalizeDateInputToIso(value: unknown) {
+  const input = String(value || "").trim();
+  if (!input) return "";
+
+  const usMatch = input.match(US_DATE_RE);
+  if (!usMatch) return "";
+
+  const month = Number(usMatch[1]);
+  const day = Number(usMatch[2]);
+  const year = Number(usMatch[3]);
+  if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) return "";
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 9999) return "";
+
+  const iso = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  const parsed = new Date(`${iso}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return "";
+  if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month || parsed.getUTCDate() !== day) return "";
+  return iso;
 }
