@@ -49,6 +49,13 @@ export default function Page() {
   const [rows, setRows] = useState<AttendanceRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cellInspector, setCellInspector] = useState<{
+    label: string;
+    value: string;
+    top: number;
+    left: number;
+  } | null>(null);
+  const [copyState, setCopyState] = useState<"idle" | "copied">("idle");
 
   useEffect(() => {
     let ignore = false;
@@ -127,6 +134,30 @@ export default function Page() {
     const absent = filtered.filter((r) => r.status === "absent").length;
     return { total, present, late, absent };
   }, [filtered]);
+
+  function openCellInspector(label: string, value: string, e: React.MouseEvent<HTMLButtonElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const panelWidth = 520;
+    const margin = 12;
+    const left = Math.max(
+      margin,
+      Math.min(rect.left, window.innerWidth - panelWidth - margin)
+    );
+    const top = Math.min(rect.bottom + 8, window.innerHeight - 180);
+    setCopyState("idle");
+    setCellInspector({ label, value, top, left });
+  }
+
+  async function copyInspectorValue() {
+    if (!cellInspector) return;
+    try {
+      await navigator.clipboard.writeText(cellInspector.value);
+      setCopyState("copied");
+      window.setTimeout(() => setCopyState("idle"), 1200);
+    } catch {
+      setCopyState("idle");
+    }
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
@@ -258,17 +289,49 @@ export default function Page() {
               {filtered.map((row, index) => (
                 <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
                   <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-500">{index + 1}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900 truncate" title={row.employee}>{row.employee}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.department}>{row.department}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.shift}>{row.shift}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.date}>{row.date}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkIn}>{row.checkIn}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkInAddress}>{row.checkInAddress}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px] truncate" title={row.checkInLatLng}>{row.checkInLatLng}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkOut}>{row.checkOut}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkOutAddress}>{row.checkOutAddress}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px] truncate" title={row.checkOutLatLng}>{row.checkOutLatLng}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900 truncate" title={row.workHours}>{row.workHours}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900 truncate">{row.employee}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">{row.department}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">{row.shift}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">{row.date}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">{row.checkIn}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">
+                    <button
+                      type="button"
+                      onClick={(e) => openCellInspector("Check In Address", row.checkInAddress, e)}
+                      className="max-w-full truncate text-left text-slate-700 hover:underline"
+                    >
+                      {row.checkInAddress}
+                    </button>
+                  </td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px] truncate">
+                    <button
+                      type="button"
+                      onClick={(e) => openCellInspector("Check In Lat/Lng", row.checkInLatLng, e)}
+                      className="max-w-full truncate text-left text-slate-700 hover:underline"
+                    >
+                      {row.checkInLatLng}
+                    </button>
+                  </td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">{row.checkOut}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate">
+                    <button
+                      type="button"
+                      onClick={(e) => openCellInspector("Check Out Address", row.checkOutAddress, e)}
+                      className="max-w-full truncate text-left text-slate-700 hover:underline"
+                    >
+                      {row.checkOutAddress}
+                    </button>
+                  </td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px] truncate">
+                    <button
+                      type="button"
+                      onClick={(e) => openCellInspector("Check Out Lat/Lng", row.checkOutLatLng, e)}
+                      className="max-w-full truncate text-left text-slate-700 hover:underline"
+                    >
+                      {row.checkOutLatLng}
+                    </button>
+                  </td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900 truncate">{row.workHours}</td>
                   <td className="px-3 py-2">
                     <span className={["rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize", statusChip(row.status)].join(" ")}>
                       {row.status}
@@ -287,6 +350,42 @@ export default function Page() {
           </table>
         </div>
       </section>
+      {cellInspector && (
+        <div className="fixed inset-0 z-50" onClick={() => setCellInspector(null)}>
+          <div
+            className="fixed rounded-xl border border-slate-300 bg-white p-3 shadow-2xl"
+            style={{ top: cellInspector.top, left: cellInspector.left, width: 520, maxWidth: "calc(100vw - 24px)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{cellInspector.label}</div>
+              <button
+                type="button"
+                onClick={() => setCellInspector(null)}
+                className="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+            <textarea
+              value={cellInspector.value}
+              readOnly
+              rows={4}
+              className="w-full resize-none rounded border border-slate-300 bg-slate-50 px-2 py-2 text-sm text-slate-900 outline-none"
+            />
+            <div className="mt-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={copyInspectorValue}
+                className="rounded bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-800"
+              >
+                {copyState === "copied" ? "Copied" : "Copy"}
+              </button>
+              <div className="text-xs text-slate-500">Read-only inspector</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
