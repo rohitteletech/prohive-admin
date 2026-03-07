@@ -1,21 +1,9 @@
-﻿"use client";
+"use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { CorrectionRow, CorrectionStatus } from "@/lib/companyCorrections";
 import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
-
-type CorrectionStatus = "pending" | "approved" | "rejected";
-
-type CorrectionRow = {
-  id: string;
-  employee: string;
-  date: string;
-  requestedIn: string;
-  requestedOut: string;
-  reason: string;
-  submittedDate: string;
-  submittedTime: string;
-  status: CorrectionStatus;
-};
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 function statusChip(status: CorrectionStatus) {
   if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -24,22 +12,65 @@ function statusChip(status: CorrectionStatus) {
 }
 
 export default function Page() {
-  const today = todayISOInIndia();
+  const [todayIso] = useState(() => todayISOInIndia());
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | CorrectionStatus>("all");
-  const [date, setDate] = useState(today);
+  const [date, setDate] = useState("");
+  const [rows, setRows] = useState<CorrectionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [actionId, setActionId] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
-  const rows = useMemo<CorrectionRow[]>(() => [], []);
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadRows() {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token || "";
+      if (!accessToken) {
+        if (!ignore) {
+          setLoading(false);
+          setToast("Company session not found. Please login again.");
+        }
+        return;
+      }
+
+      const response = await fetch("/api/company/corrections", {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      const result = (await response.json().catch(() => ({}))) as { rows?: CorrectionRow[]; error?: string };
+      if (ignore) return;
+
+      setLoading(false);
+      if (!response.ok) {
+        setToast(result.error || "Unable to load correction requests.");
+        return;
+      }
+      setRows(Array.isArray(result.rows) ? result.rows : []);
+    }
+
+    loadRows();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 1800);
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      const statusOk = status === "all" ? true : r.status === status;
-      const text = `${r.id} ${r.employee} ${r.reason}`.toLowerCase();
+    return rows.filter((row) => {
+      const statusOk = status === "all" ? true : row.status === status;
+      const dateOk = date ? row.correctionDateIso === date : true;
+      const text = `${row.id} ${row.employee} ${row.employeeCode} ${row.reason} ${row.requestedIn} ${row.requestedOut}`.toLowerCase();
       const searchOk = q ? text.includes(q) : true;
-      return statusOk && searchOk;
+      return statusOk && dateOk && searchOk;
     });
-  }, [rows, search, status]);
+  }, [rows, search, status, date]);
 
   const stats = useMemo(() => {
     const total = filtered.length;
@@ -49,17 +80,52 @@ export default function Page() {
     return { total, pending, approved, rejected };
   }, [filtered]);
 
+  async function updateStatus(id: string, nextStatus: "approved" | "rejected") {
+    const remark = window.prompt(
+      nextStatus === "approved" ? "Approval remark (optional)" : "Rejection remark (optional)"
+    );
+    if (remark === null) return;
+
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token || "";
+    if (!accessToken) return showToast("Company session not found. Please login again.");
+
+    setActionId(id);
+    const response = await fetch(`/api/company/corrections/${id}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        status: nextStatus,
+        admin_remark: remark,
+      }),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setActionId(null);
+    if (!response.ok || !result.ok) {
+      return showToast(result.error || "Unable to update correction request.");
+    }
+
+    setRows((prev) => prev.map((row) => (row.id === id ? { ...row, status: nextStatus, adminRemark: remark || undefined } : row)));
+    showToast(nextStatus === "approved" ? "Correction request approved." : "Correction request rejected.");
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-6 py-5 text-white">
           <p className="text-[11px] font-semibold tracking-[0.14em] text-sky-100">COMPANY ADMIN</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">Attendance Corrections</h1>
-          <p className="mt-2 text-sm text-sky-100">
-            Review and approve attendance correction requests with clear audit context.
-          </p>
+          <p className="mt-2 text-sm text-sky-100">Review and approve attendance correction requests with clear audit context.</p>
         </div>
       </section>
+
+      {toast && (
+        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div>
+      )}
 
       <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -91,10 +157,10 @@ export default function Page() {
           <input
             type="date"
             value={date}
-            max={today}
+            max={todayIso}
             onChange={(e) => {
               const next = e.target.value;
-              setDate(next > today ? today : next);
+              setDate(next > todayIso ? todayIso : next);
             }}
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
           />
@@ -109,17 +175,17 @@ export default function Page() {
             <option value="rejected">Rejected</option>
           </select>
         </div>
-        <p className="mt-2 text-[11px] text-slate-500">Selected date: {formatDisplayDate(date)} (IST)</p>
+        <p className="mt-2 text-[11px] text-slate-500">Selected date: {date ? formatDisplayDate(date) : "All dates"} (IST)</p>
       </section>
 
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">Correction Queue</h2>
-          <span className="text-xs text-slate-500">{filtered.length} requests</span>
+          <span className="text-xs text-slate-500">{loading ? "Loading..." : `${filtered.length} requests`}</span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1050px] w-full text-left">
+          <table className="min-w-[1100px] w-full text-left">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-3 font-semibold">Request ID</th>
@@ -136,12 +202,22 @@ export default function Page() {
             <tbody>
               {filtered.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
-                  <td className="px-5 py-3 font-semibold text-slate-900">{row.id}</td>
-                  <td className="px-5 py-3 font-semibold text-slate-900">{row.employee}</td>
-                  <td className="px-5 py-3">{row.date}</td>
+                  <td className="px-5 py-3 font-semibold text-slate-900">{row.id.slice(0, 8).toUpperCase()}</td>
+                  <td className="px-5 py-3">
+                    <div className="leading-tight">
+                      <div className="font-semibold text-slate-900">{row.employee}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">{row.employeeCode}</div>
+                    </div>
+                  </td>
+                  <td className="px-5 py-3">{row.correctionDate}</td>
                   <td className="px-5 py-3">{row.requestedIn}</td>
                   <td className="px-5 py-3">{row.requestedOut}</td>
-                  <td className="px-5 py-3">{row.reason}</td>
+                  <td className="px-5 py-3">
+                    <div className="max-w-[260px]">
+                      <div>{row.reason}</div>
+                      {row.adminRemark && <div className="mt-1 text-xs text-slate-500">Remark: {row.adminRemark}</div>}
+                    </div>
+                  </td>
                   <td className="px-5 py-3">
                     <div className="leading-tight">
                       <div className="font-medium text-slate-900">{row.submittedDate}</div>
@@ -156,10 +232,20 @@ export default function Page() {
                   <td className="px-5 py-3">
                     {row.status === "pending" ? (
                       <div className="flex gap-2">
-                        <button className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
+                        <button
+                          type="button"
+                          disabled={actionId === row.id}
+                          onClick={() => updateStatus(row.id, "approved")}
+                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
+                        >
                           Approve
                         </button>
-                        <button className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+                        <button
+                          type="button"
+                          disabled={actionId === row.id}
+                          onClick={() => updateStatus(row.id, "rejected")}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                        >
                           Reject
                         </button>
                       </div>
@@ -169,7 +255,7 @@ export default function Page() {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {!loading && filtered.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-5 py-10 text-center text-sm text-slate-500">
                     No correction requests match current filters.
