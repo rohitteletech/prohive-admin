@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+import { computeLeaveEntitlement, fetchLeaveOverrideDays, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 
 function yearRange(year: number) {
   return {
@@ -26,12 +27,13 @@ export async function POST(req: NextRequest) {
   }
 
   const currentYear = Number(todayISOInIndia().slice(0, 4));
+  const today = todayISOInIndia();
   const range = yearRange(currentYear);
 
   const [policyResult, requestResult, holidayResult] = await Promise.all([
     session.admin
       .from("company_leave_policies")
-      .select("id,name,code,annual_quota,carry_forward,encashable,active")
+      .select("id,name,code,annual_quota,carry_forward,accrual_mode,encashable,active")
       .eq("company_id", session.employee.company_id)
       .eq("active", true)
       .order("name", { ascending: true }),
@@ -75,16 +77,38 @@ export async function POST(req: NextRequest) {
     submitted_at: string;
   }>;
 
-  const balanceByCode = new Map<string, { approvedUsed: number; pendingUsed: number }>();
+  const policyRows = (policyResult.data || []) as Array<{
+    id: string;
+    name: string;
+    code: string;
+    annual_quota: number;
+    carry_forward: number;
+    accrual_mode: "monthly" | "upfront" | null;
+    encashable: boolean;
+    active: boolean;
+  }>;
+
+  const usageByCode = new Map<string, { approvedUsed: number; pendingUsed: number }>();
   requests.forEach((row) => {
-    const entry = balanceByCode.get(row.leave_policy_code) || { approvedUsed: 0, pendingUsed: 0 };
-    if (row.status === "approved") {
-      entry.approvedUsed += Number(row.days || 0);
-    } else if (row.status === "pending") {
-      entry.pendingUsed += Number(row.days || 0);
-    }
-    balanceByCode.set(row.leave_policy_code, entry);
+    const entry = usageByCode.get(row.leave_policy_code) || { approvedUsed: 0, pendingUsed: 0 };
+    if (row.status === "approved") entry.approvedUsed = roundLeaveDays(entry.approvedUsed + Number(row.days || 0));
+    if (row.status === "pending") entry.pendingUsed = roundLeaveDays(entry.pendingUsed + Number(row.days || 0));
+    usageByCode.set(row.leave_policy_code, entry);
   });
+
+  const overrideEntries = await Promise.all(
+    policyRows.map(async (row) => {
+      const result = await fetchLeaveOverrideDays({
+        admin: session.admin,
+        companyId: session.employee.company_id,
+        employeeId: session.employee.id,
+        leavePolicyCode: String(row.code || ""),
+        year: currentYear,
+      });
+      return [String(row.code || ""), result] as const;
+    })
+  );
+  const overrideByCode = new Map(overrideEntries.map(([code, result]) => [code, result.overrideDays]));
 
   return NextResponse.json({
     employee: {
@@ -92,21 +116,38 @@ export async function POST(req: NextRequest) {
       employeeCode: session.employee.employee_code,
       fullName: session.employee.full_name,
     },
-    balances: (policyResult.data || []).map((row) => {
-      const usage = balanceByCode.get(String(row.code)) || { approvedUsed: 0, pendingUsed: 0 };
+    balances: policyRows.map((row) => {
+      const code = String(row.code || "");
+      const usage = usageByCode.get(code) || { approvedUsed: 0, pendingUsed: 0 };
       const annualQuota = Number(row.annual_quota || 0);
       const carryForward = Number(row.carry_forward || 0);
-      const total = annualQuota + carryForward;
-      return {
-        id: row.id,
-        code: row.code,
-        name: row.name,
+      const accrualMode = normalizeAccrualMode(row.accrual_mode);
+      const overrideDays = Number(overrideByCode.get(code) || 0);
+      const entitlement = computeLeaveEntitlement({
         annualQuota,
         carryForward,
+        accrualMode,
+        overrideDays,
+        asOfIsoDate: today,
+      });
+      const total = roundLeaveDays(annualQuota + carryForward + overrideDays);
+      const remaining = Math.max(roundLeaveDays(entitlement.accruedTotal - usage.approvedUsed), 0);
+      const remainingAfterPending = Math.max(roundLeaveDays(entitlement.accruedTotal - usage.approvedUsed - usage.pendingUsed), 0);
+      return {
+        id: row.id,
+        code,
+        name: String(row.name || ""),
+        annualQuota,
+        carryForward,
+        accrualMode,
+        accrued: entitlement.accruedTotal,
+        annualAccrued: entitlement.annualAccrued,
+        overrideDays,
         total,
         approvedUsed: usage.approvedUsed,
         pendingUsed: usage.pendingUsed,
-        remaining: Math.max(total - usage.approvedUsed, 0),
+        remaining,
+        remainingAfterPending,
         encashable: Boolean(row.encashable),
       };
     }),

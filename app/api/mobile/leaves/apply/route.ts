@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { todayISOInIndia } from "@/lib/dateTime";
+import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
 function isoDateToUtcMs(value: string) {
@@ -51,6 +53,9 @@ export async function POST(req: NextRequest) {
   if (!fromDate) return NextResponse.json({ error: "From date is required." }, { status: 400 });
   if (!toDate) return NextResponse.json({ error: "To date is required." }, { status: 400 });
   if (toDate < fromDate) return NextResponse.json({ error: "To date cannot be before from date." }, { status: 400 });
+  if (fromDate.slice(0, 4) !== toDate.slice(0, 4)) {
+    return NextResponse.json({ error: "Cross-year leave request is not allowed. Submit year-wise requests." }, { status: 400 });
+  }
   if (!reason) return NextResponse.json({ error: "Reason is required." }, { status: 400 });
 
   const days = diffDaysInclusive(fromDate, toDate);
@@ -60,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const { data: policy, error: policyError } = await session.admin
     .from("company_leave_policies")
-    .select("id,name,code,annual_quota,carry_forward,active")
+    .select("id,name,code,annual_quota,carry_forward,accrual_mode,active")
     .eq("company_id", session.employee.company_id)
     .eq("code", leavePolicyCode)
     .maybeSingle();
@@ -73,28 +78,43 @@ export async function POST(req: NextRequest) {
   }
 
   const currentYear = Number(fromDate.slice(0, 4));
-  const yearStart = `${currentYear}-01-01`;
-  const yearEnd = `${currentYear}-12-31`;
 
-  const { data: approvedRows, error: approvedError } = await session.admin
-    .from("employee_leave_requests")
-    .select("days")
-    .eq("company_id", session.employee.company_id)
-    .eq("employee_id", session.employee.id)
-    .eq("leave_policy_code", leavePolicyCode)
-    .eq("status", "approved")
-    .gte("from_date", yearStart)
-    .lte("from_date", yearEnd);
+  const [usageResult, overrideResult] = await Promise.all([
+    fetchLeaveUsageForYear({
+      admin: session.admin,
+      companyId: session.employee.company_id,
+      employeeId: session.employee.id,
+      leavePolicyCode,
+      year: currentYear,
+    }),
+    fetchLeaveOverrideDays({
+      admin: session.admin,
+      companyId: session.employee.company_id,
+      employeeId: session.employee.id,
+      leavePolicyCode,
+      year: currentYear,
+    }),
+  ]);
 
-  if (approvedError) {
-    return NextResponse.json({ error: approvedError.message || "Unable to validate leave balance." }, { status: 400 });
+  if (usageResult.error) {
+    return NextResponse.json({ error: usageResult.error }, { status: 400 });
+  }
+  if (overrideResult.error) {
+    return NextResponse.json({ error: overrideResult.error }, { status: 400 });
   }
 
-  const approvedUsed = ((approvedRows || []) as Array<{ days: number }>).reduce((acc, row) => acc + Number(row.days || 0), 0);
-  const total = Number(policy.annual_quota || 0) + Number(policy.carry_forward || 0);
-  const remaining = Math.max(total - approvedUsed, 0);
-  if (days > remaining) {
-    return NextResponse.json({ error: `Only ${remaining} day(s) available for ${policy.name}.` }, { status: 400 });
+  const entitlement = computeLeaveEntitlement({
+    annualQuota: Number(policy.annual_quota || 0),
+    carryForward: Number(policy.carry_forward || 0),
+    accrualMode: normalizeAccrualMode(policy.accrual_mode),
+    overrideDays: overrideResult.overrideDays,
+    asOfIsoDate: todayISOInIndia(),
+  });
+  const availableNow = Math.max(roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - usageResult.pendingUsed), 0);
+  if (days > availableNow) {
+    return NextResponse.json({
+      error: `Only ${availableNow} day(s) currently available for ${policy.name}. Please reduce days or contact admin.`,
+    }, { status: 400 });
   }
 
   const { data, error } = await session.admin

@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("company_leave_policies")
-    .select("id,name,code,annual_quota,carry_forward,encashable,active")
+    .select("id,name,code,annual_quota,carry_forward,accrual_mode,encashable,active")
     .eq("company_id", context.companyId)
     .order("active", { ascending: false })
     .order("name", { ascending: true });
@@ -64,7 +64,7 @@ export async function PUT(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("company_leave_policies")
-    .select("id,name,code,annual_quota,carry_forward,encashable,active")
+    .select("id,name,code,annual_quota,carry_forward,accrual_mode,encashable,active")
     .eq("company_id", context.companyId)
     .order("active", { ascending: false })
     .order("name", { ascending: true });

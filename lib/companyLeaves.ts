@@ -6,6 +6,7 @@ export type LeavePolicy = {
   code: string;
   annualQuota: number;
   carryForward: number;
+  accrualMode: "monthly" | "upfront";
   encashable: boolean;
   active: boolean;
 };
@@ -62,6 +63,7 @@ export function sanitizeLeavePolicies(input: unknown) {
     const code = normalizeCode(source.code);
     const annualQuota = Number(source.annualQuota);
     const carryForward = Number(source.carryForward);
+    const accrualMode = source.accrualMode === "upfront" ? "upfront" : "monthly";
     const encashable = Boolean(source.encashable);
     const active = source.active !== false;
 
@@ -78,6 +80,7 @@ export function sanitizeLeavePolicies(input: unknown) {
       code,
       annual_quota: Math.round(annualQuota),
       carry_forward: Math.round(carryForward),
+      accrual_mode: accrualMode,
       encashable,
       active,
     };
@@ -118,6 +121,7 @@ export function leavePolicyFromDb(row: Record<string, unknown>): LeavePolicy {
     code: String(row.code || ""),
     annualQuota: Number(row.annual_quota || 0),
     carryForward: Number(row.carry_forward || 0),
+    accrualMode: row.accrual_mode === "upfront" ? "upfront" : "monthly",
     encashable: Boolean(row.encashable),
     active: Boolean(row.active),
   };
