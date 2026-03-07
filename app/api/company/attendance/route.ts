@@ -92,8 +92,12 @@ function isoDateInTimeZone(iso: string, timeZone: string) {
 }
 
 function displayDateInTimeZone(iso: string, timeZone: string) {
-  const parts = partsInTimeZone(iso, timeZone);
-  return `${parts.day}/${parts.month}/${parts.year}`;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(iso));
 }
 
 function displayTimeInTimeZone(iso: string, timeZone: string) {
