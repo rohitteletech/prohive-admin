@@ -72,10 +72,10 @@ export default function NewEmployeePage() {
   const router = useRouter();
   const [initialShiftOptions] = useState(() => loadActiveShiftNames());
   const [initialEmployees] = useState(() => loadCompanyEmployees());
-  const [toast, setToast] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<"idle" | "checking" | "creating">("idle");
   const [fieldErrors, setFieldErrors] = useState<{ mobile?: string; employee_code?: string }>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
   const [shiftOptions, setShiftOptions] = useState<string[]>(initialShiftOptions);
   const [form, setForm] = useState<EmployeeDraft>({
@@ -131,12 +131,8 @@ export default function NewEmployeePage() {
     };
   }, [initialEmployees]);
 
-  function showToast(msg: string) {
-    setToast(msg);
-    window.setTimeout(() => setToast(null), 1800);
-  }
-
   function setField<K extends keyof EmployeeDraft>(key: K, value: EmployeeDraft[K]) {
+    setSubmitError(null);
     if (key === "mobile" || key === "employee_code") {
       setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
     }
@@ -172,10 +168,11 @@ export default function NewEmployeePage() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setSubmitError(null);
     setFieldErrors({});
     const err = validate();
     if (err) {
-      showToast(err);
+      setSubmitError(err);
       return;
     }
 
@@ -191,6 +188,7 @@ export default function NewEmployeePage() {
       setFieldErrors({
         employee_code: `This employee code is already used. Suggested new code: ${nextCode}`,
       });
+      setSubmitError("Employee Code already exists. Please use the suggested code.");
       setSubmitState("idle");
       return;
     }
@@ -200,6 +198,7 @@ export default function NewEmployeePage() {
       setFieldErrors({
         mobile: "This mobile number is already registered in the system.",
       });
+      setSubmitError("Mobile number already exists in this company.");
       setSubmitState("idle");
       return;
     }
@@ -233,7 +232,7 @@ export default function NewEmployeePage() {
     const accessToken = sessionResult?.data.session?.access_token;
     if (!accessToken) {
       setSubmitState("idle");
-      showToast("Company session not found. Please login again.");
+      setSubmitError("Company session not found. Please login again.");
       return;
     }
 
@@ -262,7 +261,7 @@ export default function NewEmployeePage() {
           employee_code: "This employee code is already in use. Please use a unique code.",
         }));
       }
-      showToast(message);
+      setSubmitError(message);
       return;
     }
 
@@ -287,11 +286,6 @@ export default function NewEmployeePage() {
         </Link>
       </div>
 
-      {toast && (
-        <div className="mb-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          {toast}
-        </div>
-      )}
       {successBanner && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/30 px-4">
           <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white px-6 py-8 text-center shadow-2xl">
@@ -468,6 +462,11 @@ export default function NewEmployeePage() {
             Cancel
           </Link>
         </div>
+        {submitError && (
+          <div className="text-sm font-medium text-rose-700">
+            {submitError}
+          </div>
+        )}
         {submitState !== "idle" && (
           <div className="text-xs text-zinc-500">
             {submitState === "checking"
