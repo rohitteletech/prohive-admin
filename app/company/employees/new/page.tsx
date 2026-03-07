@@ -73,7 +73,9 @@ export default function NewEmployeePage() {
   const [initialShiftOptions] = useState(() => loadActiveShiftNames());
   const [initialEmployees] = useState(() => loadCompanyEmployees());
   const [toast, setToast] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [submitState, setSubmitState] = useState<"idle" | "checking" | "creating">("idle");
+  const [fieldErrors, setFieldErrors] = useState<{ mobile?: string; employee_code?: string }>({});
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
   const [shiftOptions, setShiftOptions] = useState<string[]>(initialShiftOptions);
   const [form, setForm] = useState<EmployeeDraft>({
@@ -135,6 +137,9 @@ export default function NewEmployeePage() {
   }
 
   function setField<K extends keyof EmployeeDraft>(key: K, value: EmployeeDraft[K]) {
+    if (key === "mobile" || key === "employee_code") {
+      setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
+    }
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -167,12 +172,14 @@ export default function NewEmployeePage() {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    setFieldErrors({});
     const err = validate();
     if (err) {
       showToast(err);
       return;
     }
 
+    setSubmitState("checking");
     const latestRows = await loadCompanyEmployeesSupabase();
     const normalizedCode = form.employee_code.trim().toUpperCase();
     const duplicateCode = latestRows.some(
@@ -181,17 +188,23 @@ export default function NewEmployeePage() {
     if (duplicateCode) {
       const nextCode = nextEmployeeCode(latestRows);
       setField("employee_code", nextCode);
-      showToast(`Employee Code duplicate आहे. New code set: ${nextCode}`);
+      setFieldErrors({
+        employee_code: `This employee code is already used. Suggested new code: ${nextCode}`,
+      });
+      setSubmitState("idle");
       return;
     }
     const normalizedMobile = form.mobile.trim();
     const duplicateMobile = latestRows.some((row) => row.mobile.trim() === normalizedMobile);
     if (duplicateMobile) {
-      showToast("Mobile already exists. Use a unique mobile number.");
+      setFieldErrors({
+        mobile: "This mobile number is already registered in the system.",
+      });
+      setSubmitState("idle");
       return;
     }
 
-    setSaving(true);
+    setSubmitState("creating");
 
     const next: CompanyEmployee = {
       id: nextEmployeeId(allEmployees),
@@ -219,7 +232,7 @@ export default function NewEmployeePage() {
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
     const accessToken = sessionResult?.data.session?.access_token;
     if (!accessToken) {
-      setSaving(false);
+      setSubmitState("idle");
       showToast("Company session not found. Please login again.");
       return;
     }
@@ -233,15 +246,31 @@ export default function NewEmployeePage() {
       body: JSON.stringify(next),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-    setSaving(false);
+    setSubmitState("idle");
     if (!response.ok || !result.ok) {
-      showToast(result.error || "Unable to create employee");
+      const message = (result.error || "Unable to create employee").trim();
+      const lower = message.toLowerCase();
+      if (lower.includes("mobile")) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          mobile: "This mobile number is already registered in the system.",
+        }));
+      }
+      if (lower.includes("employee code")) {
+        setFieldErrors((prev) => ({
+          ...prev,
+          employee_code: "This employee code is already in use. Please use a unique code.",
+        }));
+      }
+      showToast(message);
       return;
     }
 
     setAllEmployees(await loadCompanyEmployeesSupabase());
-    showToast("Employee created");
-    router.push("/company/employees");
+    setSuccessBanner("Employee added successfully");
+    window.setTimeout(() => {
+      router.push("/company/employees");
+    }, 1300);
   }
 
   return (
@@ -263,13 +292,28 @@ export default function NewEmployeePage() {
           {toast}
         </div>
       )}
+      {successBanner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/30 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-emerald-200 bg-white px-6 py-8 text-center shadow-2xl">
+            <div className="text-2xl font-bold text-emerald-700">Success</div>
+            <div className="mt-3 text-lg font-semibold text-zinc-900">{successBanner}</div>
+            <div className="mt-2 text-sm text-zinc-500">Redirecting to Employees...</div>
+          </div>
+        </div>
+      )}
 
       <form onSubmit={onSubmit} className="space-y-6" autoComplete="off">
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-base font-semibold text-zinc-900">Profile</h2>
           <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Input label="Full Name *" value={form.full_name} onChange={(v) => setField("full_name", v)} autoComplete="off" />
-            <Input label="Mobile Number *" value={form.mobile} onChange={(v) => setField("mobile", v)} autoComplete="off" />
+            <Input
+              label="Mobile Number *"
+              value={form.mobile}
+              onChange={(v) => setField("mobile", v)}
+              autoComplete="off"
+              error={fieldErrors.mobile}
+            />
             <DragDropPicker
               label="Department *"
               value={form.department}
@@ -304,6 +348,7 @@ export default function NewEmployeePage() {
               value={form.employee_code}
               onChange={(v) => setField("employee_code", v.toUpperCase())}
               autoComplete="off"
+              error={fieldErrors.employee_code}
             />
             <Input
               label="Email (Optional)"
@@ -404,13 +449,17 @@ export default function NewEmployeePage() {
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="submit"
-            disabled={saving}
+            disabled={submitState !== "idle"}
             className={[
               "rounded-xl px-5 py-2.5 text-sm font-semibold text-white shadow-sm",
-              saving ? "bg-zinc-400 cursor-not-allowed" : "bg-zinc-900 hover:bg-zinc-800",
+              submitState !== "idle" ? "bg-zinc-400 cursor-not-allowed" : "bg-zinc-900 hover:bg-zinc-800",
             ].join(" ")}
           >
-            {saving ? "Creating..." : "Create Employee"}
+            {submitState === "checking"
+              ? "Checking uniqueness..."
+              : submitState === "creating"
+              ? "Creating..."
+              : "Create Employee"}
           </button>
           <Link
             href="/company/employees"
@@ -419,6 +468,13 @@ export default function NewEmployeePage() {
             Cancel
           </Link>
         </div>
+        {submitState !== "idle" && (
+          <div className="text-xs text-zinc-500">
+            {submitState === "checking"
+              ? "Validating Employee Code and Mobile Number..."
+              : "Creating employee record..."}
+          </div>
+        )}
       </form>
     </div>
   );
@@ -430,12 +486,14 @@ function Input({
   onChange,
   placeholder,
   autoComplete,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   autoComplete?: string;
+  error?: string;
 }) {
   return (
     <div>
@@ -445,8 +503,14 @@ function Input({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete ?? "off"}
-        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
+        className={[
+          "w-full rounded-2xl px-4 py-3 text-sm text-zinc-900 outline-none transition focus:shadow-sm",
+          error
+            ? "border border-rose-400 bg-rose-50 focus:border-rose-500"
+            : "border border-zinc-200 bg-white focus:border-zinc-300",
+        ].join(" ")}
       />
+      {error && <div className="mt-2 text-xs font-medium text-rose-700">{error}</div>}
     </div>
   );
 }
