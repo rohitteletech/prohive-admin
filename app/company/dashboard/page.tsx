@@ -180,12 +180,12 @@ export default function CompanyDashboardPage() {
     () => [
       { title: "Employees", value: String(data.employeeCount), tone: "info" },
       { title: "Present Today", value: String(data.presentToday), tone: "positive" },
+      { title: "Today Absent", value: String(data.absentToday), tone: "negative" },
       {
         title: "Pending Approvals",
         value: String(data.pendingCorrections + data.pendingLeaves + data.pendingClaims),
         tone: "warning",
       },
-      { title: "Alerts", value: String(data.lateToday + data.absentToday), tone: "neutral" },
     ],
     [data]
   );
