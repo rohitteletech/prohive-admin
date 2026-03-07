@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+﻿import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
@@ -23,7 +23,7 @@ function normalizeTimeZone(value) {
   const timeZone = String(value || "").trim();
   if (!timeZone) return "UTC";
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+    new Intl.DateTimeFormat("en-GB", { timeZone }).format(new Date());
     return timeZone;
   } catch {
     return "UTC";
@@ -347,3 +347,4 @@ Deno.serve(async (req) => {
     serverReceivedAt: inserted.server_received_at,
   });
 });
+

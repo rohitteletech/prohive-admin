@@ -1,4 +1,4 @@
-export const INDIA_TIME_ZONE = "Asia/Kolkata";
+﻿export const INDIA_TIME_ZONE = "Asia/Kolkata";
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const INDIA_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
@@ -67,7 +67,7 @@ export function normalizeTimeZoneToIndia(value: unknown) {
   const timeZone = String(value || "").trim();
   if (!timeZone) return INDIA_TIME_ZONE;
   try {
-    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date());
+    new Intl.DateTimeFormat("en-GB", { timeZone }).format(new Date());
     return timeZone === INDIA_TIME_ZONE ? INDIA_TIME_ZONE : INDIA_TIME_ZONE;
   } catch {
     return INDIA_TIME_ZONE;
@@ -104,3 +104,4 @@ export function normalizeDateInputToIso(value: unknown) {
   if (parsed.getUTCFullYear() !== year || parsed.getUTCMonth() + 1 !== month || parsed.getUTCDate() !== day) return "";
   return iso;
 }
+
