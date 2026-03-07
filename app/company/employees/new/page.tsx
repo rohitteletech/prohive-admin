@@ -154,6 +154,13 @@ export default function NewEmployeePage() {
     ) {
       return "Employee Code already exists";
     }
+    if (
+      allEmployees.some(
+        (row) => row.mobile.trim() === form.mobile.trim()
+      )
+    ) {
+      return "Mobile already exists";
+    }
     if (form.aadhaar_last4 && form.aadhaar_last4.length !== 4) return "Aadhaar must be last 4 digits";
     return null;
   }
@@ -163,6 +170,24 @@ export default function NewEmployeePage() {
     const err = validate();
     if (err) {
       showToast(err);
+      return;
+    }
+
+    const latestRows = await loadCompanyEmployeesSupabase();
+    const normalizedCode = form.employee_code.trim().toUpperCase();
+    const duplicateCode = latestRows.some(
+      (row) => row.employee_code.trim().toUpperCase() === normalizedCode
+    );
+    if (duplicateCode) {
+      const nextCode = nextEmployeeCode(latestRows);
+      setField("employee_code", nextCode);
+      showToast(`Employee Code duplicate आहे. New code set: ${nextCode}`);
+      return;
+    }
+    const normalizedMobile = form.mobile.trim();
+    const duplicateMobile = latestRows.some((row) => row.mobile.trim() === normalizedMobile);
+    if (duplicateMobile) {
+      showToast("Mobile already exists. Use a unique mobile number.");
       return;
     }
 
@@ -249,14 +274,14 @@ export default function NewEmployeePage() {
               label="Department *"
               value={form.department}
               options={DEPARTMENT_OPTIONS}
-              placeholder="Select or type department"
+              placeholder="Select"
               onChange={(v) => setField("department", v)}
             />
             <DragDropPicker
               label="Designation *"
               value={form.designation}
               options={DESIGNATION_OPTIONS}
-              placeholder="Select or type designation"
+              placeholder="Select"
               onChange={(v) => setField("designation", v)}
             />
             <div>
@@ -289,7 +314,7 @@ export default function NewEmployeePage() {
             />
 
             <ManagerPicker
-              label="Reporting Manager"
+              label="Reporting Manager (Optional)"
               value={form.reporting_manager}
               options={managerOptions}
               onChange={(v) => setField("reporting_manager", v)}
@@ -493,67 +518,21 @@ function DragDropPicker({
   placeholder: string;
   onChange: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
     <div>
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
-      <div
-        className="rounded-2xl border border-zinc-200 bg-white"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const picked = e.dataTransfer.getData("text/plain");
-          if (picked) onChange(picked);
-        }}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
       >
-        <div className="flex items-center gap-2 px-4 py-2">
-          <input
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="w-full bg-transparent py-1 text-sm text-zinc-900 outline-none"
-          />
-          <button type="button" onClick={() => setOpen((v) => !v)} className="text-zinc-400" aria-label="Toggle">
-            v
-          </button>
-        </div>
-        {open && (
-          <div className="border-t border-zinc-200 bg-zinc-50 p-2">
-            <div className="max-h-44 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
-              {options.map((opt) => (
-                <button
-                  key={opt}
-                  type="button"
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", opt)}
-                  onClick={() => {
-                    onChange(opt);
-                    setOpen(false);
-                  }}
-                  className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-sm text-zinc-800 hover:bg-zinc-50 last:border-b-0"
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
+        <option value="">{placeholder}</option>
         {options.map((opt) => (
-          <button
-            key={`${label}-${opt}`}
-            type="button"
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData("text/plain", opt)}
-            onClick={() => onChange(opt)}
-            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-          >
+          <option key={`${label}-${opt}`} value={opt}>
             {opt}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
     </div>
   );
 }
@@ -569,64 +548,21 @@ function ManagerPicker({
   options: { name: string; designation: string }[];
   onChange: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
     <div className="sm:col-span-2">
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
-
-      <div
-        className="rounded-2xl border border-zinc-200 bg-white"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const manager = e.dataTransfer.getData("text/plain");
-          if (manager) onChange(manager);
-        }}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
       >
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm"
-        >
-          <span className={value ? "text-zinc-900" : "text-zinc-500"}>{value || "Select reporting manager"}</span>
-          <span className="text-zinc-400">v</span>
-        </button>
-
-        {open && (
-          <div className="border-t border-zinc-200 bg-zinc-50 p-2">
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
-              {options.map((opt) => (
-                <button
-                  key={opt.name}
-                  type="button"
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", opt.name)}
-                  onClick={() => {
-                    onChange(opt.name);
-                    setOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between border-b border-zinc-100 px-3 py-2 text-left text-sm hover:bg-zinc-50 last:border-b-0"
-                >
-                  <span className="font-medium text-zinc-900">{opt.name}</span>
-                  <span className="text-xs text-zinc-500">{opt.designation}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-        <span>Admin stays at top.</span>
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className="rounded border border-zinc-200 bg-white px-2 py-0.5 font-semibold text-zinc-700 hover:bg-zinc-50"
-        >
-          Clear
-        </button>
-      </div>
+        <option value="">Select</option>
+        {options.map((opt) => (
+          <option key={opt.name} value={opt.name}>
+            {opt.name} ({opt.designation})
+          </option>
+        ))}
+      </select>
     </div>
   );
 }

@@ -181,7 +181,7 @@ export default function EmployeeDetailPage() {
 
   // Working state (editable copy)
   const [draft, setDraft] = useState<EmployeeModel>(initial);
-  // â€œSavedâ€ state (read-only source)
+  // "Saved" state (read-only source)
   const [saved, setSaved] = useState<EmployeeModel>(initial);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
   const [shiftOptions, setShiftOptions] = useState<string[]>(() => loadActiveShiftNames());
@@ -206,7 +206,7 @@ export default function EmployeeDetailPage() {
   }
 
   async function saveEdit() {
-    // âœ… Client-side validations (MVP)
+    // Client-side validations (MVP)
     const nameOk = draft.full_name.trim().length >= 2;
     const mobileOk = draft.mobile.trim().length >= 8;
     const desigOk = draft.designation.trim().length >= 2;
@@ -431,7 +431,7 @@ export default function EmployeeDetailPage() {
             href="/company/employees"
             className="text-sm font-semibold text-zinc-700 hover:text-zinc-900"
           >
-            â† Back to Employees
+            Back to Employees
           </Link>
         </div>
       </div>
@@ -559,7 +559,7 @@ export default function EmployeeDetailPage() {
               value={data.department || ""}
               editable={isEditing}
               options={DEPARTMENT_OPTIONS}
-              placeholder="Select or type department"
+              placeholder="Select"
               onChange={(v) => setField("department", v)}
             />
 
@@ -568,7 +568,7 @@ export default function EmployeeDetailPage() {
               value={data.designation}
               editable={isEditing}
               options={DESIGNATION_OPTIONS}
-              placeholder="Select or type designation"
+              placeholder="Select"
               onChange={(v) => setField("designation", v)}
             />
 
@@ -692,7 +692,7 @@ export default function EmployeeDetailPage() {
 
               {!isEditing ? (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-                  {data.exit_date || "â€”"}
+                  {data.exit_date || "-"}
                 </div>
               ) : (
                 <input
@@ -729,7 +729,7 @@ export default function EmployeeDetailPage() {
                   }
                   className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
                 >
-                  <option value="">â€”</option>
+                  <option value="">-</option>
                   <option value="full_time">Full-time</option>
                   <option value="contract">Contract</option>
                   <option value="intern">Intern</option>
@@ -913,8 +913,6 @@ function DragDropField({
   placeholder: string;
   onChange: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   if (!editable) {
     return (
       <div>
@@ -929,62 +927,18 @@ function DragDropField({
   return (
     <div>
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
-      <div
-        className="rounded-2xl border border-zinc-200 bg-white"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const picked = e.dataTransfer.getData("text/plain");
-          if (picked) onChange(picked);
-        }}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
       >
-        <div className="flex items-center gap-2 px-4 py-2">
-          <input
-            value={value}
-            onChange={(e) => onChange(e.target.value)}
-            placeholder={placeholder}
-            className="w-full bg-transparent py-1 text-sm text-zinc-900 outline-none"
-          />
-          <button type="button" onClick={() => setOpen((v) => !v)} className="text-zinc-400">
-            v
-          </button>
-        </div>
-        {open && (
-          <div className="border-t border-zinc-200 bg-zinc-50 p-2">
-            <div className="max-h-44 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
-              {options.map((opt) => (
-                <button
-                  key={`${label}-${opt}`}
-                  type="button"
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", opt)}
-                  onClick={() => {
-                    onChange(opt);
-                    setOpen(false);
-                  }}
-                  className="block w-full border-b border-zinc-100 px-3 py-2 text-left text-sm text-zinc-800 hover:bg-zinc-50 last:border-b-0"
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap gap-2">
+        <option value="">{placeholder}</option>
         {options.map((opt) => (
-          <button
-            key={`${label}-chip-${opt}`}
-            type="button"
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData("text/plain", opt)}
-            onClick={() => onChange(opt)}
-            className="rounded-full border border-zinc-200 bg-white px-3 py-1 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-          >
+          <option key={`${label}-opt-${opt}`} value={opt}>
             {opt}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
     </div>
   );
 }
@@ -1002,8 +956,6 @@ function ReportingManagerField({
   managers: { name: string; designation: string }[];
   onChange: (v: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   if (!editable) {
     return (
       <div>
@@ -1018,76 +970,18 @@ function ReportingManagerField({
   return (
     <div className="sm:col-span-2">
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
-
-      <div
-        className="rounded-2xl border border-zinc-200 bg-white"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={(e) => {
-          e.preventDefault();
-          const manager = e.dataTransfer.getData("text/plain");
-          if (manager) onChange(manager);
-        }}
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
       >
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center justify-between px-4 py-3 text-left text-sm"
-        >
-          <span className={value ? "font-semibold text-zinc-900" : "text-zinc-500"}>
-            {value || "Select reporting manager"}
-          </span>
-          <span className="text-zinc-400">v</span>
-        </button>
-
-        {open && (
-          <div className="border-t border-zinc-200 bg-zinc-50 p-2">
-            <div className="max-h-48 overflow-y-auto rounded-xl border border-zinc-200 bg-white">
-              {managers.map((manager) => (
-                <button
-                  key={manager.name}
-                  type="button"
-                  draggable
-                  onDragStart={(e) => e.dataTransfer.setData("text/plain", manager.name)}
-                  onClick={() => {
-                    onChange(manager.name);
-                    setOpen(false);
-                  }}
-                  className="flex w-full items-center justify-between border-b border-zinc-100 px-3 py-2 text-left text-sm hover:bg-zinc-50 last:border-b-0"
-                >
-                  <span className="font-medium text-zinc-900">{manager.name}</span>
-                  <span className="text-xs text-zinc-500">{manager.designation}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-2 flex items-center gap-2 text-xs text-zinc-500">
-        <span>Admin stays at top.</span>
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          className="rounded border border-zinc-200 bg-white px-2 py-0.5 font-semibold text-zinc-700 hover:bg-zinc-50"
-        >
-          Clear
-        </button>
-      </div>
-
-      <div className="mt-2 hidden flex-wrap gap-2">
+        <option value="">Select</option>
         {managers.map((manager) => (
-          <button
-            key={`${manager.name}-chip`}
-            type="button"
-            draggable
-            onDragStart={(e) => e.dataTransfer.setData("text/plain", manager.name)}
-            onClick={() => onChange(manager.name)}
-            className="rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50"
-          >
-            {manager.name}
-          </button>
+          <option key={manager.name} value={manager.name}>
+            {manager.name} ({manager.designation})
+          </option>
         ))}
-      </div>
+      </select>
     </div>
   );
 }
@@ -1112,7 +1006,7 @@ function Field({
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
       {!editable ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-          {value?.trim() ? value : "â€”"}
+          {value?.trim() ? value : "-"}
         </div>
       ) : (
         <input
@@ -1145,7 +1039,7 @@ function TextArea({
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
       {!editable ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-          {value?.trim() ? value : "â€”"}
+          {value?.trim() ? value : "-"}
         </div>
       ) : (
         <textarea
@@ -1178,7 +1072,7 @@ function DateField({
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
       {!editable ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-          {value ? formatDisplayDate(value) : "â€”"}
+          {value ? formatDisplayDate(value) : "-"}
         </div>
       ) : (
         <input
@@ -1197,7 +1091,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white px-3 py-2">
       <div className="text-[11px] font-medium text-zinc-500">{label}</div>
-      <div className="text-sm font-semibold text-zinc-900">{value || "â€”"}</div>
+      <div className="text-sm font-semibold text-zinc-900">{value || "-"}</div>
     </div>
   );
 }

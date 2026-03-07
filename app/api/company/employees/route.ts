@@ -28,6 +28,17 @@ function normalizeOptional(value?: string) {
   return trimmed ? trimmed : null;
 }
 
+function duplicateErrorKey(error: unknown) {
+  const candidate = error as { code?: string; message?: string } | null;
+  if (!candidate) return "";
+  if (candidate.code !== "23505") return "";
+  const message = String(candidate.message || "").toLowerCase();
+  if (message.includes("employees_company_id_employee_code_key")) return "employee_code";
+  if (message.includes("employees_company_id_mobile_key")) return "mobile";
+  if (message.includes("duplicate key")) return "duplicate";
+  return "";
+}
+
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -49,6 +60,24 @@ export async function POST(req: NextRequest) {
   if (!mobile) return NextResponse.json({ error: "Mobile is required." }, { status: 400 });
   if (!designation) return NextResponse.json({ error: "Designation is required." }, { status: 400 });
   if (!joined_on) return NextResponse.json({ error: "Joining Date is required." }, { status: 400 });
+  const { data: duplicate } = await context.admin
+    .from("employees")
+    .select("id")
+    .eq("company_id", context.companyId)
+    .eq("employee_code", employee_code)
+    .maybeSingle();
+  if (duplicate?.id) {
+    return NextResponse.json({ error: "Employee Code already exists. Use a unique code." }, { status: 409 });
+  }
+  const { data: duplicateMobile } = await context.admin
+    .from("employees")
+    .select("id")
+    .eq("company_id", context.companyId)
+    .eq("mobile", mobile)
+    .maybeSingle();
+  if (duplicateMobile?.id) {
+    return NextResponse.json({ error: "Mobile already exists. Use a unique mobile number." }, { status: 409 });
+  }
 
   const payload = {
     company_id: context.companyId,
@@ -75,6 +104,13 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await context.admin.from("employees").insert(payload).select("id").single();
   if (error || !data?.id) {
+    const dupKey = duplicateErrorKey(error);
+    if (dupKey === "employee_code") {
+      return NextResponse.json({ error: "Employee Code already exists. Use a unique code." }, { status: 409 });
+    }
+    if (dupKey === "mobile") {
+      return NextResponse.json({ error: "Mobile already exists. Use a unique mobile number." }, { status: 409 });
+    }
     return NextResponse.json({ error: error?.message || "Unable to create employee." }, { status: 400 });
   }
 

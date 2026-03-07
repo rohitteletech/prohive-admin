@@ -83,7 +83,8 @@ create table if not exists public.employees (
   exit_date date,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  unique (company_id, employee_code)
+  unique (company_id, employee_code),
+  unique (company_id, mobile)
 );
 
 alter table public.employees
