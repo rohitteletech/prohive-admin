@@ -220,23 +220,19 @@ export default function CompanyDashboardPage() {
   return (
     <div className="min-h-[calc(100vh-64px)] bg-slate-50">
       <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="px-5 py-5 sm:px-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">COMPANY ADMIN</p>
-                <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{companyName} Dashboard</h1>
-                <p className="mt-2 text-[13px] text-slate-600">One view for workforce health, approvals, and daily operations.</p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Badge text="Current Month" tone="neutral" />
-                <Badge text={loading ? "Loading..." : "Live Data"} tone="info" />
-                <Badge text="System Healthy" tone="positive" />
-              </div>
+        <div className="mb-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-zinc-900">{companyName} Dashboard</h1>
+              <p className="mt-2 text-sm text-zinc-600">One view for workforce health, approvals, and daily operations.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Badge text="Current Month" tone="neutral" />
+              <Badge text={loading ? "Loading..." : "Live Data"} tone="info" />
+              <Badge text="System Healthy" tone="positive" />
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-5 py-3 sm:px-6">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link href="/company/employees" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-100">
               Manage Employees {"->"}
             </Link>
@@ -247,7 +243,7 @@ export default function CompanyDashboardPage() {
               View Reports {"->"}
             </Link>
           </div>
-        </section>
+        </div>
 
         <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           {kpis.map((item) => {

@@ -24,8 +24,8 @@ function navItemStyle(active: boolean) {
   return {
     display: "flex",
     alignItems: "center",
-    minHeight: 40,
-    padding: "0 12px",
+    minHeight: 38,
+    padding: "0 10px",
     borderRadius: 10,
     textDecoration: "none",
     fontSize: 13,
@@ -132,9 +132,9 @@ export default function CompanyLayout({
     <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
       <aside
         style={{
-          width: 260,
-          minWidth: 260,
-          maxWidth: 260,
+          width: 220,
+          minWidth: 220,
+          maxWidth: 220,
           flexShrink: 0,
           background: "#f8fafc",
           borderRight: "1px solid #e5e7eb",
@@ -179,7 +179,7 @@ export default function CompanyLayout({
         </div>
       </aside>
 
-      <main style={{ flex: 1, padding: 24, minWidth: 0 }}>{children}</main>
+      <main style={{ flex: 1, padding: 20, minWidth: 0 }}>{children}</main>
     </div>
   );
 }

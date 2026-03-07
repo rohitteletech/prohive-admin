@@ -116,13 +116,10 @@ export default function Page() {
 
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="bg-gradient-to-r from-sky-600 via-blue-600 to-indigo-600 px-6 py-5 text-white">
-          <p className="text-[11px] font-semibold tracking-[0.14em] text-sky-100">COMPANY ADMIN</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Attendance Corrections</h1>
-          <p className="mt-2 text-sm text-sky-100">Review and approve attendance correction requests with clear audit context.</p>
-        </div>
-      </section>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Attendance Corrections</h1>
+        <p className="mt-2 text-sm text-zinc-600">Review and approve attendance correction requests with clear audit context.</p>
+      </div>
 
       {toast && (
         <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div>

@@ -130,15 +130,12 @@ export default function Page() {
 
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
-      <section className="w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className="px-5 py-5 sm:px-6">
-          <p className="text-[11px] font-semibold tracking-[0.14em] text-slate-500">COMPANY ADMIN</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">Attendance Control Room</h1>
-          <p className="mt-2 text-[13px] text-slate-600">
-            Monitor daily attendance, identify delays quickly, and export records for compliance.
-          </p>
-        </div>
-      </section>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Attendance</h1>
+        <p className="mt-2 text-sm text-zinc-600">
+          Monitor daily attendance, identify delays quickly, and export records for compliance.
+        </p>
+      </div>
 
       <section className="mt-4 grid w-full gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
