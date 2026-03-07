@@ -207,7 +207,22 @@ export default function Page() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1380px] w-full border-separate border-spacing-0 text-left">
+          <table className="min-w-[1280px] w-full table-fixed border-separate border-spacing-0 text-left">
+            <colgroup>
+              <col className="w-[48px]" />
+              <col className="w-[170px]" />
+              <col className="w-[120px]" />
+              <col className="w-[95px]" />
+              <col className="w-[90px]" />
+              <col className="w-[70px]" />
+              <col className="w-[280px]" />
+              <col className="w-[150px]" />
+              <col className="w-[75px]" />
+              <col className="w-[180px]" />
+              <col className="w-[150px]" />
+              <col className="w-[95px]" />
+              <col className="w-[95px]" />
+            </colgroup>
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">#</th>
@@ -243,17 +258,17 @@ export default function Page() {
               {filtered.map((row, index) => (
                 <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
                   <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-500">{index + 1}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.shift}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.date}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.checkIn}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.checkInAddress}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px]">{row.checkInLatLng}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.checkOut}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.checkOutAddress}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px]">{row.checkOutLatLng}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.workHours}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900 truncate" title={row.employee}>{row.employee}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.department}>{row.department}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.shift}>{row.shift}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.date}>{row.date}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkIn}>{row.checkIn}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkInAddress}>{row.checkInAddress}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px] truncate" title={row.checkInLatLng}>{row.checkInLatLng}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkOut}>{row.checkOut}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 truncate" title={row.checkOutAddress}>{row.checkOutAddress}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px] truncate" title={row.checkOutLatLng}>{row.checkOutLatLng}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900 truncate" title={row.workHours}>{row.workHours}</td>
                   <td className="px-3 py-2">
                     <span className={["rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize", statusChip(row.status)].join(" ")}>
                       {row.status}
