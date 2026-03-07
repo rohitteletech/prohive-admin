@@ -7,7 +7,9 @@ export type ClaimRow = {
   id: string;
   employee: string;
   employeeCode: string;
-  claimDate: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
   claimType: ClaimType;
   claimTypeOther?: string;
   amount: number;
@@ -30,12 +32,18 @@ export function claimRowFromDb(row: Record<string, unknown>): ClaimRow {
   const employee = (row.employees || {}) as Record<string, unknown>;
   const claimType = String(row.claim_type || "").toLowerCase();
   const claimTypeOther = normalizeText(row.claim_type_other_text);
+  const fromRaw = String(row.from_date || "");
+  const toRaw = String(row.to_date || "");
+  const daysRaw = Number(row.days || 0);
+  const safeDays = Number.isFinite(daysRaw) && daysRaw > 0 ? daysRaw : 1;
 
   return {
     id: String(row.id || ""),
     employee: String(employee.full_name || "Unknown"),
     employeeCode: String(employee.employee_code || ""),
-    claimDate: formatDisplayDate(String(row.claim_date || "")),
+    fromDate: formatDisplayDate(fromRaw),
+    toDate: formatDisplayDate(toRaw),
+    days: safeDays,
     claimType: (claimType === "travel" || claimType === "meal" || claimType === "other" ? claimType : "misc") as ClaimType,
     claimTypeOther,
     amount: Number(row.amount || 0),

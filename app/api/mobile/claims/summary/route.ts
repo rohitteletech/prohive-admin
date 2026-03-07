@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const { data, error } = await session.admin
     .from("employee_claim_requests")
-    .select("id,claim_date,claim_type,claim_type_other_text,amount,reason,attachment_url,status,admin_remark,submitted_at")
+    .select("id,from_date,to_date,days,claim_type,claim_type_other_text,amount,reason,attachment_url,status,admin_remark,submitted_at")
     .eq("company_id", session.employee.company_id)
     .eq("employee_id", session.employee.id)
     .order("submitted_at", { ascending: false });
@@ -37,7 +37,9 @@ export async function POST(req: NextRequest) {
     },
     requests: (data || []).map((row) => ({
       id: row.id,
-      claimDate: formatDisplayDate(row.claim_date),
+      fromDate: formatDisplayDate(row.from_date),
+      toDate: formatDisplayDate(row.to_date),
+      days: Number(row.days || 0),
       claimType: row.claim_type,
       claimTypeOther: row.claim_type_other_text,
       amount: Number(row.amount || 0),

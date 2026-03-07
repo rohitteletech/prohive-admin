@@ -10,8 +10,10 @@ export async function POST(req: NextRequest) {
     company_id?: string;
     deviceId?: string;
     device_id?: string;
-    claimDate?: string;
-    claim_date?: string;
+    fromDate?: string;
+    from_date?: string;
+    toDate?: string;
+    to_date?: string;
     claimType?: "travel" | "meal" | "misc" | "other";
     claim_type?: "travel" | "meal" | "misc" | "other";
     claimTypeOther?: string;
@@ -31,16 +33,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
 
-  const claimDateRaw = String(body.claimDate || body.claim_date || "").trim();
-  const claimDate = normalizeDateInputToIso(claimDateRaw);
+  const fromDateRaw = String(body.fromDate || body.from_date || "").trim();
+  const toDateRaw = String(body.toDate || body.to_date || "").trim();
+  const fromDate = normalizeDateInputToIso(fromDateRaw);
+  const toDate = normalizeDateInputToIso(toDateRaw);
   const claimType = String(body.claimType || body.claim_type || "").trim().toLowerCase();
   const claimTypeOtherText = String(body.claimTypeOther || body.claim_type_other_text || "").trim();
   const amount = Number(body.amount || 0);
   const reason = String(body.reason || "").trim();
   const attachmentUrl = String(body.attachmentUrl || body.attachment_url || "").trim() || null;
 
-  if (!claimDateRaw) return NextResponse.json({ error: "Claim date is required." }, { status: 400 });
-  if (!claimDate) return NextResponse.json({ error: "Claim date is invalid. Use MM/DD/YYYY." }, { status: 400 });
+  if (!fromDateRaw) return NextResponse.json({ error: "From date is required." }, { status: 400 });
+  if (!toDateRaw) return NextResponse.json({ error: "To date is required." }, { status: 400 });
+  if (!fromDate) return NextResponse.json({ error: "From date is invalid. Use MM/DD/YYYY." }, { status: 400 });
+  if (!toDate) return NextResponse.json({ error: "To date is invalid. Use MM/DD/YYYY." }, { status: 400 });
+  const fromMs = Date.parse(`${fromDate}T00:00:00Z`);
+  const toMs = Date.parse(`${toDate}T00:00:00Z`);
+  const days = Math.floor((toMs - fromMs) / 86400000) + 1;
+  if (!Number.isFinite(days) || days <= 0) {
+    return NextResponse.json({ error: "To date cannot be before from date." }, { status: 400 });
+  }
   if (claimType !== "travel" && claimType !== "meal" && claimType !== "misc" && claimType !== "other") {
     return NextResponse.json({ error: "Claim type is invalid." }, { status: 400 });
   }
@@ -57,7 +69,9 @@ export async function POST(req: NextRequest) {
     .insert({
       company_id: session.employee.company_id,
       employee_id: session.employee.id,
-      claim_date: claimDate,
+      from_date: fromDate,
+      to_date: toDate,
+      days,
       claim_type: claimType,
       claim_type_other_text: claimType === "other" ? claimTypeOtherText : null,
       amount,
@@ -67,7 +81,7 @@ export async function POST(req: NextRequest) {
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
-    .select("id,claim_date,claim_type,claim_type_other_text,amount,reason,attachment_url,status,admin_remark,submitted_at")
+    .select("id,from_date,to_date,days,claim_type,claim_type_other_text,amount,reason,attachment_url,status,admin_remark,submitted_at")
     .single();
 
   if (error || !data) {
@@ -78,7 +92,9 @@ export async function POST(req: NextRequest) {
     ok: true,
     request: {
       id: data.id,
-      claimDate: data.claim_date,
+      fromDate: data.from_date,
+      toDate: data.to_date,
+      days: Number(data.days || 0),
       claimType: data.claim_type,
       claimTypeOther: data.claim_type_other_text,
       amount: Number(data.amount || 0),

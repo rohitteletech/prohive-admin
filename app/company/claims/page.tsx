@@ -35,7 +35,8 @@ export default function Page() {
   const [toast, setToast] = useState<string | null>(null);
   const [form, setForm] = useState({
     employeeId: "",
-    claimDate: todayDisplay,
+    fromDate: todayDisplay,
+    toDate: todayDisplay,
     claimType: "travel" as ClaimType,
     claimTypeOther: "",
     amount: "",
@@ -155,13 +156,17 @@ export default function Page() {
   async function createClaim(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!form.employeeId) return showToast("Employee is required.");
-    if (!form.claimDate) return showToast("Claim date is required.");
+    if (!form.fromDate) return showToast("From date is required.");
+    if (!form.toDate) return showToast("To date is required.");
     if (!form.amount.trim()) return showToast("Amount is required.");
     if (!form.reason.trim()) return showToast("Reason is required.");
     if (form.claimType === "other" && !form.claimTypeOther.trim()) return showToast("Other claim type detail is required.");
-    const claimDateIso = normalizeDateInputToIso(form.claimDate);
-    if (!claimDateIso) return showToast("Claim date is invalid. Use MM/DD/YYYY.");
-    if (claimDateIso > todayIso) return showToast("Claim date cannot be in the future.");
+    const fromDateIso = normalizeDateInputToIso(form.fromDate);
+    const toDateIso = normalizeDateInputToIso(form.toDate);
+    if (!fromDateIso) return showToast("From date is invalid. Use MM/DD/YYYY.");
+    if (!toDateIso) return showToast("To date is invalid. Use MM/DD/YYYY.");
+    if (fromDateIso > todayIso || toDateIso > todayIso) return showToast("Dates cannot be in the future.");
+    if (toDateIso < fromDateIso) return showToast("To date cannot be before from date.");
 
     const amount = Number(form.amount);
     if (!Number.isFinite(amount) || amount <= 0) return showToast("Amount must be greater than zero.");
@@ -180,7 +185,8 @@ export default function Page() {
       },
       body: JSON.stringify({
         employee_id: form.employeeId,
-        claim_date: form.claimDate.trim(),
+        from_date: form.fromDate.trim(),
+        to_date: form.toDate.trim(),
         claim_type: form.claimType,
         claim_type_other_text: form.claimType === "other" ? form.claimTypeOther.trim() : undefined,
         amount,
@@ -197,7 +203,8 @@ export default function Page() {
     setRows((prev) => [result.row as ClaimRow, ...prev]);
     setForm((prev) => ({
       ...prev,
-      claimDate: todayDisplay,
+      fromDate: todayDisplay,
+      toDate: todayDisplay,
       claimTypeOther: "",
       amount: "",
       reason: "",
@@ -262,9 +269,16 @@ export default function Page() {
           </select>
           <input
             type="text"
-            value={form.claimDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, claimDate: e.target.value }))}
-            placeholder="MM/DD/YYYY"
+            value={form.fromDate}
+            onChange={(e) => setForm((prev) => ({ ...prev, fromDate: e.target.value }))}
+            placeholder="From (MM/DD/YYYY)"
+            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
+          />
+          <input
+            type="text"
+            value={form.toDate}
+            onChange={(e) => setForm((prev) => ({ ...prev, toDate: e.target.value }))}
+            placeholder="To (MM/DD/YYYY)"
             className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
           />
           <select
@@ -369,7 +383,7 @@ export default function Page() {
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-3 font-semibold">Claim ID</th>
                 <th className="px-5 py-3 font-semibold">Employee</th>
-                <th className="px-5 py-3 font-semibold">Date</th>
+                <th className="px-5 py-3 font-semibold">Period</th>
                 <th className="px-5 py-3 font-semibold">Type</th>
                 <th className="px-5 py-3 font-semibold">Amount</th>
                 <th className="px-5 py-3 font-semibold">Reason</th>
@@ -389,7 +403,7 @@ export default function Page() {
                       <div className="mt-0.5 text-xs text-slate-500">{row.employeeCode}</div>
                     </div>
                   </td>
-                  <td className="px-5 py-3">{row.claimDate}</td>
+                  <td className="px-5 py-3">{row.fromDate} - {row.toDate} ({row.days}d)</td>
                   <td className="px-5 py-3">{typeLabel(row.claimType, row.claimTypeOther)}</td>
                   <td className="px-5 py-3 font-semibold text-slate-900">INR {row.amount.toFixed(2)}</td>
                   <td className="px-5 py-3">

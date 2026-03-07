@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await admin
     .from("employee_claim_requests")
     .select(
-      "id,company_id,employee_id,claim_date,claim_type,claim_type_other_text,amount,reason,attachment_url,status,admin_remark,submitted_at"
+      "id,company_id,employee_id,from_date,to_date,days,claim_type,claim_type_other_text,amount,reason,attachment_url,status,admin_remark,submitted_at"
       + ",employees(full_name,employee_code),companies(name)"
     )
     .order("submitted_at", { ascending: false })
