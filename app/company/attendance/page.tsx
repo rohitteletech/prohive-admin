@@ -207,21 +207,21 @@ export default function Page() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1380px] w-full border-collapse text-left">
+          <table className="min-w-[1380px] w-full border-separate border-spacing-0 text-left">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
-                <th className="px-3 py-2 font-semibold">#</th>
-                <th className="px-3 py-2 font-semibold">Employee</th>
-                <th className="px-3 py-2 font-semibold">Department</th>
-                <th className="px-3 py-2 font-semibold">Shift</th>
-                <th className="px-3 py-2 font-semibold">Date</th>
-                <th className="px-3 py-2 font-semibold">Check In</th>
-                <th className="px-3 py-2 font-semibold">Check In Address</th>
-                <th className="px-3 py-2 font-semibold">Check In Lat/Lng</th>
-                <th className="px-3 py-2 font-semibold">Check Out</th>
-                <th className="px-3 py-2 font-semibold">Check Out Address</th>
-                <th className="px-3 py-2 font-semibold">Check Out Lat/Lng</th>
-                <th className="px-3 py-2 font-semibold">Work Hours</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">#</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Employee</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Department</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Shift</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Date</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check In</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check In Address</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check In Lat/Lng</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check Out</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check Out Address</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check Out Lat/Lng</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Work Hours</th>
                 <th className="px-3 py-2 font-semibold">Status</th>
               </tr>
             </thead>
@@ -242,18 +242,18 @@ export default function Page() {
               )}
               {filtered.map((row, index) => (
                 <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
-                  <td className="px-3 py-2 font-semibold text-slate-500">{index + 1}</td>
-                  <td className="px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
-                  <td className="px-3 py-2">{row.department}</td>
-                  <td className="px-3 py-2">{row.shift}</td>
-                  <td className="px-3 py-2">{row.date}</td>
-                  <td className="px-3 py-2">{row.checkIn}</td>
-                  <td className="px-3 py-2">{row.checkInAddress}</td>
-                  <td className="px-3 py-2 font-mono text-[11px]">{row.checkInLatLng}</td>
-                  <td className="px-3 py-2">{row.checkOut}</td>
-                  <td className="px-3 py-2">{row.checkOutAddress}</td>
-                  <td className="px-3 py-2 font-mono text-[11px]">{row.checkOutLatLng}</td>
-                  <td className="px-3 py-2 font-semibold text-slate-900">{row.workHours}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-500">{index + 1}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.shift}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.date}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.checkIn}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.checkInAddress}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px]">{row.checkInLatLng}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.checkOut}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.checkOutAddress}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-mono text-[11px]">{row.checkOutLatLng}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.workHours}</td>
                   <td className="px-3 py-2">
                     <span className={["rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize", statusChip(row.status)].join(" ")}>
                       {row.status}
