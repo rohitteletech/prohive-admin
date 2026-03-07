@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { normalizeDateInputToIso } from "@/lib/dateTime";
+import { normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
   const toDateRaw = String(body.toDate || body.to_date || "").trim();
   const fromDate = normalizeDateInputToIso(fromDateRaw);
   const toDate = normalizeDateInputToIso(toDateRaw);
+  const todayIso = todayISOInIndia();
   const claimType = String(body.claimType || body.claim_type || "").trim().toLowerCase();
   const claimTypeOtherText = String(body.claimTypeOther || body.claim_type_other_text || "").trim();
   const amount = Number(body.amount || 0);
@@ -47,6 +48,9 @@ export async function POST(req: NextRequest) {
   if (!toDateRaw) return NextResponse.json({ error: "To date is required." }, { status: 400 });
   if (!fromDate) return NextResponse.json({ error: "From date is invalid. Use MM/DD/YYYY." }, { status: 400 });
   if (!toDate) return NextResponse.json({ error: "To date is invalid. Use MM/DD/YYYY." }, { status: 400 });
+  if (fromDate > todayIso || toDate > todayIso) {
+    return NextResponse.json({ error: "Claim dates cannot be in the future." }, { status: 400 });
+  }
   const fromMs = Date.parse(`${fromDate}T00:00:00Z`);
   const toMs = Date.parse(`${toDate}T00:00:00Z`);
   const days = Math.floor((toMs - fromMs) / 86400000) + 1;

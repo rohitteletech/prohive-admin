@@ -29,6 +29,20 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     return NextResponse.json({ error: "Status must be approved or rejected." }, { status: 400 });
   }
 
+  const { data: existing, error: existingError } = await context.admin
+    .from("employee_claim_requests")
+    .select("id,status")
+    .eq("company_id", context.companyId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (existingError || !existing?.id) {
+    return NextResponse.json({ error: existingError?.message || "Claim not found." }, { status: 404 });
+  }
+  if (existing.status !== "pending") {
+    return NextResponse.json({ error: "Only pending claims can be updated." }, { status: 409 });
+  }
+
   const { data, error } = await context.admin
     .from("employee_claim_requests")
     .update({
@@ -40,11 +54,12 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     })
     .eq("company_id", context.companyId)
     .eq("id", id)
+    .eq("status", "pending")
     .select("id,status")
     .maybeSingle();
 
   if (error || !data?.id) {
-    return NextResponse.json({ error: error?.message || "Unable to update claim." }, { status: 400 });
+    return NextResponse.json({ error: error?.message || "Claim is already processed." }, { status: 409 });
   }
 
   return NextResponse.json({ ok: true, id: data.id, status: data.status });

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { claimRowFromDb, ClaimType } from "@/lib/companyClaims";
-import { normalizeDateInputToIso } from "@/lib/dateTime";
+import { normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
 
 type Body = {
   employee_id?: string;
@@ -86,6 +86,7 @@ export async function POST(req: NextRequest) {
   const toDateRaw = String(body.to_date || body.toDate || "").trim();
   const fromDate = normalizeDateInputToIso(fromDateRaw);
   const toDate = normalizeDateInputToIso(toDateRaw);
+  const todayIso = todayISOInIndia();
   const claimType = String(body.claim_type || body.claimType || "").trim().toLowerCase();
   const claimTypeOtherText = normalizeOptional(body.claim_type_other_text || body.claimTypeOther);
   const amount = Number(body.amount || 0);
@@ -97,6 +98,9 @@ export async function POST(req: NextRequest) {
   if (!toDateRaw) return NextResponse.json({ error: "To date is required." }, { status: 400 });
   if (!fromDate) return NextResponse.json({ error: "From date is invalid. Use MM/DD/YYYY." }, { status: 400 });
   if (!toDate) return NextResponse.json({ error: "To date is invalid. Use MM/DD/YYYY." }, { status: 400 });
+  if (fromDate > todayIso || toDate > todayIso) {
+    return NextResponse.json({ error: "Claim dates cannot be in the future." }, { status: 400 });
+  }
   const days = diffDaysInclusive(fromDate, toDate);
   if (!Number.isFinite(days) || days <= 0) {
     return NextResponse.json({ error: "To date cannot be before from date." }, { status: 400 });
