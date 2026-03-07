@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
+import { normalizeDateInputToIso } from "@/lib/dateTime";
+import {
+  expirePendingCorrections,
+  monthRangeForIsoDate,
+  validateCorrectionReason,
+  validateCorrectionWindow,
+} from "@/lib/attendanceCorrections";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
 function normalizeTime(value: unknown) {
@@ -35,21 +41,73 @@ export async function POST(req: NextRequest) {
   if (!session.ok) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
+  await expirePendingCorrections(session.admin, session.employee.company_id);
 
   const correctionDateRaw = String(body.correctionDate || body.correction_date || "").trim();
   const correctionDate = normalizeDateInputToIso(correctionDateRaw);
   const requestedCheckIn = normalizeTime(body.requestedCheckIn || body.requested_check_in);
   const requestedCheckOut = normalizeTime(body.requestedCheckOut || body.requested_check_out);
   const reason = String(body.reason || "").trim();
-  const todayIso = todayISOInIndia();
 
   if (!correctionDateRaw) return NextResponse.json({ error: "Correction date is required." }, { status: 400 });
   if (!correctionDate) return NextResponse.json({ error: "Correction date is invalid. Use MM/DD/YYYY." }, { status: 400 });
-  if (correctionDate > todayIso) return NextResponse.json({ error: "Correction date cannot be in the future." }, { status: 400 });
+  const windowError = validateCorrectionWindow(correctionDate);
+  if (windowError) return NextResponse.json({ error: windowError }, { status: 400 });
   if (!requestedCheckIn && !requestedCheckOut) {
     return NextResponse.json({ error: "Requested check-in or check-out is required." }, { status: 400 });
   }
-  if (!reason) return NextResponse.json({ error: "Reason is required." }, { status: 400 });
+  if (requestedCheckIn && requestedCheckOut && requestedCheckOut <= requestedCheckIn) {
+    return NextResponse.json({ error: "Punch out time must be later than punch in time." }, { status: 400 });
+  }
+  const reasonError = validateCorrectionReason(reason);
+  if (reasonError) return NextResponse.json({ error: reasonError }, { status: 400 });
+
+  const { data: pendingDuplicate, error: duplicateError } = await session.admin
+    .from("employee_attendance_corrections")
+    .select("id")
+    .eq("company_id", session.employee.company_id)
+    .eq("employee_id", session.employee.id)
+    .eq("correction_date", correctionDate)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (duplicateError) {
+    return NextResponse.json({ error: duplicateError.message || "Unable to validate duplicate request." }, { status: 400 });
+  }
+  if (pendingDuplicate?.id) {
+    return NextResponse.json({ error: "A pending correction request already exists for this date." }, { status: 409 });
+  }
+
+  const monthRange = monthRangeForIsoDate(correctionDate);
+  const { count, error: countError } = await session.admin
+    .from("employee_attendance_corrections")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", session.employee.company_id)
+    .eq("employee_id", session.employee.id)
+    .gte("correction_date", monthRange.start)
+    .lte("correction_date", monthRange.end);
+  if (countError) {
+    return NextResponse.json({ error: countError.message || "Unable to validate monthly limit." }, { status: 400 });
+  }
+  if (Number(count || 0) >= 5) {
+    await session.admin.from("employee_attendance_correction_audit_logs").insert({
+      correction_id: null,
+      company_id: session.employee.company_id,
+      employee_id: session.employee.id,
+      action: "blocked_monthly_limit",
+      old_status: null,
+      new_status: null,
+      old_requested_check_in: null,
+      new_requested_check_in: requestedCheckIn || null,
+      old_requested_check_out: null,
+      new_requested_check_out: requestedCheckOut || null,
+      reason_snapshot: reason,
+      performed_by: session.employee.id,
+      performed_role: "employee",
+      remark: "Monthly limit exceeded (5).",
+      created_at: new Date().toISOString(),
+    });
+    return NextResponse.json({ error: "Monthly correction limit reached (5). Contact company admin." }, { status: 429 });
+  }
 
   const { data, error } = await session.admin
     .from("employee_attendance_corrections")
@@ -70,6 +128,24 @@ export async function POST(req: NextRequest) {
   if (error || !data) {
     return NextResponse.json({ error: error?.message || "Unable to submit correction request." }, { status: 400 });
   }
+
+  await session.admin.from("employee_attendance_correction_audit_logs").insert({
+    correction_id: data.id,
+    company_id: session.employee.company_id,
+    employee_id: session.employee.id,
+    action: "submitted",
+    old_status: null,
+    new_status: "pending",
+    old_requested_check_in: null,
+    new_requested_check_in: requestedCheckIn || null,
+    old_requested_check_out: null,
+    new_requested_check_out: requestedCheckOut || null,
+    reason_snapshot: reason,
+    performed_by: session.employee.id,
+    performed_role: "employee",
+    remark: null,
+    created_at: new Date().toISOString(),
+  });
 
   return NextResponse.json({
     ok: true,

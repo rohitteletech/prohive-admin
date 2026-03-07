@@ -82,9 +82,10 @@ export default function Page() {
 
   async function updateStatus(id: string, nextStatus: "approved" | "rejected") {
     const remark = window.prompt(
-      nextStatus === "approved" ? "Approval remark (optional)" : "Rejection remark (optional)"
+      nextStatus === "approved" ? "Approval remark (required)" : "Rejection remark (required)"
     );
     if (remark === null) return;
+    if (!remark.trim()) return showToast("Admin remark is required.");
 
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;

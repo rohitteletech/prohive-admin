@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatDisplayDate, formatDisplayDateTime } from "@/lib/dateTime";
+import { expirePendingCorrections } from "@/lib/attendanceCorrections";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
 function displayTime(value: unknown) {
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
   if (!session.ok) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
+  await expirePendingCorrections(session.admin, session.employee.company_id);
 
   const { data, error } = await session.admin
     .from("employee_attendance_corrections")

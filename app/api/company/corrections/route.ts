@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { expirePendingCorrections } from "@/lib/attendanceCorrections";
 import { correctionRowFromDb } from "@/lib/companyCorrections";
 
 export async function GET(req: NextRequest) {
@@ -9,6 +10,7 @@ export async function GET(req: NextRequest) {
   if (!context.ok) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
+  await expirePendingCorrections(context.admin, context.companyId);
 
   const { data, error } = await context.admin
     .from("employee_attendance_corrections")
