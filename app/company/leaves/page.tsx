@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { LeavePolicy, LeaveRequestRow, LeaveRequestStatus } from "@/lib/companyLeaves";
-import { loadCompanyEmployeesSupabase, type CompanyEmployee } from "@/lib/companyEmployees";
+import { LeaveRequestRow, LeaveRequestStatus } from "@/lib/companyLeaves";
 import { formatDisplayDate, isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -18,19 +17,9 @@ export default function Page() {
   const [status, setStatus] = useState<"all" | LeaveRequestStatus>("all");
   const [date, setDate] = useState("");
   const [rows, setRows] = useState<LeaveRequestRow[]>([]);
-  const [employees, setEmployees] = useState<CompanyEmployee[]>([]);
-  const [policies, setPolicies] = useState<LeavePolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    employeeId: "",
-    leavePolicyCode: "",
-    fromDate: today,
-    toDate: today,
-    reason: "",
-  });
 
   useEffect(() => {
     let ignore = false;
@@ -47,39 +36,17 @@ export default function Page() {
         return;
       }
 
-      const [leaveResponse, policyResponse, employeeRows] = await Promise.all([
-        fetch("/api/company/leaves", {
-          headers: { authorization: `Bearer ${accessToken}` },
-        }),
-        fetch("/api/company/settings/leaves", {
-          headers: { authorization: `Bearer ${accessToken}` },
-        }),
-        loadCompanyEmployeesSupabase(),
-      ]);
+      const leaveResponse = await fetch("/api/company/leaves", {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
       const leaveResult = (await leaveResponse.json().catch(() => ({}))) as { rows?: LeaveRequestRow[]; error?: string };
-      const policyResult = (await policyResponse.json().catch(() => ({}))) as { policies?: LeavePolicy[]; error?: string };
       if (ignore) return;
       setLoading(false);
       if (!leaveResponse.ok) {
         setToast(leaveResult.error || "Unable to load leave requests.");
         return;
       }
-      if (!policyResponse.ok) {
-        setToast(policyResult.error || "Unable to load leave policies.");
-        return;
-      }
-      const activePolicies = Array.isArray(policyResult.policies) ? policyResult.policies.filter((row) => row.active) : [];
-      const activeEmployees = employeeRows.filter((row) => row.status === "active");
       setRows(Array.isArray(leaveResult.rows) ? leaveResult.rows : []);
-      setPolicies(activePolicies);
-      setEmployees(activeEmployees);
-      setForm((prev) => ({
-        employeeId: prev.employeeId || activeEmployees[0]?.id || "",
-        leavePolicyCode: prev.leavePolicyCode || activePolicies[0]?.code || "",
-        fromDate: prev.fromDate || today,
-        toDate: prev.toDate || today,
-        reason: prev.reason,
-      }));
     }
 
     loadLeaveContext();
@@ -148,50 +115,6 @@ export default function Page() {
     showToast(nextStatus === "approved" ? "Leave approved." : "Leave rejected.");
   }
 
-  async function createLeaveRequest(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!form.employeeId) return showToast("Employee is required.");
-    if (!form.leavePolicyCode) return showToast("Leave type is required.");
-    if (!form.fromDate) return showToast("From date is required.");
-    if (!form.toDate) return showToast("To date is required.");
-    if (form.toDate < form.fromDate) return showToast("To date cannot be before from date.");
-    if (!form.reason.trim()) return showToast("Reason is required.");
-
-    const supabase = getSupabaseBrowserClient("company");
-    const sessionResult = supabase ? await supabase.auth.getSession() : null;
-    const accessToken = sessionResult?.data.session?.access_token;
-    if (!accessToken) return showToast("Company session not found. Please login again.");
-
-    setCreating(true);
-    const response = await fetch("/api/company/leaves", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        employee_id: form.employeeId,
-        leave_policy_code: form.leavePolicyCode,
-        from_date: form.fromDate,
-        to_date: form.toDate,
-        reason: form.reason.trim(),
-      }),
-    });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; row?: LeaveRequestRow; error?: string };
-    setCreating(false);
-    if (!response.ok || !result.ok || !result.row) {
-      return showToast(result.error || "Unable to create leave request.");
-    }
-    setRows((prev) => [result.row as LeaveRequestRow, ...prev]);
-    setForm((prev) => ({
-      ...prev,
-      fromDate: today,
-      toDate: today,
-      reason: "",
-    }));
-    showToast("Leave request submitted.");
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -227,70 +150,6 @@ export default function Page() {
           <p className="text-xs font-semibold tracking-wide text-slate-600">Total Days</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{stats.totalDays}</p>
         </article>
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">Create Leave Request</h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Use this for now to submit employee leave requests until mobile/apply flow is added.
-            </p>
-          </div>
-        </div>
-
-        <form onSubmit={createLeaveRequest} className="mt-4 grid gap-3 lg:grid-cols-5">
-          <select
-            value={form.employeeId}
-            onChange={(e) => setForm((prev) => ({ ...prev, employeeId: e.target.value }))}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          >
-            {!employees.length && <option value="">No active employees</option>}
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.full_name} ({employee.employee_code})
-              </option>
-            ))}
-          </select>
-          <select
-            value={form.leavePolicyCode}
-            onChange={(e) => setForm((prev) => ({ ...prev, leavePolicyCode: e.target.value }))}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          >
-            {!policies.length && <option value="">No active leave type</option>}
-            {policies.map((policy) => (
-              <option key={policy.id} value={policy.code}>
-                {policy.name} ({policy.code})
-              </option>
-            ))}
-          </select>
-          <input
-            type="date"
-            value={form.fromDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, fromDate: e.target.value }))}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-          <input
-            type="date"
-            value={form.toDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, toDate: e.target.value }))}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-          <button
-            type="submit"
-            disabled={creating || !employees.length || !policies.length}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            {creating ? "Submitting..." : "Submit Request"}
-          </button>
-          <textarea
-            value={form.reason}
-            onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
-            placeholder="Reason for leave"
-            rows={3}
-            className="lg:col-span-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-        </form>
       </section>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">

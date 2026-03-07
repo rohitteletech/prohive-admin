@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { ClaimRow, ClaimStatus } from "@/lib/companyClaims";
-import { loadCompanyEmployeesSupabase, type CompanyEmployee } from "@/lib/companyEmployees";
-import { formatDisplayDate, isoDateInIndia, normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
+import { formatDisplayDate, isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ClaimType = "travel" | "meal" | "misc" | "other";
@@ -23,26 +22,13 @@ function typeLabel(type: ClaimType, otherText?: string) {
 
 export default function Page() {
   const [todayIso] = useState(() => todayISOInIndia());
-  const [todayDisplay] = useState(() => formatDisplayDate(todayIso));
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<"all" | ClaimStatus>("all");
   const [date, setDate] = useState("");
   const [rows, setRows] = useState<ClaimRow[]>([]);
-  const [employees, setEmployees] = useState<CompanyEmployee[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    employeeId: "",
-    fromDate: todayDisplay,
-    toDate: todayDisplay,
-    claimType: "travel" as ClaimType,
-    claimTypeOther: "",
-    amount: "",
-    reason: "",
-    attachmentUrl: "",
-  });
 
   useEffect(() => {
     let ignore = false;
@@ -59,12 +45,9 @@ export default function Page() {
         return;
       }
 
-      const [claimResponse, employeeRows] = await Promise.all([
-        fetch("/api/company/claims", {
-          headers: { authorization: `Bearer ${accessToken}` },
-        }),
-        loadCompanyEmployeesSupabase(),
-      ]);
+      const claimResponse = await fetch("/api/company/claims", {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
 
       const claimResult = (await claimResponse.json().catch(() => ({}))) as { rows?: ClaimRow[]; error?: string };
       if (ignore) return;
@@ -75,13 +58,7 @@ export default function Page() {
         return;
       }
 
-      const activeEmployees = employeeRows.filter((row) => row.status === "active");
       setRows(Array.isArray(claimResult.rows) ? claimResult.rows : []);
-      setEmployees(activeEmployees);
-      setForm((prev) => ({
-        ...prev,
-        employeeId: prev.employeeId || activeEmployees[0]?.id || "",
-      }));
     }
 
     loadClaims();
@@ -153,66 +130,6 @@ export default function Page() {
     showToast(nextStatus === "approved" ? "Claim approved." : "Claim rejected.");
   }
 
-  async function createClaim(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    if (!form.employeeId) return showToast("Employee is required.");
-    if (!form.fromDate) return showToast("From date is required.");
-    if (!form.toDate) return showToast("To date is required.");
-    if (!form.amount.trim()) return showToast("Amount is required.");
-    if (!form.reason.trim()) return showToast("Reason is required.");
-    if (form.claimType === "other" && !form.claimTypeOther.trim()) return showToast("Other claim type detail is required.");
-    const fromDateIso = normalizeDateInputToIso(form.fromDate);
-    const toDateIso = normalizeDateInputToIso(form.toDate);
-    if (!fromDateIso) return showToast("From date is invalid. Use DD MMM YYYY.");
-    if (!toDateIso) return showToast("To date is invalid. Use DD MMM YYYY.");
-    if (fromDateIso > todayIso || toDateIso > todayIso) return showToast("Dates cannot be in the future.");
-    if (toDateIso < fromDateIso) return showToast("To date cannot be before from date.");
-
-    const amount = Number(form.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return showToast("Amount must be greater than zero.");
-
-    const supabase = getSupabaseBrowserClient("company");
-    const sessionResult = supabase ? await supabase.auth.getSession() : null;
-    const accessToken = sessionResult?.data.session?.access_token;
-    if (!accessToken) return showToast("Company session not found. Please login again.");
-
-    setCreating(true);
-    const response = await fetch("/api/company/claims", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({
-        employee_id: form.employeeId,
-        from_date: form.fromDate.trim(),
-        to_date: form.toDate.trim(),
-        claim_type: form.claimType,
-        claim_type_other_text: form.claimType === "other" ? form.claimTypeOther.trim() : undefined,
-        amount,
-        reason: form.reason.trim(),
-        attachment_url: form.attachmentUrl.trim() || undefined,
-      }),
-    });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; row?: ClaimRow; error?: string };
-    setCreating(false);
-    if (!response.ok || !result.ok || !result.row) {
-      return showToast(result.error || "Unable to create claim.");
-    }
-
-    setRows((prev) => [result.row as ClaimRow, ...prev]);
-    setForm((prev) => ({
-      ...prev,
-      fromDate: todayDisplay,
-      toDate: todayDisplay,
-      claimTypeOther: "",
-      amount: "",
-      reason: "",
-      attachmentUrl: "",
-    }));
-    showToast("Claim submitted.");
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -248,95 +165,6 @@ export default function Page() {
           <p className="mt-1 text-3xl font-semibold tracking-tight text-rose-700">{stats.rejected}</p>
           <p className="mt-1 text-xs font-semibold text-slate-500">INR {stats.rejectedAmount.toFixed(2)}</p>
         </article>
-      </section>
-
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Create Claim</h2>
-        <p className="mt-1 text-sm text-slate-600">Use this to add reimbursement requests for employees.</p>
-
-        <form onSubmit={createClaim} className="mt-4 grid gap-3 lg:grid-cols-5">
-          <select
-            value={form.employeeId}
-            onChange={(e) => setForm((prev) => ({ ...prev, employeeId: e.target.value }))}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          >
-            {!employees.length && <option value="">No active employees</option>}
-            {employees.map((employee) => (
-              <option key={employee.id} value={employee.id}>
-                {employee.full_name} ({employee.employee_code})
-              </option>
-            ))}
-          </select>
-          <input
-            type="text"
-            value={form.fromDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, fromDate: e.target.value }))}
-            placeholder="From (DD MMM YYYY)"
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-          <input
-            type="text"
-            value={form.toDate}
-            onChange={(e) => setForm((prev) => ({ ...prev, toDate: e.target.value }))}
-            placeholder="To (DD MMM YYYY)"
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-          <select
-            value={form.claimType}
-            onChange={(e) =>
-              setForm((prev) => ({
-                ...prev,
-                claimType: e.target.value as ClaimType,
-                claimTypeOther: e.target.value === "other" ? prev.claimTypeOther : "",
-              }))
-            }
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          >
-            <option value="travel">Travel</option>
-            <option value="meal">Meal</option>
-            <option value="misc">Misc</option>
-            <option value="other">Other</option>
-          </select>
-          {form.claimType === "other" && (
-            <input
-              type="text"
-              value={form.claimTypeOther}
-              onChange={(e) => setForm((prev) => ({ ...prev, claimTypeOther: e.target.value }))}
-              placeholder="Other expense type"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-            />
-          )}
-          <input
-            type="number"
-            min="0"
-            step="0.01"
-            value={form.amount}
-            onChange={(e) => setForm((prev) => ({ ...prev, amount: e.target.value }))}
-            placeholder="Amount (INR)"
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-          <button
-            type="submit"
-            disabled={creating || !employees.length}
-            className="rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            {creating ? "Submitting..." : "Submit Claim"}
-          </button>
-          <input
-            type="url"
-            value={form.attachmentUrl}
-            onChange={(e) => setForm((prev) => ({ ...prev, attachmentUrl: e.target.value }))}
-            placeholder="Attachment URL (optional)"
-            className="lg:col-span-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-          <textarea
-            value={form.reason}
-            onChange={(e) => setForm((prev) => ({ ...prev, reason: e.target.value }))}
-            placeholder="Reason for claim"
-            rows={3}
-            className="lg:col-span-5 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
-          />
-        </form>
       </section>
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
