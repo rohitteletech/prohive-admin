@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { claimRowFromDb, ClaimType } from "@/lib/companyClaims";
 import { normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
@@ -96,8 +96,8 @@ export async function POST(req: NextRequest) {
   if (!employeeId) return NextResponse.json({ error: "Employee is required." }, { status: 400 });
   if (!fromDateRaw) return NextResponse.json({ error: "From date is required." }, { status: 400 });
   if (!toDateRaw) return NextResponse.json({ error: "To date is required." }, { status: 400 });
-  if (!fromDate) return NextResponse.json({ error: "From date is invalid. Use MM/DD/YYYY." }, { status: 400 });
-  if (!toDate) return NextResponse.json({ error: "To date is invalid. Use MM/DD/YYYY." }, { status: 400 });
+  if (!fromDate) return NextResponse.json({ error: "From date is invalid. Use DD/MM/YYYY." }, { status: 400 });
+  if (!toDate) return NextResponse.json({ error: "To date is invalid. Use DD/MM/YYYY." }, { status: 400 });
   if (fromDate > todayIso || toDate > todayIso) {
     return NextResponse.json({ error: "Claim dates cannot be in the future." }, { status: 400 });
   }
@@ -162,3 +162,4 @@ export async function POST(req: NextRequest) {
     row: claimRowFromDb(data as unknown as Record<string, unknown>),
   });
 }
+

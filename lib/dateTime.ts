@@ -1,6 +1,6 @@
 export const INDIA_TIME_ZONE = "Asia/Kolkata";
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
-const US_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+const INDIA_DATE_RE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 
 function formatParts(date: Date, options: Intl.DateTimeFormatOptions) {
   return new Intl.DateTimeFormat("en-GB", {
@@ -30,13 +30,13 @@ export function formatDisplayDate(value: string | Date | null | undefined) {
     if (isoMatch) {
       return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`;
     }
-    const usMatch = String(value).match(US_DATE_RE);
-    if (usMatch) {
-      return `${usMatch[1].padStart(2, "0")}/${usMatch[2].padStart(2, "0")}/${usMatch[3]}`;
+    const indiaMatch = String(value).match(INDIA_DATE_RE);
+    if (indiaMatch) {
+      return `${indiaMatch[1].padStart(2, "0")}/${indiaMatch[2].padStart(2, "0")}/${indiaMatch[3]}`;
     }
     return String(value);
   }
-  return new Intl.DateTimeFormat("en-US", {
+  return new Intl.DateTimeFormat("en-GB", {
     timeZone: INDIA_TIME_ZONE,
     day: "2-digit",
     month: "2-digit",
@@ -89,12 +89,12 @@ export function normalizeDateInputToIso(value: unknown) {
   const input = String(value || "").trim();
   if (!input) return "";
 
-  const usMatch = input.match(US_DATE_RE);
-  if (!usMatch) return "";
+  const indiaMatch = input.match(INDIA_DATE_RE);
+  if (!indiaMatch) return "";
 
-  const month = Number(usMatch[1]);
-  const day = Number(usMatch[2]);
-  const year = Number(usMatch[3]);
+  const day = Number(indiaMatch[1]);
+  const month = Number(indiaMatch[2]);
+  const year = Number(indiaMatch[3]);
   if (!Number.isInteger(month) || !Number.isInteger(day) || !Number.isInteger(year)) return "";
   if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 9999) return "";
 
