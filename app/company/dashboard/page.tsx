@@ -1,8 +1,10 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
-import { loadCompanyEmployees } from "@/lib/companyEmployees";
+import { useEffect, useMemo, useState } from "react";
+import { loadCompanyEmployeesSupabase } from "@/lib/companyEmployees";
+import { todayISOInIndia } from "@/lib/dateTime";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Tone = "info" | "positive" | "negative" | "warning" | "neutral";
 
@@ -18,6 +20,26 @@ type QueueItem = {
   target: number;
   href: string;
   tone: Tone;
+};
+
+type DashboardData = {
+  employeeCount: number;
+  presentToday: number;
+  lateToday: number;
+  absentToday: number;
+  pendingCorrections: number;
+  pendingLeaves: number;
+  pendingClaims: number;
+};
+
+const EMPTY_DASHBOARD: DashboardData = {
+  employeeCount: 0,
+  presentToday: 0,
+  lateToday: 0,
+  absentToday: 0,
+  pendingCorrections: 0,
+  pendingLeaves: 0,
+  pendingClaims: 0,
 };
 
 function toneStyles(tone: Tone) {
@@ -84,23 +106,116 @@ export default function CompanyDashboardPage() {
       return "Company";
     }
   });
-  const [employeeCount] = useState(() => loadCompanyEmployees().length);
+  const [data, setData] = useState<DashboardData>(EMPTY_DASHBOARD);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadDashboardData() {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) {
+        if (!ignore) setLoading(false);
+        return;
+      }
+
+      const todayIso = todayISOInIndia();
+      const [employees, attendanceRes, correctionsRes, leavesRes, claimsRes] = await Promise.all([
+        loadCompanyEmployeesSupabase(),
+        fetch(`/api/company/attendance?date=${todayIso}`, {
+          headers: { authorization: `Bearer ${accessToken}` },
+        }),
+        fetch("/api/company/corrections", {
+          headers: { authorization: `Bearer ${accessToken}` },
+        }),
+        fetch("/api/company/leaves", {
+          headers: { authorization: `Bearer ${accessToken}` },
+        }),
+        fetch("/api/company/claims", {
+          headers: { authorization: `Bearer ${accessToken}` },
+        }),
+      ]);
+
+      const attendanceJson = (await attendanceRes.json().catch(() => ({}))) as {
+        rows?: Array<{ status?: "present" | "late" | "absent" }>;
+      };
+      const correctionsJson = (await correctionsRes.json().catch(() => ({}))) as {
+        rows?: Array<{ status?: "pending" | "approved" | "rejected" }>;
+      };
+      const leavesJson = (await leavesRes.json().catch(() => ({}))) as {
+        rows?: Array<{ status?: "pending" | "approved" | "rejected" }>;
+      };
+      const claimsJson = (await claimsRes.json().catch(() => ({}))) as {
+        rows?: Array<{ status?: "pending" | "approved" | "rejected" }>;
+      };
+
+      const attendanceRows = Array.isArray(attendanceJson.rows) ? attendanceJson.rows : [];
+      const correctionsRows = Array.isArray(correctionsJson.rows) ? correctionsJson.rows : [];
+      const leavesRows = Array.isArray(leavesJson.rows) ? leavesJson.rows : [];
+      const claimsRows = Array.isArray(claimsJson.rows) ? claimsJson.rows : [];
+
+      if (ignore) return;
+
+      setData({
+        employeeCount: employees.length,
+        presentToday: attendanceRows.filter((row) => row.status === "present").length,
+        lateToday: attendanceRows.filter((row) => row.status === "late").length,
+        absentToday: attendanceRows.filter((row) => row.status === "absent").length,
+        pendingCorrections: correctionsRows.filter((row) => row.status === "pending").length,
+        pendingLeaves: leavesRows.filter((row) => row.status === "pending").length,
+        pendingClaims: claimsRows.filter((row) => row.status === "pending").length,
+      });
+      setLoading(false);
+    }
+
+    loadDashboardData();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   const kpis: Kpi[] = useMemo(
     () => [
-      { title: "Employees", value: String(employeeCount), tone: "info" },
-      { title: "Present Today", value: "0", tone: "positive" },
-      { title: "Pending Approvals", value: "0", tone: "warning" },
-      { title: "Alerts", value: "0", tone: "neutral" },
+      { title: "Employees", value: String(data.employeeCount), tone: "info" },
+      { title: "Present Today", value: String(data.presentToday), tone: "positive" },
+      {
+        title: "Pending Approvals",
+        value: String(data.pendingCorrections + data.pendingLeaves + data.pendingClaims),
+        tone: "warning",
+      },
+      { title: "Alerts", value: String(data.lateToday + data.absentToday), tone: "neutral" },
     ],
-    [employeeCount]
+    [data]
   );
 
-  const queue: QueueItem[] = [
-    { title: "Attendance Corrections", pending: 0, target: 0, href: "/company/corrections", tone: "warning" },
-    { title: "Leave Approvals", pending: 0, target: 0, href: "/company/leaves", tone: "info" },
-    { title: "Claims Approvals", pending: 0, target: 0, href: "/company/claims", tone: "positive" },
-  ];
+  const queue: QueueItem[] = useMemo(
+    () => [
+      {
+        title: "Attendance Corrections",
+        pending: data.pendingCorrections,
+        target: data.pendingCorrections,
+        href: "/company/corrections",
+        tone: "warning",
+      },
+      {
+        title: "Leave Approvals",
+        pending: data.pendingLeaves,
+        target: data.pendingLeaves,
+        href: "/company/leaves",
+        tone: "info",
+      },
+      {
+        title: "Claims Approvals",
+        pending: data.pendingClaims,
+        target: data.pendingClaims,
+        href: "/company/claims",
+        tone: "positive",
+      },
+    ],
+    [data]
+  );
 
   return (
     <div className="min-h-[calc(100vh-64px)] bg-slate-50">
@@ -115,7 +230,7 @@ export default function CompanyDashboardPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge text="Current Month" tone="neutral" />
-                <Badge text="Updated 10 min ago" tone="info" />
+                <Badge text={loading ? "Loading..." : "Live Data"} tone="info" />
                 <Badge text="System Healthy" tone="positive" />
               </div>
             </div>
@@ -143,7 +258,7 @@ export default function CompanyDashboardPage() {
                   <p className="text-[11px] font-semibold tracking-wide text-slate-600">{item.title}</p>
                   <span className={["h-2 w-2 rounded-full", t.dot].join(" ")} />
                 </div>
-                <p className="mt-1.5 text-[24px] font-semibold tracking-tight leading-none text-slate-900">{item.value}</p>
+                <p className="mt-1.5 text-[24px] font-semibold leading-none tracking-tight text-slate-900">{item.value}</p>
               </article>
             );
           })}
