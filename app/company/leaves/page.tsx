@@ -11,6 +11,12 @@ function statusChip(status: LeaveRequestStatus) {
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
+function leaveModeLabel(mode: LeaveRequestRow["leaveMode"]) {
+  if (mode === "mixed") return "Mixed";
+  if (mode === "unpaid") return "Unpaid";
+  return "Paid";
+}
+
 export default function Page() {
   const [today] = useState(() => todayISOInIndia());
   const [search, setSearch] = useState("");
@@ -193,7 +199,7 @@ export default function Page() {
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-3 font-semibold">Leave ID</th>
                 <th className="px-5 py-3 font-semibold">Employee</th>
-                <th className="px-5 py-3 font-semibold">Type</th>
+                <th className="px-5 py-3 font-semibold">Mode</th>
                 <th className="px-5 py-3 font-semibold">From</th>
                 <th className="px-5 py-3 font-semibold">To</th>
                 <th className="px-5 py-3 font-semibold">Days</th>
@@ -214,10 +220,9 @@ export default function Page() {
                     </div>
                   </td>
                   <td className="px-5 py-3">
-                    <div className="leading-tight">
-                      <div className="font-medium text-slate-900">{row.leaveTypeName || row.leaveTypeCode}</div>
-                      <div className="mt-0.5 text-xs text-slate-500">{row.leaveTypeCode}</div>
-                    </div>
+                    <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                      {leaveModeLabel(row.leaveMode)}
+                    </span>
                   </td>
                   <td className="px-5 py-3">{row.fromDate}</td>
                   <td className="px-5 py-3">{row.toDate}</td>
