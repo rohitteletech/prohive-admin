@@ -64,6 +64,7 @@ create table if not exists public.employees (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   full_name text not null,
+  gender text check (gender in ('male', 'female', 'other')),
   email text,
   employee_code text not null,
   mobile text not null,
@@ -86,6 +87,9 @@ create table if not exists public.employees (
   unique (company_id, employee_code),
   unique (company_id, mobile)
 );
+
+alter table public.employees
+  add column if not exists gender text check (gender in ('male', 'female', 'other'));
 
 alter table public.employees
   add column if not exists mobile_app_status text not null default 'invited'

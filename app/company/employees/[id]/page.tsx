@@ -22,6 +22,7 @@ type EmployeeModel = {
   id: string;
   // Compulsory
   full_name: string;
+  gender?: "male" | "female" | "other";
   mobile: string;
   designation: string;
   department?: string;
@@ -145,6 +146,7 @@ export default function EmployeeDetailPage() {
       return {
       id,
       full_name: base?.full_name || "",
+      gender: base?.gender,
       mobile: base?.mobile || "",
       designation: base?.designation || "",
       department: base?.department || "",
@@ -209,12 +211,14 @@ export default function EmployeeDetailPage() {
     // Client-side validations (MVP)
     const nameOk = draft.full_name.trim().length >= 2;
     const mobileOk = draft.mobile.trim().length >= 8;
+    const genderOk = !!draft.gender;
     const desigOk = draft.designation.trim().length >= 2;
     const deptOk = (draft.department || "").trim().length >= 2;
     const joinOk = draft.joining_date?.trim().length === 10;
 
     if (!nameOk) return showToast("Name is required");
     if (!mobileOk) return showToast("Mobile is required");
+    if (!genderOk) return showToast("Gender is required");
     if (!desigOk) return showToast("Designation is required");
     if (!deptOk) return showToast("Department is required");
     if (!joinOk) return showToast("Joining date is required");
@@ -242,6 +246,7 @@ export default function EmployeeDetailPage() {
       },
       body: JSON.stringify({
         full_name: draft.full_name,
+        gender: draft.gender,
         email: draft.email,
         employee_code: draft.employee_code,
         mobile: draft.mobile,
@@ -359,6 +364,7 @@ export default function EmployeeDetailPage() {
         const hydrated: EmployeeModel = {
           id: employee.id,
           full_name: employee.full_name || "",
+          gender: employee.gender,
           mobile: employee.mobile || "",
           designation: employee.designation || "",
           department: employee.department || "",
@@ -547,6 +553,25 @@ export default function EmployeeDetailPage() {
               editable={isEditing}
               onChange={(v) => setField("full_name", v)}
             />
+            <div>
+              <div className="mb-1 text-xs font-medium text-zinc-700">Gender *</div>
+              {!isEditing ? (
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
+                  {data.gender ? data.gender.charAt(0).toUpperCase() + data.gender.slice(1) : "-"}
+                </div>
+              ) : (
+                <select
+                  value={draft.gender || ""}
+                  onChange={(e) => setField("gender", (e.target.value || undefined) as EmployeeModel["gender"])}
+                  className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
+                >
+                  <option value="">Select</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+              )}
+            </div>
             <Field
               label="Mobile Number *"
               value={data.mobile}

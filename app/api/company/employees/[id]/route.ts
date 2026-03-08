@@ -4,6 +4,7 @@ import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 type Body = {
   full_name?: string;
   email?: string;
+  gender?: "male" | "female" | "other";
   employee_code?: string;
   mobile?: string;
   designation?: string;
@@ -55,11 +56,15 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const mobile = (body.mobile || "").trim();
   const designation = (body.designation || "").trim();
   const joined_on = (body.joined_on || "").trim();
+  const gender = body.gender;
 
   if (!id) return NextResponse.json({ error: "Employee id is required." }, { status: 400 });
   if (!full_name) return NextResponse.json({ error: "Full Name is required." }, { status: 400 });
   if (!employee_code) return NextResponse.json({ error: "Employee Code is required." }, { status: 400 });
   if (!mobile) return NextResponse.json({ error: "Mobile is required." }, { status: 400 });
+  if (gender !== undefined && gender !== "male" && gender !== "female" && gender !== "other") {
+    return NextResponse.json({ error: "Invalid gender value." }, { status: 400 });
+  }
   if (!designation) return NextResponse.json({ error: "Designation is required." }, { status: 400 });
   if (!joined_on) return NextResponse.json({ error: "Joining Date is required." }, { status: 400 });
   const { data: duplicate } = await context.admin
@@ -86,6 +91,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const payload = {
     full_name,
     email: normalizeOptional(body.email),
+    gender: gender || null,
     employee_code,
     mobile,
     designation,

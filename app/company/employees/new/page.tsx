@@ -18,6 +18,7 @@ type EmploymentType = "full_time" | "contract" | "intern";
 
 type EmployeeDraft = {
   full_name: string;
+  gender: "male" | "female" | "other" | "";
   mobile: string;
   designation: string;
   department: string;
@@ -80,6 +81,7 @@ export default function NewEmployeePage() {
   const [shiftOptions, setShiftOptions] = useState<string[]>(initialShiftOptions);
   const [form, setForm] = useState<EmployeeDraft>({
     full_name: "",
+    gender: "",
     mobile: "",
     designation: "",
     department: "",
@@ -141,6 +143,7 @@ export default function NewEmployeePage() {
 
   function validate() {
     if (form.full_name.trim().length < 2) return "Full Name is required";
+    if (!form.gender) return "Gender is required";
     if (form.mobile.trim().length < 8) return "Mobile is required";
     if (form.department.trim().length < 2) return "Department is required";
     if (form.designation.trim().length < 2) return "Designation is required";
@@ -208,6 +211,7 @@ export default function NewEmployeePage() {
     const next: CompanyEmployee = {
       id: nextEmployeeId(allEmployees),
       full_name: form.full_name.trim(),
+      gender: form.gender || undefined,
       email: form.email.trim() || undefined,
       employee_code: form.employee_code.trim(),
       mobile: form.mobile.trim(),
@@ -301,6 +305,19 @@ export default function NewEmployeePage() {
           <h2 className="text-base font-semibold text-zinc-900">Profile</h2>
           <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Input label="Full Name *" value={form.full_name} onChange={(v) => setField("full_name", v)} autoComplete="off" />
+            <div>
+              <div className="mb-1 text-xs font-medium text-zinc-700">Gender *</div>
+              <select
+                value={form.gender}
+                onChange={(e) => setField("gender", e.target.value as EmployeeDraft["gender"])}
+                className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
+              >
+                <option value="">Select</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
             <Input
               label="Mobile Number *"
               value={form.mobile}
