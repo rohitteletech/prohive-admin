@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CompanyHoliday, HolidayType } from "@/lib/companyLeaves";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { WeeklyOffPolicy, weeklyOffPolicyLabel } from "@/lib/weeklyOff";
 
 export default function ManageHolidaysPage() {
   const [rows, setRows] = useState<CompanyHoliday[]>([]);
@@ -12,6 +13,7 @@ export default function ManageHolidaysPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [weeklyOffPolicy, setWeeklyOffPolicy] = useState<WeeklyOffPolicy>("sunday_only");
 
   useEffect(() => {
     let ignore = false;
@@ -31,7 +33,11 @@ export default function ManageHolidaysPage() {
       const response = await fetch("/api/company/settings/holidays", {
         headers: { authorization: `Bearer ${accessToken}` },
       });
-      const result = (await response.json().catch(() => ({}))) as { holidays?: CompanyHoliday[]; error?: string };
+      const result = (await response.json().catch(() => ({}))) as {
+        holidays?: CompanyHoliday[];
+        weeklyOffPolicy?: WeeklyOffPolicy;
+        error?: string;
+      };
       if (ignore) return;
       setLoading(false);
       if (!response.ok) {
@@ -39,6 +45,7 @@ export default function ManageHolidaysPage() {
         return;
       }
       setRows(Array.isArray(result.holidays) ? result.holidays : []);
+      if (result.weeklyOffPolicy) setWeeklyOffPolicy(result.weeklyOffPolicy);
     }
 
     loadHolidays();
@@ -101,14 +108,20 @@ export default function ManageHolidaysPage() {
         "Content-Type": "application/json",
         authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ holidays: rows }),
+      body: JSON.stringify({ holidays: rows, weeklyOffPolicy }),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; holidays?: CompanyHoliday[]; error?: string };
+    const result = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      holidays?: CompanyHoliday[];
+      weeklyOffPolicy?: WeeklyOffPolicy;
+      error?: string;
+    };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return showToast(result.error || "Unable to save holidays.");
     }
     setRows(Array.isArray(result.holidays) ? result.holidays : []);
+    if (result.weeklyOffPolicy) setWeeklyOffPolicy(result.weeklyOffPolicy);
     showToast("Holiday calendar saved.");
   }
 
@@ -140,6 +153,21 @@ export default function ManageHolidaysPage() {
           >
             {saving ? "Saving..." : "Save Holidays"}
           </button>
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <label className="grid gap-1.5 md:col-span-2">
+            <span className="text-sm text-slate-700">Weekly Off Policy</span>
+            <select
+              value={weeklyOffPolicy}
+              onChange={(e) => setWeeklyOffPolicy(e.target.value as WeeklyOffPolicy)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+            >
+              <option value="sunday_only">{weeklyOffPolicyLabel("sunday_only")}</option>
+              <option value="saturday_sunday">{weeklyOffPolicyLabel("saturday_sunday")}</option>
+              <option value="second_fourth_saturday_sunday">{weeklyOffPolicyLabel("second_fourth_saturday_sunday")}</option>
+            </select>
+          </label>
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-4">

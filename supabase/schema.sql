@@ -24,6 +24,8 @@ create table if not exists public.companies (
   office_lat double precision,
   office_lon double precision,
   office_radius_m integer,
+  weekly_off_policy text not null default 'sunday_only'
+    check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday')),
   gst text,
   business_nature text,
   created_at timestamptz not null default now()
@@ -40,6 +42,10 @@ alter table public.companies
 
 alter table public.companies
   add column if not exists company_tagline text;
+
+alter table public.companies
+  add column if not exists weekly_off_policy text not null default 'sunday_only'
+    check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday'));
 
 alter table public.companies enable row level security;
 

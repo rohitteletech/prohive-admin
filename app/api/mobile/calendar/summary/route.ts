@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { isoDateInIndia } from "@/lib/dateTime";
+import { isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
+import { isWeeklyOffDate, normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
 function pad2(value: number) {
   return String(value).padStart(2, "0");
@@ -12,6 +13,24 @@ function monthRange(year: number, month: number) {
   const nextMonth = month === 12 ? 1 : month + 1;
   const nextStart = `${nextMonthYear}-${pad2(nextMonth)}-01`;
   return { start, nextStart };
+}
+
+function parseIsoParts(iso: string) {
+  const [year, month, day] = iso.split("-").map((part) => Number(part));
+  return { year, month, day };
+}
+
+function addDaysToIso(iso: string, days: number) {
+  const { year, month, day } = parseIsoParts(iso);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+function clampIsoToRange(iso: string, start: string, end: string) {
+  if (iso < start) return start;
+  if (iso > end) return end;
+  return iso;
 }
 
 export async function POST(req: NextRequest) {
@@ -32,17 +51,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
 
-  const now = new Date();
-  const year = Number.isFinite(body.year) ? Number(body.year) : now.getUTCFullYear();
-  const month = Number.isFinite(body.month) ? Number(body.month) : now.getUTCMonth() + 1;
-  const safeMonth = month >= 1 && month <= 12 ? month : now.getUTCMonth() + 1;
+  const today = todayISOInIndia();
+  const { year: indiaYear, month: indiaMonth } = parseIsoParts(today);
+  const year = Number.isFinite(body.year) ? Number(body.year) : indiaYear;
+  const month = Number.isFinite(body.month) ? Number(body.month) : indiaMonth;
+  const safeMonth = month >= 1 && month <= 12 ? month : indiaMonth;
   const { start, nextStart } = monthRange(year, safeMonth);
-  const today = isoDateInIndia(now.toISOString());
+  const monthEnd = addDaysToIso(nextStart, -1);
+  const attendanceQueryStart = addDaysToIso(start, -1);
+  const attendanceQueryNextStart = addDaysToIso(nextStart, 1);
 
   const yearStart = `${year}-01-01`;
   const yearNextStart = `${year + 1}-01-01`;
 
-  const [monthHolidayResult, yearHolidayResult, upcomingHolidayResult, leaveResult, attendanceResult] = await Promise.all([
+  const [companyResult, yearHolidayResult, monthHolidayResult, upcomingHolidayResult, leaveResult, attendanceResult] = await Promise.all([
+    session.admin
+      .from("companies")
+      .select("weekly_off_policy")
+      .eq("id", session.employee.company_id)
+      .maybeSingle(),
     session.admin
       .from("company_holidays")
       .select("id,holiday_date,name,type")
@@ -78,11 +105,14 @@ export async function POST(req: NextRequest) {
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
       .in("approval_status", ["auto_approved", "approved"])
-      .gte("server_received_at", `${start}T00:00:00.000Z`)
-      .lt("server_received_at", `${nextStart}T00:00:00.000Z`)
+      .gte("server_received_at", `${attendanceQueryStart}T00:00:00.000Z`)
+      .lt("server_received_at", `${attendanceQueryNextStart}T00:00:00.000Z`)
       .order("server_received_at", { ascending: true }),
   ]);
 
+  if (companyResult.error) {
+    return NextResponse.json({ error: companyResult.error.message || "Unable to load weekly off policy." }, { status: 400 });
+  }
   if (monthHolidayResult.error) {
     return NextResponse.json({ error: monthHolidayResult.error.message || "Unable to load holidays." }, { status: 400 });
   }
@@ -105,6 +135,8 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const weeklyOffPolicy = normalizeWeeklyOffPolicy(companyResult.data?.weekly_off_policy);
+
   const holidayRows = (monthHolidayResult.data || []) as Array<{
     id: string;
     holiday_date: string;
@@ -126,6 +158,9 @@ export async function POST(req: NextRequest) {
   }>;
 
   const holidayDates = new Set(holidayRows.map((row) => row.holiday_date));
+  const holidayNamesByDate = new Map(
+    holidayRows.map((row) => [row.holiday_date, row.name || row.type || "Holiday"] as const)
+  );
   const weeklyOffDates = new Set<string>();
   const presentDates = new Set<string>();
   const leaveDates = new Set<string>();
@@ -157,7 +192,7 @@ export async function POST(req: NextRequest) {
   const monthlyStatuses: Array<{ date: string; status: "present" | "absent" | "leave" | "holiday" | "weekly_off" }> = [];
   while (monthDate.getUTCMonth() === safeMonth - 1) {
     const iso = monthDate.toISOString().slice(0, 10);
-    if (monthDate.getUTCDay() === 0) {
+    if (isWeeklyOffDate(iso, weeklyOffPolicy)) {
       weeklyOffDates.add(iso);
     }
 
@@ -178,6 +213,67 @@ export async function POST(req: NextRequest) {
       monthlyStatuses.push({ date: iso, status });
     }
     monthDate.setUTCDate(monthDate.getUTCDate() + 1);
+  }
+
+  const leaveBands = leaveRows
+    .filter((row) => row.status === "pending" || row.status === "approved")
+    .map((row) => {
+      const from = clampIsoToRange(row.from_date, start, monthEnd);
+      const to = clampIsoToRange(row.to_date, start, monthEnd);
+      return {
+        id: row.id,
+        fromDate: from,
+        toDate: to,
+        text: row.leave_name_snapshot || "Leave",
+        status: row.status || "pending",
+      };
+    })
+    .filter((row) => row.fromDate <= row.toDate);
+
+  const statusByDate = new Map(monthlyStatuses.map((entry) => [entry.date, entry.status] as const));
+  const firstCell = new Date(`${start}T00:00:00.000Z`);
+  firstCell.setUTCDate(firstCell.getUTCDate() - firstCell.getUTCDay());
+  const lastCell = new Date(`${monthEnd}T00:00:00.000Z`);
+  lastCell.setUTCDate(lastCell.getUTCDate() + (6 - lastCell.getUTCDay()));
+
+  const weeks: Array<
+    Array<{
+      date: string;
+      day: number;
+      inMonth: boolean;
+      status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null;
+      dots: Array<"green" | "yellow" | "red">;
+      chipText: string;
+    }>
+  > = [];
+  const cursor = new Date(firstCell.toISOString());
+  while (cursor <= lastCell) {
+    const week: Array<{
+      date: string;
+      day: number;
+      inMonth: boolean;
+      status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null;
+      dots: Array<"green" | "yellow" | "red">;
+      chipText: string;
+    }> = [];
+    for (let i = 0; i < 7; i += 1) {
+      const iso = cursor.toISOString().slice(0, 10);
+      const status = statusByDate.get(iso) || null;
+      const dots: Array<"green" | "yellow" | "red"> = [];
+      if (status === "present") dots.push("green");
+      if (status === "holiday" || status === "weekly_off") dots.push("yellow");
+      if (status === "absent") dots.push("red");
+      week.push({
+        date: iso,
+        day: cursor.getUTCDate(),
+        inMonth: iso >= start && iso < nextStart,
+        status,
+        dots,
+        chipText: holidayNamesByDate.get(iso) || "",
+      });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    weeks.push(week);
   }
 
   return NextResponse.json({
@@ -215,5 +311,14 @@ export async function POST(req: NextRequest) {
     })),
     weeklyOffDates: Array.from(weeklyOffDates).sort(),
     monthlyStatuses,
+    weeklyOffPolicy,
+    calendarUi: {
+      weekdays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
+      monthLabel: new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(
+        new Date(Date.UTC(year, safeMonth - 1, 1))
+      ),
+      weeks,
+      leaveBands,
+    },
   });
 }

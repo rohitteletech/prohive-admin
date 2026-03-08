@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { holidayFromDb, sanitizeHolidays } from "@/lib/companyLeaves";
+import { normalizeWeeklyOffPolicy, WEEKLY_OFF_POLICY_VALUES } from "@/lib/weeklyOff";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
@@ -10,19 +11,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
 
-  const { data, error } = await context.admin
-    .from("company_holidays")
-    .select("id,holiday_date,name,type")
-    .eq("company_id", context.companyId)
-    .order("holiday_date", { ascending: true })
-    .order("name", { ascending: true });
+  const [holidayResult, companyResult] = await Promise.all([
+    context.admin
+      .from("company_holidays")
+      .select("id,holiday_date,name,type")
+      .eq("company_id", context.companyId)
+      .order("holiday_date", { ascending: true })
+      .order("name", { ascending: true }),
+    context.admin
+      .from("companies")
+      .select("weekly_off_policy")
+      .eq("id", context.companyId)
+      .maybeSingle(),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message || "Unable to load holidays." }, { status: 400 });
+  if (holidayResult.error) {
+    return NextResponse.json({ error: holidayResult.error.message || "Unable to load holidays." }, { status: 400 });
+  }
+  if (companyResult.error) {
+    return NextResponse.json({ error: companyResult.error.message || "Unable to load weekly off settings." }, { status: 400 });
   }
 
   return NextResponse.json({
-    holidays: Array.isArray(data) ? data.map((row) => holidayFromDb(row as Record<string, unknown>)) : [],
+    holidays: Array.isArray(holidayResult.data)
+      ? holidayResult.data.map((row) => holidayFromDb(row as Record<string, unknown>))
+      : [],
+    weeklyOffPolicy: normalizeWeeklyOffPolicy(companyResult.data?.weekly_off_policy),
+    weeklyOffPolicyOptions: WEEKLY_OFF_POLICY_VALUES,
   });
 }
 
@@ -34,24 +49,36 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { holidays?: unknown };
-
-  let holidays;
-  try {
-    holidays = sanitizeHolidays(body.holidays || []);
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid holidays payload." }, { status: 400 });
+  const body = (await req.json().catch(() => ({}))) as { holidays?: unknown; weeklyOffPolicy?: unknown };
+  const hasHolidays = Object.prototype.hasOwnProperty.call(body, "holidays");
+  const hasWeeklyOffPolicy = Object.prototype.hasOwnProperty.call(body, "weeklyOffPolicy");
+  if (!hasHolidays && !hasWeeklyOffPolicy) {
+    return NextResponse.json({ error: "No holiday settings provided." }, { status: 400 });
   }
 
-  const { error: deleteError } = await context.admin
-    .from("company_holidays")
-    .delete()
-    .eq("company_id", context.companyId);
-  if (deleteError) {
-    return NextResponse.json({ error: deleteError.message || "Unable to replace holidays." }, { status: 400 });
+  let holidays = [] as ReturnType<typeof sanitizeHolidays>;
+  if (hasHolidays) {
+    try {
+      holidays = sanitizeHolidays(body.holidays || []);
+    } catch (error) {
+      return NextResponse.json(
+        { error: error instanceof Error ? error.message : "Invalid holidays payload." },
+        { status: 400 }
+      );
+    }
   }
 
-  if (holidays.length > 0) {
+  if (hasHolidays) {
+    const { error: deleteError } = await context.admin
+      .from("company_holidays")
+      .delete()
+      .eq("company_id", context.companyId);
+    if (deleteError) {
+      return NextResponse.json({ error: deleteError.message || "Unable to replace holidays." }, { status: 400 });
+    }
+  }
+
+  if (hasHolidays && holidays.length > 0) {
     const insertRows = holidays.map((row) => ({
       ...row,
       company_id: context.companyId,
@@ -62,19 +89,47 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const { data, error } = await context.admin
-    .from("company_holidays")
-    .select("id,holiday_date,name,type")
-    .eq("company_id", context.companyId)
-    .order("holiday_date", { ascending: true })
-    .order("name", { ascending: true });
+  if (hasWeeklyOffPolicy) {
+    const weeklyOffPolicy = String(body.weeklyOffPolicy || "").trim();
+    if (!WEEKLY_OFF_POLICY_VALUES.includes(weeklyOffPolicy as (typeof WEEKLY_OFF_POLICY_VALUES)[number])) {
+      return NextResponse.json({ error: "Invalid weekly off policy." }, { status: 400 });
+    }
+    const { error: weeklyOffError } = await context.admin
+      .from("companies")
+      .update({ weekly_off_policy: weeklyOffPolicy })
+      .eq("id", context.companyId);
+    if (weeklyOffError) {
+      return NextResponse.json({ error: weeklyOffError.message || "Unable to save weekly off policy." }, { status: 400 });
+    }
+  }
 
-  if (error) {
-    return NextResponse.json({ error: error.message || "Unable to load saved holidays." }, { status: 400 });
+  const [holidayResult, companyResult] = await Promise.all([
+    context.admin
+      .from("company_holidays")
+      .select("id,holiday_date,name,type")
+      .eq("company_id", context.companyId)
+      .order("holiday_date", { ascending: true })
+      .order("name", { ascending: true }),
+    context.admin
+      .from("companies")
+      .select("weekly_off_policy")
+      .eq("id", context.companyId)
+      .maybeSingle(),
+  ]);
+
+  if (holidayResult.error) {
+    return NextResponse.json({ error: holidayResult.error.message || "Unable to load saved holidays." }, { status: 400 });
+  }
+  if (companyResult.error) {
+    return NextResponse.json({ error: companyResult.error.message || "Unable to load saved weekly off policy." }, { status: 400 });
   }
 
   return NextResponse.json({
     ok: true,
-    holidays: Array.isArray(data) ? data.map((row) => holidayFromDb(row as Record<string, unknown>)) : [],
+    holidays: Array.isArray(holidayResult.data)
+      ? holidayResult.data.map((row) => holidayFromDb(row as Record<string, unknown>))
+      : [],
+    weeklyOffPolicy: normalizeWeeklyOffPolicy(companyResult.data?.weekly_off_policy),
+    weeklyOffPolicyOptions: WEEKLY_OFF_POLICY_VALUES,
   });
 }
