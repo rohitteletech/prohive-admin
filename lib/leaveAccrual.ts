@@ -51,7 +51,7 @@ export async function fetchLeaveUsageForYear(params: {
   const yearEnd = `${params.year}-12-31`;
   const { data, error } = await params.admin
     .from("employee_leave_requests")
-    .select("days,status")
+    .select("days,paid_days,status")
     .eq("company_id", params.companyId)
     .eq("employee_id", params.employeeId)
     .eq("leave_policy_code", params.leavePolicyCode)
@@ -61,9 +61,10 @@ export async function fetchLeaveUsageForYear(params: {
 
   let approvedUsed = 0;
   let pendingUsed = 0;
-  (data || []).forEach((row: { days: number; status: "pending" | "approved" | "rejected" }) => {
-    if (row.status === "approved") approvedUsed += Number(row.days || 0);
-    if (row.status === "pending") pendingUsed += Number(row.days || 0);
+  (data || []).forEach((row: { days: number; paid_days?: number | null; status: "pending" | "approved" | "rejected" }) => {
+    const consumed = Number((row.paid_days ?? row.days) || 0);
+    if (row.status === "approved") approvedUsed += consumed;
+    if (row.status === "pending") pendingUsed += consumed;
   });
   return { approvedUsed: roundLeaveDays(approvedUsed), pendingUsed: roundLeaveDays(pendingUsed), error: null as string | null };
 }

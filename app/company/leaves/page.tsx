@@ -221,7 +221,12 @@ export default function Page() {
                   </td>
                   <td className="px-5 py-3">{row.fromDate}</td>
                   <td className="px-5 py-3">{row.toDate}</td>
-                  <td className="px-5 py-3 font-semibold text-slate-900">{row.days}</td>
+                  <td className="px-5 py-3">
+                    <div className="leading-tight">
+                      <div className="font-semibold text-slate-900">{row.days}</div>
+                      <div className="mt-0.5 text-xs text-slate-500">Paid {row.paidDays} | Unpaid {row.unpaidDays}</div>
+                    </div>
+                  </td>
                   <td className="px-5 py-3">
                     <div className="max-w-[240px]">
                       <div>{row.reason}</div>

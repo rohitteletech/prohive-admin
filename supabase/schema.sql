@@ -328,6 +328,9 @@ create table if not exists public.employee_leave_requests (
   from_date date not null,
   to_date date not null,
   days numeric(6,2) not null check (days > 0),
+  paid_days numeric(6,2) not null default 0 check (paid_days >= 0),
+  unpaid_days numeric(6,2) not null default 0 check (unpaid_days >= 0),
+  leave_mode text not null default 'paid' check (leave_mode in ('paid', 'unpaid', 'mixed')),
   reason text not null,
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   admin_remark text,
@@ -337,6 +340,11 @@ create table if not exists public.employee_leave_requests (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.employee_leave_requests
+  add column if not exists paid_days numeric(6,2) not null default 0 check (paid_days >= 0),
+  add column if not exists unpaid_days numeric(6,2) not null default 0 check (unpaid_days >= 0),
+  add column if not exists leave_mode text not null default 'paid' check (leave_mode in ('paid', 'unpaid', 'mixed'));
 
 create index if not exists employee_leave_requests_company_status_idx
   on public.employee_leave_requests(company_id, status, submitted_at desc);

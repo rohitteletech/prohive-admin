@@ -33,7 +33,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
 
   const { data: requestRow, error: requestError } = await context.admin
     .from("employee_leave_requests")
-    .select("id,employee_id,leave_policy_code,days,status,from_date")
+    .select("id,employee_id,leave_policy_code,days,paid_days,status,from_date")
     .eq("company_id", context.companyId)
     .eq("id", id)
     .maybeSingle();
@@ -84,16 +84,18 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     });
 
     // This request already exists in pending bucket, remove it once before approve validation.
-    const pendingExcludingCurrent = Math.max(roundLeaveDays(usageResult.pendingUsed - Number(requestRow.days || 0)), 0);
-    const approvingDays = Number(requestRow.days || 0);
-    const availableForApproval = Math.max(
-      roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - pendingExcludingCurrent),
-      0
-    );
-    if (approvingDays > availableForApproval) {
-      return NextResponse.json({
-        error: `Approval blocked. Only ${availableForApproval} day(s) currently available in accrued balance.`,
-      }, { status: 400 });
+    const approvingPaidDays = Number((requestRow.paid_days ?? requestRow.days) || 0);
+    if (approvingPaidDays > 0) {
+      const pendingExcludingCurrent = Math.max(roundLeaveDays(usageResult.pendingUsed - approvingPaidDays), 0);
+      const availableForApproval = Math.max(
+        roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - pendingExcludingCurrent),
+        0
+      );
+      if (approvingPaidDays > availableForApproval) {
+        return NextResponse.json({
+          error: `Approval blocked. Only ${availableForApproval} paid day(s) currently available in accrued balance.`,
+        }, { status: 400 });
+      }
     }
   }
 

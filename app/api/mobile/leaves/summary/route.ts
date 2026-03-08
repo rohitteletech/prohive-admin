@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       .order("name", { ascending: true }),
     session.admin
       .from("employee_leave_requests")
-      .select("id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,reason,status,admin_remark,submitted_at")
+      .select("id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,leave_mode,reason,status,admin_remark,submitted_at")
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
       .gte("from_date", range.start)
@@ -71,6 +71,9 @@ export async function POST(req: NextRequest) {
     from_date: string;
     to_date: string;
     days: number;
+    paid_days?: number | null;
+    unpaid_days?: number | null;
+    leave_mode?: "paid" | "unpaid" | "mixed" | null;
     reason: string;
     status: "pending" | "approved" | "rejected";
     admin_remark: string | null;
@@ -91,8 +94,9 @@ export async function POST(req: NextRequest) {
   const usageByCode = new Map<string, { approvedUsed: number; pendingUsed: number }>();
   requests.forEach((row) => {
     const entry = usageByCode.get(row.leave_policy_code) || { approvedUsed: 0, pendingUsed: 0 };
-    if (row.status === "approved") entry.approvedUsed = roundLeaveDays(entry.approvedUsed + Number(row.days || 0));
-    if (row.status === "pending") entry.pendingUsed = roundLeaveDays(entry.pendingUsed + Number(row.days || 0));
+    const paidDays = Number((row.paid_days ?? row.days) || 0);
+    if (row.status === "approved") entry.approvedUsed = roundLeaveDays(entry.approvedUsed + paidDays);
+    if (row.status === "pending") entry.pendingUsed = roundLeaveDays(entry.pendingUsed + paidDays);
     usageByCode.set(row.leave_policy_code, entry);
   });
 
@@ -158,6 +162,9 @@ export async function POST(req: NextRequest) {
       fromDate: formatDisplayDate(row.from_date),
       toDate: formatDisplayDate(row.to_date),
       days: Number(row.days || 0),
+      paidDays: Number((row.paid_days ?? row.days) || 0),
+      unpaidDays: Number(row.unpaid_days || 0),
+      leaveMode: String(row.leave_mode || "paid"),
       reason: row.reason,
       status: row.status,
       adminRemark: row.admin_remark,

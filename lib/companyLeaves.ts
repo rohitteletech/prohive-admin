@@ -31,6 +31,9 @@ export type LeaveRequestRow = {
   fromDate: string;
   toDate: string;
   days: number;
+  paidDays: number;
+  unpaidDays: number;
+  leaveMode: "paid" | "unpaid" | "mixed";
   reason: string;
   submittedAt: string;
   submittedDate: string;
@@ -151,6 +154,9 @@ export function leaveRequestFromDb(row: Record<string, unknown>): LeaveRequestRo
     fromDate: formatDisplayDate(String(row.from_date || "")),
     toDate: formatDisplayDate(String(row.to_date || "")),
     days: Number(row.days || 0),
+    paidDays: Number((row.paid_days ?? row.days) || 0),
+    unpaidDays: Number(row.unpaid_days || 0),
+    leaveMode: (row.leave_mode === "unpaid" || row.leave_mode === "mixed" ? row.leave_mode : "paid") as "paid" | "unpaid" | "mixed",
     reason: String(row.reason || ""),
     submittedAt: String(row.submitted_at || ""),
     submittedDate: Number.isNaN(submittedAt.getTime()) ? "" : formatDisplayDate(submittedAt),
