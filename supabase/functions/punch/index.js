@@ -243,7 +243,7 @@ Deno.serve(async (req) => {
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("id,company_id,status,mobile_app_status,attendance_mode,bound_device_id")
+    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id")
     .eq("id", payload.employee_id)
     .eq("company_id", payload.company_id)
     .maybeSingle();
@@ -267,7 +267,7 @@ Deno.serve(async (req) => {
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id,office_lat,office_lon,office_radius_m,status")
+    .select("id,name,office_lat,office_lon,office_radius_m,status")
     .eq("id", payload.company_id)
     .maybeSingle();
 
@@ -338,6 +338,8 @@ Deno.serve(async (req) => {
   const insertPayload = {
     company_id: payload.company_id,
     employee_id: payload.employee_id,
+    company_name_snapshot: String(company.name || "").trim() || null,
+    employee_name_snapshot: String(employee.full_name || "").trim() || null,
     device_id: payload.device_id,
     event_id: payload.event_id,
     source: "mobile",

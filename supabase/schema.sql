@@ -167,6 +167,8 @@ create table if not exists public.attendance_punch_events (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   employee_id uuid not null references public.employees(id) on delete cascade,
+  company_name_snapshot text,
+  employee_name_snapshot text,
   device_id text,
   event_id uuid not null unique,
   source text not null default 'mobile' check (source in ('mobile')),
@@ -201,6 +203,8 @@ create table if not exists public.attendance_punch_events (
 );
 
 alter table public.attendance_punch_events
+  add column if not exists company_name_snapshot text,
+  add column if not exists employee_name_snapshot text,
   add column if not exists device_id text;
 
 create index if not exists attendance_punch_events_company_employee_idx
