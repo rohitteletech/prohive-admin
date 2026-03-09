@@ -6,8 +6,8 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { WeeklyOffPolicy, weeklyOffPolicyLabel } from "@/lib/weeklyOff";
 import {
   GOVERNMENT_HOLIDAY_STATE_OPTIONS,
+  GovernmentHolidayItem,
   GovernmentHolidayState,
-  governmentHolidaySuggestions,
 } from "@/lib/governmentHolidays";
 
 export default function ManageHolidaysPage() {
@@ -21,6 +21,9 @@ export default function ManageHolidaysPage() {
   const [weeklyOffPolicy, setWeeklyOffPolicy] = useState<WeeklyOffPolicy>("sunday_only");
   const [govtYear, setGovtYear] = useState<number>(new Date().getFullYear());
   const [govtState, setGovtState] = useState<GovernmentHolidayState>("all_india");
+  const [govtSourceUrl, setGovtSourceUrl] = useState("");
+  const [govtLoading, setGovtLoading] = useState(false);
+  const [govtSuggestions, setGovtSuggestions] = useState<GovernmentHolidayItem[]>([]);
   const [selectedGovtKeys, setSelectedGovtKeys] = useState<string[]>([]);
 
   useEffect(() => {
@@ -66,7 +69,6 @@ export default function ManageHolidaysPage() {
     () => [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
     [rows]
   );
-  const govtSuggestions = useMemo(() => governmentHolidaySuggestions(govtYear, govtState), [govtYear, govtState]);
   const existingKeys = useMemo(
     () => new Set(rows.map((r) => `${r.date}|${r.name.trim().toLowerCase()}`)),
     [rows]
@@ -76,6 +78,43 @@ export default function ManageHolidaysPage() {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
   }
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadGovernmentSuggestions() {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) return;
+
+      setGovtLoading(true);
+      const response = await fetch(`/api/company/settings/holidays/government?year=${govtYear}&state=${govtState}`, {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        rows?: GovernmentHolidayItem[];
+        source?: { url?: string };
+        error?: string;
+      };
+      if (ignore) return;
+      setGovtLoading(false);
+      if (!response.ok) {
+        setGovtSuggestions([]);
+        setGovtSourceUrl("");
+        showToast(result.error || "Unable to load government holidays.");
+        return;
+      }
+      setGovtSuggestions(Array.isArray(result.rows) ? result.rows : []);
+      setGovtSourceUrl(String(result.source?.url || ""));
+      setSelectedGovtKeys([]);
+    }
+
+    void loadGovernmentSuggestions();
+    return () => {
+      ignore = true;
+    };
+  }, [govtYear, govtState]);
 
   function resetForm() {
     setDate("");
@@ -239,7 +278,15 @@ export default function ManageHolidaysPage() {
         <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-slate-900">Government Holiday Suggestions</h3>
-            <span className="text-xs text-slate-500">Pick and add to company calendar</span>
+            <span className="text-xs text-slate-500">
+              {govtSourceUrl ? (
+                <a href={govtSourceUrl} target="_blank" rel="noreferrer" className="underline hover:no-underline">
+                  Official source
+                </a>
+              ) : (
+                "Pick and add to company calendar"
+              )}
+            </span>
           </div>
           <div className="mt-3 grid gap-3 md:grid-cols-4">
             <label className="grid gap-1.5">
@@ -304,6 +351,13 @@ export default function ManageHolidaysPage() {
                 </tr>
               </thead>
               <tbody>
+                {govtLoading && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
+                      Loading official holidays...
+                    </td>
+                  </tr>
+                )}
                 {govtSuggestions.map((row) => {
                   const dedupeKey = `${row.date}|${row.name.trim().toLowerCase()}`;
                   const alreadyAdded = existingKeys.has(dedupeKey);
@@ -327,7 +381,7 @@ export default function ManageHolidaysPage() {
                     </tr>
                   );
                 })}
-                {govtSuggestions.length === 0 && (
+                {govtSuggestions.length === 0 && !govtLoading && (
                   <tr>
                     <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
                       No suggestions available.
