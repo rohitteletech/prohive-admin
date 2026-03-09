@@ -4,6 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { CompanyHoliday, HolidayType } from "@/lib/companyLeaves";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { WeeklyOffPolicy, weeklyOffPolicyLabel } from "@/lib/weeklyOff";
+import {
+  GOVERNMENT_HOLIDAY_STATE_OPTIONS,
+  GovernmentHolidayState,
+  governmentHolidaySuggestions,
+} from "@/lib/governmentHolidays";
 
 export default function ManageHolidaysPage() {
   const [rows, setRows] = useState<CompanyHoliday[]>([]);
@@ -14,6 +19,9 @@ export default function ManageHolidaysPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [weeklyOffPolicy, setWeeklyOffPolicy] = useState<WeeklyOffPolicy>("sunday_only");
+  const [govtYear, setGovtYear] = useState<number>(new Date().getFullYear());
+  const [govtState, setGovtState] = useState<GovernmentHolidayState>("all_india");
+  const [selectedGovtKeys, setSelectedGovtKeys] = useState<string[]>([]);
 
   useEffect(() => {
     let ignore = false;
@@ -58,6 +66,11 @@ export default function ManageHolidaysPage() {
     () => [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)),
     [rows]
   );
+  const govtSuggestions = useMemo(() => governmentHolidaySuggestions(govtYear, govtState), [govtYear, govtState]);
+  const existingKeys = useMemo(
+    () => new Set(rows.map((r) => `${r.date}|${r.name.trim().toLowerCase()}`)),
+    [rows]
+  );
 
   function showToast(message: string) {
     setToast(message);
@@ -68,6 +81,59 @@ export default function ManageHolidaysPage() {
     setDate("");
     setName("");
     setType("company");
+  }
+
+  function toggleGovtSelection(key: string, checked: boolean) {
+    setSelectedGovtKeys((prev) => {
+      if (checked) {
+        if (prev.includes(key)) return prev;
+        return [...prev, key];
+      }
+      return prev.filter((item) => item !== key);
+    });
+  }
+
+  function setAllGovtSelection(checked: boolean) {
+    if (!checked) {
+      setSelectedGovtKeys([]);
+      return;
+    }
+    const selectable = govtSuggestions
+      .filter((row) => !existingKeys.has(`${row.date}|${row.name.trim().toLowerCase()}`))
+      .map((row) => row.key);
+    setSelectedGovtKeys(selectable);
+  }
+
+  function handleAddSelectedGovtHolidays() {
+    const selectedSet = new Set(selectedGovtKeys);
+    const chosen = govtSuggestions.filter((row) => selectedSet.has(row.key));
+    if (chosen.length === 0) return showToast("Select government holidays first.");
+
+    const nextRows: CompanyHoliday[] = [];
+    let skipped = 0;
+    chosen.forEach((item) => {
+      const dedupeKey = `${item.date}|${item.name.trim().toLowerCase()}`;
+      if (existingKeys.has(dedupeKey)) {
+        skipped += 1;
+        return;
+      }
+      nextRows.push({
+        id: typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `h-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        date: item.date,
+        name: item.name,
+        type: item.type,
+      });
+    });
+
+    if (nextRows.length === 0) {
+      return showToast("Selected holidays already exist in calendar.");
+    }
+
+    setRows((prev) => [...prev, ...nextRows]);
+    setSelectedGovtKeys([]);
+    showToast(`Added ${nextRows.length} holiday(s).${skipped ? ` Skipped ${skipped} duplicate(s).` : ""}`);
   }
 
   function handleAddHoliday() {
@@ -168,6 +234,109 @@ export default function ManageHolidaysPage() {
               <option value="second_fourth_saturday_sunday">{weeklyOffPolicyLabel("second_fourth_saturday_sunday")}</option>
             </select>
           </label>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold text-slate-900">Government Holiday Suggestions</h3>
+            <span className="text-xs text-slate-500">Pick and add to company calendar</span>
+          </div>
+          <div className="mt-3 grid gap-3 md:grid-cols-4">
+            <label className="grid gap-1.5">
+              <span className="text-sm text-slate-700">Year</span>
+              <input
+                type="number"
+                min={2000}
+                max={2100}
+                value={govtYear}
+                onChange={(e) => setGovtYear(Number(e.target.value || new Date().getFullYear()))}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-sm text-slate-700">State</span>
+              <select
+                value={govtState}
+                onChange={(e) => setGovtState(e.target.value as GovernmentHolidayState)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+              >
+                {GOVERNMENT_HOLIDAY_STATE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="md:col-span-2 flex items-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAllGovtSelection(true)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Select All
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllGovtSelection(false)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              >
+                Clear
+              </button>
+              <button
+                type="button"
+                onClick={handleAddSelectedGovtHolidays}
+                className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Add Selected
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[720px] text-left">
+              <thead>
+                <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
+                  <th className="px-3 py-2 font-semibold">Keep</th>
+                  <th className="px-3 py-2 font-semibold">Date</th>
+                  <th className="px-3 py-2 font-semibold">Holiday</th>
+                  <th className="px-3 py-2 font-semibold">Scope</th>
+                  <th className="px-3 py-2 font-semibold">Type</th>
+                </tr>
+              </thead>
+              <tbody>
+                {govtSuggestions.map((row) => {
+                  const dedupeKey = `${row.date}|${row.name.trim().toLowerCase()}`;
+                  const alreadyAdded = existingKeys.has(dedupeKey);
+                  return (
+                    <tr key={row.key} className="border-b border-slate-200 text-sm text-slate-700 last:border-b-0">
+                      <td className="px-3 py-2">
+                        <input
+                          type="checkbox"
+                          checked={selectedGovtKeys.includes(row.key)}
+                          disabled={alreadyAdded}
+                          onChange={(e) => toggleGovtSelection(row.key, e.target.checked)}
+                        />
+                      </td>
+                      <td className="px-3 py-2">{row.date}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-semibold text-slate-900">{row.name}</div>
+                        {alreadyAdded && <div className="text-xs text-slate-500">Already added</div>}
+                      </td>
+                      <td className="px-3 py-2 capitalize">{row.scope}</td>
+                      <td className="px-3 py-2 capitalize">{row.type}</td>
+                    </tr>
+                  );
+                })}
+                {govtSuggestions.length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="px-3 py-6 text-center text-sm text-slate-500">
+                      No suggestions available.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="mt-3 grid gap-3 md:grid-cols-4">

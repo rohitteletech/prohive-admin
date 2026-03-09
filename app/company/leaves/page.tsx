@@ -82,8 +82,7 @@ export default function Page() {
     const pending = filtered.filter((r) => r.status === "pending").length;
     const approved = filtered.filter((r) => r.status === "approved").length;
     const rejected = filtered.filter((r) => r.status === "rejected").length;
-    const totalDays = filtered.reduce((acc, r) => acc + r.days, 0);
-    return { total, pending, approved, rejected, totalDays };
+    return { total, pending, approved, rejected };
   }, [filtered]);
 
   async function updateLeaveStatus(id: string, nextStatus: "approved" | "rejected") {
@@ -132,7 +131,7 @@ export default function Page() {
         <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div>
       )}
 
-      <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold tracking-wide text-slate-600">Total Requests</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{stats.total}</p>
@@ -148,10 +147,6 @@ export default function Page() {
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs font-semibold tracking-wide text-slate-600">Rejected</p>
           <p className="mt-1 text-3xl font-semibold tracking-tight text-rose-700">{stats.rejected}</p>
-        </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold tracking-wide text-slate-600">Total Days</p>
-          <p className="mt-1 text-3xl font-semibold tracking-tight text-slate-900">{stats.totalDays}</p>
         </article>
       </section>
 
