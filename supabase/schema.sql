@@ -26,6 +26,8 @@ create table if not exists public.companies (
   office_radius_m integer,
   weekly_off_policy text not null default 'sunday_only'
     check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday')),
+  allow_punch_on_holiday boolean not null default true,
+  allow_punch_on_weekly_off boolean not null default true,
   gst text,
   business_nature text,
   created_at timestamptz not null default now()
@@ -46,6 +48,10 @@ alter table public.companies
 alter table public.companies
   add column if not exists weekly_off_policy text not null default 'sunday_only'
     check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday'));
+
+alter table public.companies
+  add column if not exists allow_punch_on_holiday boolean not null default true,
+  add column if not exists allow_punch_on_weekly_off boolean not null default true;
 
 alter table public.companies enable row level security;
 
@@ -169,6 +175,9 @@ create table if not exists public.attendance_punch_events (
   employee_id uuid not null references public.employees(id) on delete cascade,
   company_name_snapshot text,
   employee_name_snapshot text,
+  day_type text not null default 'working_day'
+    check (day_type in ('working_day', 'holiday', 'weekly_off')),
+  is_extra_work boolean not null default false,
   device_id text,
   event_id uuid not null unique,
   source text not null default 'mobile' check (source in ('mobile')),
@@ -205,6 +214,9 @@ create table if not exists public.attendance_punch_events (
 alter table public.attendance_punch_events
   add column if not exists company_name_snapshot text,
   add column if not exists employee_name_snapshot text,
+  add column if not exists day_type text not null default 'working_day'
+    check (day_type in ('working_day', 'holiday', 'weekly_off')),
+  add column if not exists is_extra_work boolean not null default false,
   add column if not exists device_id text;
 
 create index if not exists attendance_punch_events_company_employee_idx
@@ -242,6 +254,8 @@ create or replace view public.attendance_punch_events_ordered as
 select
   company_name_snapshot,
   employee_name_snapshot,
+  day_type,
+  is_extra_work,
   company_id,
   employee_id,
   device_id,

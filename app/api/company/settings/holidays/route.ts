@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       .order("name", { ascending: true }),
     context.admin
       .from("companies")
-      .select("weekly_off_policy")
+      .select("weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off")
       .eq("id", context.companyId)
       .maybeSingle(),
   ]);
@@ -37,6 +37,8 @@ export async function GET(req: NextRequest) {
       ? holidayResult.data.map((row) => holidayFromDb(row as Record<string, unknown>))
       : [],
     weeklyOffPolicy: normalizeWeeklyOffPolicy(companyResult.data?.weekly_off_policy),
+    allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
+    allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
     weeklyOffPolicyOptions: WEEKLY_OFF_POLICY_VALUES,
   });
 }
@@ -49,10 +51,17 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { holidays?: unknown; weeklyOffPolicy?: unknown };
+  const body = (await req.json().catch(() => ({}))) as {
+    holidays?: unknown;
+    weeklyOffPolicy?: unknown;
+    allowPunchOnHoliday?: unknown;
+    allowPunchOnWeeklyOff?: unknown;
+  };
   const hasHolidays = Object.prototype.hasOwnProperty.call(body, "holidays");
   const hasWeeklyOffPolicy = Object.prototype.hasOwnProperty.call(body, "weeklyOffPolicy");
-  if (!hasHolidays && !hasWeeklyOffPolicy) {
+  const hasAllowPunchOnHoliday = Object.prototype.hasOwnProperty.call(body, "allowPunchOnHoliday");
+  const hasAllowPunchOnWeeklyOff = Object.prototype.hasOwnProperty.call(body, "allowPunchOnWeeklyOff");
+  if (!hasHolidays && !hasWeeklyOffPolicy && !hasAllowPunchOnHoliday && !hasAllowPunchOnWeeklyOff) {
     return NextResponse.json({ error: "No holiday settings provided." }, { status: 400 });
   }
 
@@ -89,17 +98,28 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  const companyUpdatePayload: Record<string, unknown> = {};
+
   if (hasWeeklyOffPolicy) {
     const weeklyOffPolicy = String(body.weeklyOffPolicy || "").trim();
     if (!WEEKLY_OFF_POLICY_VALUES.includes(weeklyOffPolicy as (typeof WEEKLY_OFF_POLICY_VALUES)[number])) {
       return NextResponse.json({ error: "Invalid weekly off policy." }, { status: 400 });
     }
-    const { error: weeklyOffError } = await context.admin
-      .from("companies")
-      .update({ weekly_off_policy: weeklyOffPolicy })
-      .eq("id", context.companyId);
-    if (weeklyOffError) {
-      return NextResponse.json({ error: weeklyOffError.message || "Unable to save weekly off policy." }, { status: 400 });
+    companyUpdatePayload.weekly_off_policy = weeklyOffPolicy;
+  }
+
+  if (hasAllowPunchOnHoliday) {
+    companyUpdatePayload.allow_punch_on_holiday = Boolean(body.allowPunchOnHoliday);
+  }
+
+  if (hasAllowPunchOnWeeklyOff) {
+    companyUpdatePayload.allow_punch_on_weekly_off = Boolean(body.allowPunchOnWeeklyOff);
+  }
+
+  if (Object.keys(companyUpdatePayload).length > 0) {
+    const { error: companyUpdateError } = await context.admin.from("companies").update(companyUpdatePayload).eq("id", context.companyId);
+    if (companyUpdateError) {
+      return NextResponse.json({ error: companyUpdateError.message || "Unable to save holiday punch policy." }, { status: 400 });
     }
   }
 
@@ -112,7 +132,7 @@ export async function PUT(req: NextRequest) {
       .order("name", { ascending: true }),
     context.admin
       .from("companies")
-      .select("weekly_off_policy")
+      .select("weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off")
       .eq("id", context.companyId)
       .maybeSingle(),
   ]);
@@ -130,6 +150,8 @@ export async function PUT(req: NextRequest) {
       ? holidayResult.data.map((row) => holidayFromDb(row as Record<string, unknown>))
       : [],
     weeklyOffPolicy: normalizeWeeklyOffPolicy(companyResult.data?.weekly_off_policy),
+    allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
+    allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
     weeklyOffPolicyOptions: WEEKLY_OFF_POLICY_VALUES,
   });
 }

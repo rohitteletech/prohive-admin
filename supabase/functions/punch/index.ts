@@ -50,6 +50,21 @@ function parseReasonCodes(value: unknown) {
     .filter(Boolean);
 }
 
+function isWeeklyOffDate(dateIso: string, policy: unknown) {
+  const weeklyPolicy = String(policy || "sunday_only");
+  const date = new Date(`${dateIso}T00:00:00.000Z`);
+  const day = date.getUTCDay();
+  if (weeklyPolicy === "sunday_only") return day === 0;
+  if (weeklyPolicy === "saturday_sunday") return day === 0 || day === 6;
+  if (weeklyPolicy === "second_fourth_saturday_sunday") {
+    if (day === 0) return true;
+    if (day !== 6) return false;
+    const weekOfMonth = Math.floor((date.getUTCDate() - 1) / 7) + 1;
+    return weekOfMonth === 2 || weekOfMonth === 4;
+  }
+  return day === 0;
+}
+
 function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const earthRadius = 6371000;
@@ -278,7 +293,9 @@ Deno.serve(async (req) => {
 
   const { data: company, error: companyError } = await supabase
     .from("companies")
-    .select("id,name,office_lat,office_lon,office_radius_m,status")
+    .select(
+      "id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off"
+    )
     .eq("id", payload.company_id)
     .maybeSingle();
 
@@ -288,6 +305,64 @@ Deno.serve(async (req) => {
 
   if (company.status === "suspended") {
     return json({ code: "COMPANY_SUSPENDED", error: "Company is suspended." }, 403);
+  }
+
+  const currentPunchIso = toIsoFromMs(payload.device_time_ms) || new Date().toISOString();
+  const punchDate = isoDateInTimeZone(currentPunchIso, payload.device_time_zone);
+  const { data: leaveOnDate } = await supabase
+    .from("employee_leave_requests")
+    .select("id")
+    .eq("company_id", payload.company_id)
+    .eq("employee_id", payload.employee_id)
+    .eq("status", "approved")
+    .lte("from_date", punchDate)
+    .gte("to_date", punchDate)
+    .limit(1)
+    .maybeSingle();
+
+  if (leaveOnDate?.id) {
+    return json(
+      {
+        code: "ON_APPROVED_LEAVE",
+        error: "You are on approved leave for this date. Punch is not allowed.",
+      },
+      409
+    );
+  }
+
+  const { data: holidayOnDate } = await supabase
+    .from("company_holidays")
+    .select("id,name")
+    .eq("company_id", payload.company_id)
+    .eq("holiday_date", punchDate)
+    .limit(1)
+    .maybeSingle();
+
+  const weeklyOff = isWeeklyOffDate(punchDate, company.weekly_off_policy);
+  const isHoliday = Boolean(holidayOnDate?.id);
+  const dayType = isHoliday ? "holiday" : weeklyOff ? "weekly_off" : "working_day";
+  const isExtraWork = dayType !== "working_day";
+  const allowOnHoliday = company.allow_punch_on_holiday !== false;
+  const allowOnWeeklyOff = company.allow_punch_on_weekly_off !== false;
+
+  if (isHoliday && !allowOnHoliday) {
+    return json(
+      {
+        code: "HOLIDAY_PUNCH_BLOCKED",
+        error: "Punch is not allowed on company holidays.",
+      },
+      403
+    );
+  }
+
+  if (weeklyOff && !allowOnWeeklyOff) {
+    return json(
+      {
+        code: "WEEKLY_OFF_PUNCH_BLOCKED",
+        error: "Punch is not allowed on weekly off.",
+      },
+      403
+    );
   }
 
   const { data: lastEvent } = await supabase
@@ -306,7 +381,7 @@ Deno.serve(async (req) => {
 
   if (lastEvent?.punch_type === payload.punch_type) {
     const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
-    const currentPunchAt = toIsoFromMs(payload.device_time_ms) || new Date().toISOString();
+    const currentPunchAt = currentPunchIso;
     const isPreviousDayOpenPunch =
       payload.punch_type === "in" &&
       Boolean(lastPunchAt) &&
@@ -356,6 +431,8 @@ Deno.serve(async (req) => {
     employee_id: payload.employee_id,
     company_name_snapshot: String(company.name || "").trim() || null,
     employee_name_snapshot: String(employee.full_name || "").trim() || null,
+    day_type: dayType,
+    is_extra_work: isExtraWork,
     device_id: payload.device_id,
     event_id: payload.event_id,
     source: "mobile",
