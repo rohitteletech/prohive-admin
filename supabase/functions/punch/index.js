@@ -81,6 +81,29 @@ function buildApproval({
   distanceFromOfficeM,
 }) {
   const reasons = [];
+  const incomingReasonCodes = parseReasonCodes(payload.approval_reason_codes);
+
+  if (!payload.is_offline && !String(payload.address || "").trim()) {
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        code: "ADDRESS_REQUIRED",
+        error: "Address is required for online punch.",
+      },
+    };
+  }
+
+  if (incomingReasonCodes.includes("MOCK_LOCATION") || incomingReasonCodes.includes("FAKE_GPS")) {
+    return {
+      ok: false,
+      status: 403,
+      body: {
+        code: "MOCK_LOCATION_DETECTED",
+        error: "Mock or fake GPS is not allowed for punch.",
+      },
+    };
+  }
 
   if (employee.attendance_mode === "office_only") {
     if (
@@ -115,8 +138,16 @@ function buildApproval({
     reasons.push("GPS_WEAK_ACCURACY");
   }
 
+  if (
+    payload.clock_drift_ms != null &&
+    Number.isFinite(Number(payload.clock_drift_ms)) &&
+    Math.abs(Number(payload.clock_drift_ms)) > 120000
+  ) {
+    reasons.push("CLOCK_DRIFT_EXCEEDED");
+  }
+
   if (payload.is_offline) {
-    reasons.push(...parseReasonCodes(payload.approval_reason_codes));
+    reasons.push(...incomingReasonCodes);
     if (payload.requires_approval) {
       reasons.push("CLIENT_MARKED_REQUIRES_APPROVAL");
     }
@@ -158,6 +189,7 @@ Deno.serve(async (req) => {
   const payload = {
     company_id: String(body.company_id || "").trim(),
     employee_id: String(body.employee_id || "").trim(),
+    device_id: String(body.device_id || "").trim(),
     event_id: String(body.event_id || "").trim(),
     punch_type: String(body.punch_type || "").trim(),
     lat: Number(body.lat),
@@ -187,6 +219,7 @@ Deno.serve(async (req) => {
   if (
     !payload.company_id ||
     !payload.employee_id ||
+    !payload.device_id ||
     !payload.event_id ||
     (payload.punch_type !== "in" && payload.punch_type !== "out") ||
     !Number.isFinite(payload.lat) ||
@@ -210,7 +243,7 @@ Deno.serve(async (req) => {
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("id,company_id,status,mobile_app_status,attendance_mode")
+    .select("id,company_id,status,mobile_app_status,attendance_mode,bound_device_id")
     .eq("id", payload.employee_id)
     .eq("company_id", payload.company_id)
     .maybeSingle();
@@ -221,6 +254,15 @@ Deno.serve(async (req) => {
 
   if (employee.status !== "active" || employee.mobile_app_status === "blocked") {
     return json({ code: "ACCESS_BLOCKED", error: "Employee is not allowed to punch." }, 403);
+  }
+
+  const boundDeviceId = String(employee.bound_device_id || "").trim();
+  if (!boundDeviceId) {
+    return json({ code: "DEVICE_NOT_BOUND", error: "Device is not registered for this employee." }, 403);
+  }
+
+  if (boundDeviceId !== payload.device_id) {
+    return json({ code: "DEVICE_MISMATCH", error: "Punch is not allowed from this device." }, 403);
   }
 
   const { data: company, error: companyError } = await supabase
@@ -296,6 +338,7 @@ Deno.serve(async (req) => {
   const insertPayload = {
     company_id: payload.company_id,
     employee_id: payload.employee_id,
+    device_id: payload.device_id,
     event_id: payload.event_id,
     source: "mobile",
     punch_type: payload.punch_type,

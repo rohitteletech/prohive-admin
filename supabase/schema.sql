@@ -167,6 +167,7 @@ create table if not exists public.attendance_punch_events (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
   employee_id uuid not null references public.employees(id) on delete cascade,
+  device_id text,
   event_id uuid not null unique,
   source text not null default 'mobile' check (source in ('mobile')),
   punch_type text not null check (punch_type in ('in', 'out')),
@@ -198,6 +199,9 @@ create table if not exists public.attendance_punch_events (
   raw_payload jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
+
+alter table public.attendance_punch_events
+  add column if not exists device_id text;
 
 create index if not exists attendance_punch_events_company_employee_idx
   on public.attendance_punch_events(company_id, employee_id, server_received_at desc);
