@@ -238,6 +238,45 @@ to authenticated
 using (true)
 with check (true);
 
+create or replace view public.attendance_punch_events_ordered as
+select
+  company_name_snapshot,
+  employee_name_snapshot,
+  company_id,
+  employee_id,
+  device_id,
+  event_id,
+  source,
+  punch_type,
+  attendance_mode_snapshot,
+  office_lat_snapshot,
+  office_lon_snapshot,
+  office_radius_m_snapshot,
+  lat,
+  lon,
+  address_text,
+  accuracy_m,
+  distance_from_office_m,
+  is_offline,
+  device_time_ms,
+  device_time_at,
+  estimated_time_ms,
+  estimated_time_at,
+  trusted_anchor_time_ms,
+  trusted_anchor_time_at,
+  trusted_anchor_elapsed_ms,
+  elapsed_ms,
+  clock_drift_ms,
+  server_received_at,
+  effective_punch_at,
+  requires_approval,
+  approval_status,
+  approval_reason_codes,
+  raw_payload,
+  created_at,
+  id
+from public.attendance_punch_events;
+
 create table if not exists public.company_leave_policies (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
