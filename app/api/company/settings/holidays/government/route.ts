@@ -143,36 +143,42 @@ function parseMaharashtraCalendarText(rawHtml: string, year: number) {
   const rows: ParsedHoliday[] = [];
   const seen = new Set<string>();
 
-  const regex = /([A-Za-z][A-Za-z0-9 .,&()'/-]{2,}?)\s+(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4})/g;
-  let match: RegExpExecArray | null = regex.exec(text);
-  while (match) {
-    const name = String(match[1] || "").replace(/\s+/g, " ").trim();
-    const parsedDate = parseLongDate(String(match[2] || ""));
-    if (!parsedDate || parsedDate.year !== year) {
+  const patterns = [
+    /([A-Za-z][A-Za-z0-9 .,&()'/-]{2,}?)\s+(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4})/g, // Name Date
+    /(\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4})\s+([A-Za-z][A-Za-z0-9 .,&()'/-]{2,}?)(?=\s+\d{1,2}(?:st|nd|rd|th)?\s+[A-Za-z]+\s+\d{4}|$)/g, // Date Name
+  ];
+
+  patterns.forEach((regex, idx) => {
+    let match: RegExpExecArray | null = regex.exec(text);
+    while (match) {
+      const parsedDate = parseLongDate(String(match[idx === 0 ? 2 : 1] || ""));
+      const name = String(match[idx === 0 ? 1 : 2] || "").replace(/\s+/g, " ").trim();
+      if (!parsedDate || parsedDate.year !== year) {
+        match = regex.exec(text);
+        continue;
+      }
+      if (name.length < 3) {
+        match = regex.exec(text);
+        continue;
+      }
+      if (/public holiday|bank holiday|sr\.?\s*no|day|date|maharashtra/i.test(name)) {
+        match = regex.exec(text);
+        continue;
+      }
+      const date = toIsoDate(parsedDate.year, parsedDate.month, parsedDate.day);
+      const dedupe = `${date}|${name.toLowerCase()}`;
+      if (!seen.has(dedupe)) {
+        seen.add(dedupe);
+        rows.push({
+          date,
+          name,
+          type: "festival",
+          scope: "state",
+        });
+      }
       match = regex.exec(text);
-      continue;
     }
-    if (name.length < 3) {
-      match = regex.exec(text);
-      continue;
-    }
-    if (/public holiday|bank holiday|sr\.?\s*no|day|date/i.test(name)) {
-      match = regex.exec(text);
-      continue;
-    }
-    const date = toIsoDate(parsedDate.year, parsedDate.month, parsedDate.day);
-    const dedupe = `${date}|${name.toLowerCase()}`;
-    if (!seen.has(dedupe)) {
-      seen.add(dedupe);
-      rows.push({
-        date,
-        name,
-        type: "festival",
-        scope: "state",
-      });
-    }
-    match = regex.exec(text);
-  }
+  });
 
   return rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.name.localeCompare(b.name)));
 }
@@ -190,6 +196,30 @@ async function fetchMaharashtraOfficialHolidays(year: number) {
     throw new Error("Unable to parse Maharashtra holidays from official source.");
   }
   return parsed;
+}
+
+async function fetchMaharashtraWithFallback(year: number) {
+  try {
+    const rows = await fetchMaharashtraOfficialHolidays(year);
+    return {
+      rows,
+      source: {
+        name: "Maharashtra Government Public Holidays",
+        url: "https://mmrda.maharashtra.gov.in/en/public-holidays",
+      },
+      fallbackUsed: false,
+    };
+  } catch {
+    const rows = await fetchOfficialHolidays(year);
+    return {
+      rows,
+      source: {
+        name: "Ministry of Parliamentary Affairs (Government of India) - fallback",
+        url: `https://mpa.gov.in/media/calendar?date=${year}-01`,
+      },
+      fallbackUsed: true,
+    };
+  }
 }
 
 export async function GET(req: NextRequest) {
@@ -224,15 +254,13 @@ export async function GET(req: NextRequest) {
     }
 
     if (state === "maharashtra") {
-      const rows = await fetchMaharashtraOfficialHolidays(year);
+      const resolved = await fetchMaharashtraWithFallback(year);
       return NextResponse.json({
         year,
         state,
-        source: {
-          name: "Maharashtra Government Public Holidays",
-          url: "https://mmrda.maharashtra.gov.in/en/public-holidays",
-        },
-        rows: rows.map((row) => ({
+        source: resolved.source,
+        fallbackUsed: resolved.fallbackUsed,
+        rows: resolved.rows.map((row) => ({
           key: `${row.date}|${row.name.toLowerCase()}`,
           date: row.date,
           name: row.name,
