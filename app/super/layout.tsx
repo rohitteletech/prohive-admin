@@ -46,6 +46,7 @@ export default function SuperLayout({ children }: { children: React.ReactNode })
 
         <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
           <Link href="/super/companies">Companies</Link>
+          <Link href="/super/holidays">Holiday Templates</Link>
         </div>
 
         <button

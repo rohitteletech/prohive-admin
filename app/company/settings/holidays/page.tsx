@@ -22,6 +22,7 @@ export default function ManageHolidaysPage() {
   const [govtYear, setGovtYear] = useState<number>(new Date().getFullYear());
   const [govtState, setGovtState] = useState<GovernmentHolidayState>("all_india");
   const [govtSourceUrl, setGovtSourceUrl] = useState("");
+  const [govtSourceName, setGovtSourceName] = useState("");
   const [govtLoading, setGovtLoading] = useState(false);
   const [govtSuggestions, setGovtSuggestions] = useState<GovernmentHolidayItem[]>([]);
   const [selectedGovtKeys, setSelectedGovtKeys] = useState<string[]>([]);
@@ -94,7 +95,7 @@ export default function ManageHolidaysPage() {
       });
       const result = (await response.json().catch(() => ({}))) as {
         rows?: GovernmentHolidayItem[];
-        source?: { url?: string };
+        source?: { name?: string; url?: string };
         error?: string;
       };
       if (ignore) return;
@@ -102,11 +103,13 @@ export default function ManageHolidaysPage() {
       if (!response.ok) {
         setGovtSuggestions([]);
         setGovtSourceUrl("");
+        setGovtSourceName("");
         showToast(result.error || "Unable to load government holidays.");
         return;
       }
       setGovtSuggestions(Array.isArray(result.rows) ? result.rows : []);
       setGovtSourceUrl(String(result.source?.url || ""));
+      setGovtSourceName(String(result.source?.name || ""));
       setSelectedGovtKeys([]);
     }
 
@@ -281,8 +284,10 @@ export default function ManageHolidaysPage() {
             <span className="text-xs text-slate-500">
               {govtSourceUrl ? (
                 <a href={govtSourceUrl} target="_blank" rel="noreferrer" className="underline hover:no-underline">
-                  Official source
+                  {govtSourceName || "Source"}
                 </a>
+              ) : govtSourceName ? (
+                govtSourceName
               ) : (
                 "Pick and add to company calendar"
               )}
