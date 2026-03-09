@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
-const APPROVED_STATUSES = ["auto_approved", "approved"];
-
 function normalizeTimeZone(value: unknown) {
   return normalizeTimeZoneToIndia(value);
 }
@@ -61,10 +59,10 @@ export async function POST(req: NextRequest) {
     session.admin.from("companies").select("name,company_tagline").eq("id", session.employee.company_id).maybeSingle(),
     session.admin
       .from("attendance_punch_events")
-      .select("punch_type,effective_punch_at,server_received_at")
+      .select("punch_type,effective_punch_at,server_received_at,approval_status")
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
-      .in("approval_status", APPROVED_STATUSES)
+      .neq("approval_status", "rejected")
       .gte("server_received_at", fromIso)
       .lt("server_received_at", toIso)
       .order("server_received_at", { ascending: true }),
@@ -84,6 +82,7 @@ export async function POST(req: NextRequest) {
     punch_type: "in" | "out";
     effective_punch_at: string | null;
     server_received_at: string;
+    approval_status: "auto_approved" | "pending_approval" | "approved" | "rejected";
   }>).filter((row) => {
     const punchAt = row.effective_punch_at || row.server_received_at;
     return punchAt ? isoDateInIndia(punchAt) === today : false;
