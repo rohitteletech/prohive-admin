@@ -10,6 +10,14 @@ type ParsedHoliday = {
   scope: "national" | "state";
 };
 
+function builtInNationalFallback(year: number): ParsedHoliday[] {
+  return [
+    { date: toIsoDate(year, 1, 26), name: "Republic Day", type: "national", scope: "national" },
+    { date: toIsoDate(year, 8, 15), name: "Independence Day", type: "national", scope: "national" },
+    { date: toIsoDate(year, 10, 2), name: "Gandhi Jayanti", type: "national", scope: "national" },
+  ];
+}
+
 const MONTH_MAP: Record<string, number> = {
   january: 1,
   february: 2,
@@ -210,12 +218,19 @@ async function fetchMaharashtraWithFallback(year: number) {
       fallbackUsed: false,
     };
   } catch {
-    const rows = await fetchOfficialHolidays(year);
+    let rows: ParsedHoliday[] = [];
+    try {
+      rows = await fetchOfficialHolidays(year);
+    } catch {
+      rows = builtInNationalFallback(year);
+    }
     return {
       rows,
       source: {
-        name: "Ministry of Parliamentary Affairs (Government of India) - fallback",
-        url: `https://mpa.gov.in/media/calendar?date=${year}-01`,
+        name: rows.length > 3
+          ? "Ministry of Parliamentary Affairs (Government of India) - fallback"
+          : "Built-in National Holidays Fallback",
+        url: rows.length > 3 ? `https://mpa.gov.in/media/calendar?date=${year}-01` : "",
       },
       fallbackUsed: true,
     };
@@ -235,14 +250,27 @@ export async function GET(req: NextRequest) {
 
   try {
     if (state === "all_india") {
-      const rows = await fetchOfficialHolidays(year);
+      let rows: ParsedHoliday[] = [];
+      let fallbackUsed = false;
+      let source = {
+        name: "Ministry of Parliamentary Affairs (Government of India)",
+        url: `https://mpa.gov.in/media/calendar?date=${year}-01`,
+      };
+      try {
+        rows = await fetchOfficialHolidays(year);
+      } catch {
+        rows = builtInNationalFallback(year);
+        fallbackUsed = true;
+        source = {
+          name: "Built-in National Holidays Fallback",
+          url: "",
+        };
+      }
       return NextResponse.json({
         year,
         state,
-        source: {
-          name: "Ministry of Parliamentary Affairs (Government of India)",
-          url: `https://mpa.gov.in/media/calendar?date=${year}-01`,
-        },
+        source,
+        fallbackUsed,
         rows: rows.map((row) => ({
           key: `${row.date}|${row.name.toLowerCase()}`,
           date: row.date,
