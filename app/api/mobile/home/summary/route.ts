@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShifts";
+
+function timeToMinutes(value: string) {
+  const [h, m] = String(value || "").split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function normalizeText(value: string | null | undefined) {
+  return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
 
 function normalizeTimeZone(value: unknown) {
   return normalizeTimeZoneToIndia(value);
@@ -49,14 +60,23 @@ export async function POST(req: NextRequest) {
   const today = currentDateInTimeZone(timeZone);
   const { fromIso, toIso } = buildQueryWindow(today);
 
-  const [employeeResult, companyResult, eventsResult] = await Promise.all([
+  const [employeeResult, companyResult, shiftResult, eventsResult] = await Promise.all([
     session.admin
       .from("employees")
-      .select("full_name,employee_code,designation")
+      .select("full_name,employee_code,designation,shift_name")
       .eq("id", session.employee.id)
       .eq("company_id", session.employee.company_id)
       .maybeSingle(),
-    session.admin.from("companies").select("name,company_tagline").eq("id", session.employee.company_id).maybeSingle(),
+    session.admin
+      .from("companies")
+      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off")
+      .eq("id", session.employee.company_id)
+      .maybeSingle(),
+    session.admin
+      .from("company_shift_definitions")
+      .select("id,name,type,start_time,end_time,grace_mins,early_window_mins,min_work_before_out_mins,active")
+      .eq("company_id", session.employee.company_id)
+      .order("created_at", { ascending: true }),
     session.admin
       .from("attendance_punch_events")
       .select("punch_type,effective_punch_at,server_received_at,approval_status")
@@ -73,6 +93,9 @@ export async function POST(req: NextRequest) {
   }
   if (companyResult.error) {
     return NextResponse.json({ error: companyResult.error.message || "Unable to load company profile." }, { status: 400 });
+  }
+  if (shiftResult.error) {
+    return NextResponse.json({ error: shiftResult.error.message || "Unable to load shift configuration." }, { status: 400 });
   }
   if (eventsResult.error) {
     return NextResponse.json({ error: eventsResult.error.message || "Unable to load today attendance." }, { status: 400 });
@@ -93,6 +116,49 @@ export async function POST(req: NextRequest) {
   const checkInAt = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
   const checkOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
   const currentStatus = checkInAt ? (checkOutAt ? "COMPLETED" : "PUNCHED_IN") : "NOT_PUNCHED_IN";
+  const employeeShiftName = employeeResult.data?.shift_name || "General";
+
+  const availableShifts = ((shiftResult.data || []) as Array<{
+    id: string;
+    name: string;
+    type: string;
+    start_time: string;
+    end_time: string;
+    grace_mins: number;
+    early_window_mins: number;
+    min_work_before_out_mins: number;
+    active: boolean;
+  }>)
+    .filter((row) => row.active !== false)
+    .map((row) => ({
+      name: row.name,
+      type: row.type,
+      startTime: row.start_time,
+      graceMins: Number(row.grace_mins || 0),
+      earlyWindowMins: Number(row.early_window_mins || 0),
+      minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
+    }));
+
+  const defaultShifts = DEFAULT_COMPANY_SHIFTS.map((row) => ({
+    name: row.name,
+    type: row.type,
+    startTime: row.start,
+    graceMins: row.graceMins,
+    earlyWindowMins: row.earlyWindowMins,
+    minWorkBeforeOutMins: row.minWorkBeforeOutMins,
+  }));
+
+  const shiftPool = availableShifts.length ? availableShifts : defaultShifts;
+  const normalizedShiftName = normalizeText(employeeShiftName);
+  const matchedShift =
+    shiftPool.find((row) => {
+      const name = normalizeText(row.name);
+      const type = normalizeText(row.type);
+      return normalizedShiftName ? normalizedShiftName === name || normalizedShiftName === type : false;
+    }) ||
+    shiftPool.find((row) => normalizeText(row.name) === "general") ||
+    shiftPool[0];
+  const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
 
   return NextResponse.json({
     employee: {
@@ -100,6 +166,7 @@ export async function POST(req: NextRequest) {
       employeeCode: employeeResult.data?.employee_code || session.employee.employee_code,
       fullName: employeeResult.data?.full_name || session.employee.full_name,
       designation: employeeResult.data?.designation || "",
+      shiftName: employeeShiftName,
       companyName: companyResult.data?.name || "",
       companyTagline: companyResult.data?.company_tagline || "",
       company_tagline: companyResult.data?.company_tagline || "",
@@ -110,6 +177,16 @@ export async function POST(req: NextRequest) {
       punchInAt: checkInAt,
       punchOutAt: checkOutAt,
       workingMinutes: workMinutes(checkInAt, checkOutAt),
+    },
+    config: {
+      shiftName: employeeShiftName,
+      shiftStartMin,
+      graceMins: matchedShift?.graceMins || 10,
+      earlyWindowMin: matchedShift?.earlyWindowMins || 15,
+      minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || 60,
+      weeklyOffPolicy: companyResult.data?.weekly_off_policy || "sunday_only",
+      allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
+      allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
     },
   });
 }

@@ -7,6 +7,8 @@ export type CompanyShift = {
   start: string;
   end: string;
   graceMins: number;
+  earlyWindowMins: number;
+  minWorkBeforeOutMins: number;
   active: boolean;
 };
 
@@ -20,6 +22,8 @@ export const DEFAULT_COMPANY_SHIFTS: CompanyShift[] = [
     start: "09:00",
     end: "18:00",
     graceMins: 10,
+    earlyWindowMins: 15,
+    minWorkBeforeOutMins: 60,
     active: true,
   },
   {
@@ -29,6 +33,8 @@ export const DEFAULT_COMPANY_SHIFTS: CompanyShift[] = [
     start: "06:00",
     end: "15:00",
     graceMins: 10,
+    earlyWindowMins: 15,
+    minWorkBeforeOutMins: 60,
     active: true,
   },
   {
@@ -38,9 +44,29 @@ export const DEFAULT_COMPANY_SHIFTS: CompanyShift[] = [
     start: "14:00",
     end: "22:00",
     graceMins: 10,
+    earlyWindowMins: 15,
+    minWorkBeforeOutMins: 60,
     active: true,
   },
 ];
+
+function normalizeShift(row: Partial<CompanyShift>, fallback: CompanyShift): CompanyShift {
+  return {
+    id: String(row.id || fallback.id),
+    name: String(row.name || fallback.name),
+    type: String(row.type || fallback.type),
+    start: String(row.start || fallback.start),
+    end: String(row.end || fallback.end),
+    graceMins: Number.isFinite(Number(row.graceMins)) ? Number(row.graceMins) : fallback.graceMins,
+    earlyWindowMins: Number.isFinite(Number(row.earlyWindowMins))
+      ? Number(row.earlyWindowMins)
+      : fallback.earlyWindowMins,
+    minWorkBeforeOutMins: Number.isFinite(Number(row.minWorkBeforeOutMins))
+      ? Number(row.minWorkBeforeOutMins)
+      : fallback.minWorkBeforeOutMins,
+    active: typeof row.active === "boolean" ? row.active : fallback.active,
+  };
+}
 
 function hasWindow() {
   return typeof window !== "undefined";
@@ -55,7 +81,7 @@ export function loadCompanyShifts(): CompanyShift[] {
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return DEFAULT_COMPANY_SHIFTS;
-    return parsed as CompanyShift[];
+    return parsed.map((row, index) => normalizeShift(row as Partial<CompanyShift>, DEFAULT_COMPANY_SHIFTS[index] || DEFAULT_COMPANY_SHIFTS[0]));
   } catch {
     return DEFAULT_COMPANY_SHIFTS;
   }

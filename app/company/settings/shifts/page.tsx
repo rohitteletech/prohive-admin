@@ -1,13 +1,9 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { CompanyEmployee, loadCompanyEmployees } from "@/lib/companyEmployees";
-import {
-  COMPANY_SHIFT_STORAGE_KEY,
-  CompanyShift,
-  loadCompanyShifts,
-  saveCompanyShifts,
-} from "@/lib/companyShifts";
+import { CompanyShift, DEFAULT_COMPANY_SHIFTS, loadCompanyShifts, saveCompanyShifts } from "@/lib/companyShifts";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ShiftRow = CompanyShift;
 
@@ -54,10 +50,7 @@ function computeWorkforceByShift(rows: ShiftRow[], employees: CompanyEmployee[])
     });
 
     if (!matched) {
-      matched =
-        activeRows.find((r) => normalizeText(r.name) === "general") ||
-        activeRows[0] ||
-        rows[0];
+      matched = activeRows.find((r) => normalizeText(r.name) === "general") || activeRows[0] || rows[0];
     }
 
     out[matched.id] = (out[matched.id] || 0) + 1;
@@ -67,28 +60,61 @@ function computeWorkforceByShift(rows: ShiftRow[], employees: CompanyEmployee[])
 }
 
 export default function Page() {
-  // Use deterministic initial rows to avoid SSR/client hydration mismatch.
   const [rows, setRows] = useState<ShiftRow[]>(() => loadCompanyShifts());
-
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ShiftRow | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [employees, setEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
   const [extraHoursPolicy, setExtraHoursPolicy] = useState<"yes" | "no">("yes");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function loadRows() {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token;
+      if (!accessToken) {
+        if (!ignore) {
+          setRows(loadCompanyShifts());
+          setLoading(false);
+          setToast("Company session not found. Showing last local shift copy.");
+        }
+        return;
+      }
+
+      const response = await fetch("/api/company/settings/shifts", {
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      const result = (await response.json().catch(() => ({}))) as { rows?: ShiftRow[]; error?: string };
+      if (ignore) return;
+      setLoading(false);
+      if (!response.ok) {
+        setRows(loadCompanyShifts());
+        setToast(result.error || "Unable to load shift settings. Showing last local shift copy.");
+        return;
+      }
+      const nextRows = Array.isArray(result.rows) && result.rows.length ? result.rows : DEFAULT_COMPANY_SHIFTS;
+      setRows(nextRows);
+      saveCompanyShifts(nextRows);
+    }
+
+    void loadRows();
+    return () => {
+      ignore = true;
+    };
+  }, []);
 
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
-      if (e.key && e.key !== "phv_company_employees_v1" && e.key !== COMPANY_SHIFT_STORAGE_KEY) return;
+      if (e.key && e.key !== "phv_company_employees_v1") return;
       setEmployees(loadCompanyEmployees());
-      if (!e.key || e.key === COMPANY_SHIFT_STORAGE_KEY) setRows(loadCompanyShifts());
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
-
-  useEffect(() => {
-    saveCompanyShifts(rows);
-  }, [rows]);
 
   const workforceByShift = useMemo(() => computeWorkforceByShift(rows, employees), [rows, employees]);
 
@@ -102,7 +128,7 @@ export default function Page() {
 
   function showToast(message: string) {
     setToast(message);
-    window.setTimeout(() => setToast(null), 1600);
+    window.setTimeout(() => setToast(null), 1800);
   }
 
   function startEdit(row: ShiftRow) {
@@ -117,7 +143,6 @@ export default function Page() {
 
   function saveEdit() {
     if (!draft) return;
-
     if (!draft.name.trim()) return showToast("Shift name is required");
     if (!draft.type.trim()) return showToast("Shift type is required");
     if (!draft.start || !draft.end) return showToast("Shift start/end time is required");
@@ -127,11 +152,15 @@ export default function Page() {
     if (start === null || end === null) return showToast("Invalid shift time format");
     if (start === end) return showToast("Start and End time cannot be same");
     if (draft.graceMins < 0 || draft.graceMins > 120) return showToast("Grace minutes must be between 0 and 120");
+    if (draft.earlyWindowMins < 0 || draft.earlyWindowMins > 240) return showToast("Early window must be between 0 and 240");
+    if (draft.minWorkBeforeOutMins < 0 || draft.minWorkBeforeOutMins > 1440) {
+      return showToast("Min work before out must be between 0 and 1440");
+    }
 
     setRows((prev) => prev.map((r) => (r.id === draft.id ? draft : r)));
     setEditingId(null);
     setDraft(null);
-    showToast("Shift updated");
+    showToast("Shift updated locally. Save Shifts to publish.");
   }
 
   function addShift() {
@@ -143,6 +172,8 @@ export default function Page() {
       start: "09:00",
       end: "18:00",
       graceMins: 10,
+      earlyWindowMins: 15,
+      minWorkBeforeOutMins: 60,
       active: true,
     };
     setRows((prev) => [next, ...prev]);
@@ -156,11 +187,39 @@ export default function Page() {
       setDraft(null);
     }
     setRows((prev) => prev.filter((r) => r.id !== id));
-    showToast("Shift deleted");
+    showToast("Shift removed locally. Save Shifts to publish.");
   }
 
   function setField<K extends keyof ShiftRow>(key: K, value: ShiftRow[K]) {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
+  }
+
+  async function persistRows(nextRows: ShiftRow[]) {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token;
+    if (!accessToken) {
+      return showToast("Company session not found. Please login again.");
+    }
+
+    setSaving(true);
+    const response = await fetch("/api/company/settings/shifts", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ rows: nextRows }),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; rows?: ShiftRow[]; error?: string };
+    setSaving(false);
+    if (!response.ok || !result.ok) {
+      return showToast(result.error || "Unable to save shifts.");
+    }
+    const savedRows = Array.isArray(result.rows) && result.rows.length ? result.rows : nextRows;
+    setRows(savedRows);
+    saveCompanyShifts(savedRows);
+    showToast("Shift settings saved.");
   }
 
   return (
@@ -168,13 +227,10 @@ export default function Page() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Shift Control</h1>
         <p className="mt-2 text-sm text-zinc-600">Define, rename, and maintain shift type and timing rules for your company.</p>
+        {loading && <p className="mt-2 text-sm text-zinc-500">Loading saved shift settings...</p>}
       </div>
 
-      {toast && (
-        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          {toast}
-        </div>
-      )}
+      {toast && <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div>}
 
       <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -222,31 +278,43 @@ export default function Page() {
             >
               Add Shift
             </button>
+            <button
+              type="button"
+              onClick={() => void persistRows(rows)}
+              disabled={saving || loading}
+              className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2 text-sm font-semibold text-sky-800 hover:bg-sky-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save Shifts"}
+            </button>
           </div>
         </div>
 
-        <div className="mt-4">
-          <table className="w-full table-fixed text-left">
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[1240px] table-fixed text-left">
             <colgroup>
               <col className="w-[10%]" />
+              <col className="w-[9%]" />
               <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[13%]" />
-              <col className="w-[13%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
               <col className="w-[9%]" />
               <col className="w-[8%]" />
-              <col className="w-[9%]" />
-              <col className="w-[18%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+              <col className="w-[14%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Shift Name</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap text-center">Workforce</th>
-                <th className="px-5 py-3 font-semibold whitespace-nowrap">Shift Type</th>
+                <th className="px-4 py-3 font-semibold whitespace-nowrap">Shift Type</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Start</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">End</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Working Hr</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">Grace (Min)</th>
+                <th className="px-4 py-3 font-semibold whitespace-nowrap">Grace</th>
+                <th className="px-4 py-3 font-semibold whitespace-nowrap">Early In</th>
+                <th className="px-4 py-3 font-semibold whitespace-nowrap">Min Work Out</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Status</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap text-right">Actions</th>
               </tr>
@@ -259,7 +327,7 @@ export default function Page() {
 
                 return (
                   <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
-                    <td className="px-5 py-3 align-middle">
+                    <td className="px-4 py-3 align-middle">
                       {isEditing ? (
                         <input
                           value={data.name}
@@ -308,11 +376,7 @@ export default function Page() {
                         data.end
                       )}
                     </td>
-                    <td className="px-4 py-3 align-middle">
-                      <span className="font-semibold text-slate-900">
-                        {workingHoursLabel(data.start, data.end)}
-                      </span>
-                    </td>
+                    <td className="px-4 py-3 align-middle font-semibold text-slate-900">{workingHoursLabel(data.start, data.end)}</td>
                     <td className="px-4 py-3 align-middle">
                       {isEditing ? (
                         <input
@@ -325,6 +389,34 @@ export default function Page() {
                         />
                       ) : (
                         data.graceMins
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min={0}
+                          max={240}
+                          value={data.earlyWindowMins}
+                          onChange={(e) => setField("earlyWindowMins", Number(e.target.value || 0))}
+                          className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none"
+                        />
+                      ) : (
+                        data.earlyWindowMins
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          min={0}
+                          max={1440}
+                          value={data.minWorkBeforeOutMins}
+                          onChange={(e) => setField("minWorkBeforeOutMins", Number(e.target.value || 0))}
+                          className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none"
+                        />
+                      ) : (
+                        data.minWorkBeforeOutMins
                       )}
                     </td>
                     <td className="px-4 py-3 align-middle">
@@ -396,7 +488,7 @@ export default function Page() {
               })}
               {rows.length === 0 && (
                 <tr className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
-                  <td colSpan={9} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
                     No shifts configured yet. Click Add Shift to create your first shift.
                   </td>
                 </tr>
