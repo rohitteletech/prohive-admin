@@ -6,6 +6,11 @@ import { CompanyShift, DEFAULT_COMPANY_SHIFTS, loadCompanyShifts, saveCompanyShi
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ShiftRow = CompanyShift;
+type ExtraPolicyConfig = {
+  halfDayMinWorkMins: number;
+};
+
+const EXTRA_POLICY_STORAGE_KEY = "phv_company_extra_hr_policy_v1";
 
 function toMinutes(time: string) {
   const [h, m] = time.split(":").map(Number);
@@ -66,6 +71,9 @@ export default function Page() {
   const [toast, setToast] = useState<string | null>(null);
   const [employees, setEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
   const [extraHoursPolicy, setExtraHoursPolicy] = useState<"yes" | "no">("yes");
+  const [showExtraPolicyWindow, setShowExtraPolicyWindow] = useState(false);
+  const [extraPolicyDraft, setExtraPolicyDraft] = useState<ExtraPolicyConfig>({ halfDayMinWorkMins: 240 });
+  const [extraPolicyConfig, setExtraPolicyConfig] = useState<ExtraPolicyConfig>({ halfDayMinWorkMins: 240 });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -115,6 +123,21 @@ export default function Page() {
   }, []);
 
   useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(EXTRA_POLICY_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<ExtraPolicyConfig>;
+      const halfDayMinWorkMins = Number(parsed.halfDayMinWorkMins);
+      if (Number.isFinite(halfDayMinWorkMins) && halfDayMinWorkMins >= 0 && halfDayMinWorkMins <= 1440) {
+        const next = { halfDayMinWorkMins };
+        setExtraPolicyConfig(next);
+        setExtraPolicyDraft(next);
+      }
+    } catch {
+    }
+  }, []);
+
+  useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key && e.key !== "phv_company_employees_v1") return;
       setEmployees(loadCompanyEmployees());
@@ -136,6 +159,17 @@ export default function Page() {
   function showToast(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
+  }
+
+  function formatHourMinuteLabel(totalMins: number) {
+    const safe = Number.isFinite(totalMins) ? Math.max(0, totalMins) : 0;
+    const hrs = Math.floor(safe / 60);
+    const mins = safe % 60;
+    return `${hrs}h ${String(mins).padStart(2, "0")}m`;
+  }
+
+  function persistExtraPolicyConfig(next: ExtraPolicyConfig) {
+    window.localStorage.setItem(EXTRA_POLICY_STORAGE_KEY, JSON.stringify(next));
   }
 
   function startEdit(row: ShiftRow) {
@@ -201,6 +235,16 @@ export default function Page() {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
+  function saveExtraPolicyWindow() {
+    if (extraPolicyDraft.halfDayMinWorkMins < 0 || extraPolicyDraft.halfDayMinWorkMins > 1440) {
+      return showToast("Half day minimum work hours must be between 0 and 24 hours.");
+    }
+    setExtraPolicyConfig(extraPolicyDraft);
+    persistExtraPolicyConfig(extraPolicyDraft);
+    setShowExtraPolicyWindow(false);
+    showToast("Extra HR policy settings saved locally.");
+  }
+
   async function persistRows(nextRows: ShiftRow[]) {
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
@@ -231,6 +275,7 @@ export default function Page() {
     const savedRows = Array.isArray(result.rows) && result.rows.length ? result.rows : nextRows;
     setRows(savedRows);
     saveCompanyShifts(savedRows);
+    persistExtraPolicyConfig(extraPolicyConfig);
     if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
       setExtraHoursPolicy(result.extraHoursPolicy);
     }
@@ -270,22 +315,16 @@ export default function Page() {
         <div className="flex items-center justify-between">
           <h2 className="text-base font-semibold text-slate-900">Shift Definitions</h2>
           <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2">
-              <span className="text-sm font-semibold text-slate-800">Extra Hr Policy</span>
-              <select
-                value={extraHoursPolicy}
-                onChange={(e) => setExtraHoursPolicy(e.target.value as "yes" | "no")}
-                className={[
-                  "rounded-lg px-2 py-1 text-sm font-semibold outline-none",
-                  extraHoursPolicy === "yes"
-                    ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                    : "border border-amber-200 bg-amber-50 text-amber-800",
-                ].join(" ")}
-              >
-                <option value="yes">Yes</option>
-                <option value="no">No</option>
-              </select>
-            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setExtraPolicyDraft(extraPolicyConfig);
+                setShowExtraPolicyWindow(true);
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
+            >
+              Extra Hr Policy Control
+            </button>
             <button
               type="button"
               onClick={addShift}
@@ -302,6 +341,21 @@ export default function Page() {
               {saving ? "Saving..." : "Save Shifts"}
             </button>
           </div>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Extra Hr Policy</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{extraHoursPolicy === "yes" ? "Enabled" : "Disabled"}</div>
+          </article>
+          <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Half Day Minimum Working Hrs</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{formatHourMinuteLabel(extraPolicyConfig.halfDayMinWorkMins)}</div>
+          </article>
+          <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Policy Window</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">Editable</div>
+          </article>
         </div>
 
         <div className="mt-4 overflow-x-auto">
@@ -512,6 +566,80 @@ export default function Page() {
           </table>
         </div>
       </section>
+
+      {showExtraPolicyWindow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
+          <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-semibold text-slate-900">Extra Hr Policy Control</h3>
+                <p className="mt-1 text-sm text-slate-600">Configure extra-hour approval behavior and half-day minimum work rules.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowExtraPolicyWindow(false)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Extra Hr Policy</span>
+                <select
+                  value={extraHoursPolicy}
+                  onChange={(e) => setExtraHoursPolicy(e.target.value as "yes" | "no")}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Half Day Minimum Working Hrs</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={24}
+                  step={0.5}
+                  value={extraPolicyDraft.halfDayMinWorkMins / 60}
+                  onChange={(e) => {
+                    const hours = Number(e.target.value || 0);
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      halfDayMinWorkMins: Math.round(Math.max(0, hours) * 60),
+                    }));
+                  }}
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
+              Current half-day threshold: <span className="font-semibold">{formatHourMinuteLabel(extraPolicyDraft.halfDayMinWorkMins)}</span>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowExtraPolicyWindow(false)}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={saveExtraPolicyWindow}
+                className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Save Policy Window
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
