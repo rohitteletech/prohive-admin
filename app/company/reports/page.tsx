@@ -45,6 +45,30 @@ type AttendanceSummary = {
   absent: number;
 };
 
+type LeavePreviewRow = {
+  id: string;
+  employee: string;
+  employeeCode: string;
+  department: string;
+  leaveType: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  paidDays: number;
+  unpaidDays: number;
+  status: "pending" | "approved" | "rejected";
+  availableBalance: number;
+  submittedAt: string;
+};
+
+type LeaveSummary = {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  totalAvailableBalance: number;
+};
+
 function toISODate(d: Date) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -95,6 +119,12 @@ function attendanceStatusChip(status: AttendancePreviewRow["status"]) {
   if (status === "present") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "late") return "border-amber-200 bg-amber-50 text-amber-700";
   return "border-rose-200 bg-rose-50 text-rose-700";
+}
+
+function leaveStatusChip(status: LeavePreviewRow["status"]) {
+  if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
+  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function readStoredCompanyId() {
@@ -181,6 +211,14 @@ export default function Page() {
   const [status, setStatus] = useState("all");
   const [previewRows, setPreviewRows] = useState<AttendancePreviewRow[]>([]);
   const [previewSummary, setPreviewSummary] = useState<AttendanceSummary>({ total: 0, present: 0, late: 0, absent: 0 });
+  const [leavePreviewRows, setLeavePreviewRows] = useState<LeavePreviewRow[]>([]);
+  const [leaveSummary, setLeaveSummary] = useState<LeaveSummary>({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    totalAvailableBalance: 0,
+  });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -194,10 +232,12 @@ export default function Page() {
       : `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
 
   async function handleGeneratePreview() {
-    if (selectedReport !== "attendance") {
+    if (selectedReport !== "attendance" && selectedReport !== "leaves") {
       setPreviewRows([]);
+      setLeavePreviewRows([]);
       setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
-      setPreviewError("Live preview is currently enabled only for Attendance reports.");
+      setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+      setPreviewError("Live preview is currently enabled only for Attendance and Leave reports.");
       return;
     }
 
@@ -214,7 +254,12 @@ export default function Page() {
         throw new Error("Company session not found. Please login again.");
       }
 
-      const response = await fetch("/api/company/reports/attendance/preview", {
+      const endpoint =
+        selectedReport === "attendance"
+          ? "/api/company/reports/attendance/preview"
+          : "/api/company/reports/leaves/preview";
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -233,28 +278,45 @@ export default function Page() {
         }),
       });
 
-      const json = (await response.json().catch(() => ({}))) as {
-        rows?: AttendancePreviewRow[];
-        summary?: AttendanceSummary;
-        error?: string;
-      };
+      const json = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
       if (!response.ok) {
-        throw new Error(json.error || "Unable to load attendance preview.");
+        throw new Error(String(json.error || "Unable to load report preview."));
       }
 
-      setPreviewRows(Array.isArray(json.rows) ? json.rows : []);
-      setPreviewSummary(
-        json.summary || {
-          total: Array.isArray(json.rows) ? json.rows.length : 0,
-          present: 0,
-          late: 0,
-          absent: 0,
-        }
-      );
+      if (selectedReport === "attendance") {
+        const rows = Array.isArray(json.rows) ? (json.rows as AttendancePreviewRow[]) : [];
+        setPreviewRows(rows);
+        setLeavePreviewRows([]);
+        setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+        setPreviewSummary(
+          (json.summary as AttendanceSummary) || {
+            total: rows.length,
+            present: 0,
+            late: 0,
+            absent: 0,
+          }
+        );
+      } else {
+        const rows = Array.isArray(json.rows) ? (json.rows as LeavePreviewRow[]) : [];
+        setLeavePreviewRows(rows);
+        setPreviewRows([]);
+        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setLeaveSummary(
+          (json.summary as LeaveSummary) || {
+            total: rows.length,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+            totalAvailableBalance: 0,
+          }
+        );
+      }
     } catch (error) {
       setPreviewRows([]);
+      setLeavePreviewRows([]);
       setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+      setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setPreviewError(error instanceof Error ? error.message : "Unable to load attendance preview.");
     } finally {
       setPreviewLoading(false);
@@ -515,9 +577,15 @@ export default function Page() {
                       className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     >
                       <option value="all">All Status</option>
-                      <option value="present">Present</option>
-                      <option value="late">Late</option>
-                      <option value="absent">Absent</option>
+                      <option value={selectedReport === "attendance" ? "present" : "pending"}>
+                        {selectedReport === "attendance" ? "Present" : "Pending"}
+                      </option>
+                      <option value={selectedReport === "attendance" ? "late" : "approved"}>
+                        {selectedReport === "attendance" ? "Late" : "Approved"}
+                      </option>
+                      <option value={selectedReport === "attendance" ? "absent" : "rejected"}>
+                        {selectedReport === "attendance" ? "Absent" : "Rejected"}
+                      </option>
                     </select>
                   </label>
 
@@ -545,11 +613,17 @@ export default function Page() {
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900">Preview Area</h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        Attendance preview now loads live data. Other report modules will connect in later tasks.
+                        {selectedReport === "attendance"
+                          ? "Attendance preview now loads live data. Other report modules will connect in later tasks."
+                          : selectedReport === "leaves"
+                            ? "Leave preview now shows requests, balances, and status summary."
+                            : "Live preview is not connected yet for this report module."}
                       </p>
                     </div>
                     <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                      {previewLoading ? "Loading..." : `${previewSummary.total} rows`}
+                      {previewLoading
+                        ? "Loading..."
+                        : `${selectedReport === "attendance" ? previewSummary.total : selectedReport === "leaves" ? leaveSummary.total : 0} rows`}
                     </div>
                   </div>
 
@@ -565,29 +639,58 @@ export default function Page() {
                     <div className="rounded-xl border border-white bg-white px-4 py-4">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export Readiness</div>
                       <div className="mt-1 text-sm font-semibold text-slate-900">
-                        {selectedReport === "attendance" ? "Preview ready, export next" : selected.exports.join(" / ")}
+                        {selectedReport === "attendance"
+                          ? "Preview ready, export next"
+                          : selectedReport === "leaves"
+                            ? "Preview ready, export later"
+                            : selected.exports.join(" / ")}
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid gap-3 md:grid-cols-4">
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
-                      <div className="mt-1 text-lg font-semibold text-slate-900">{previewSummary.total}</div>
+                  {selectedReport === "attendance" ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{previewSummary.total}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Present</div>
+                        <div className="mt-1 text-lg font-semibold text-emerald-700">{previewSummary.present}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late</div>
+                        <div className="mt-1 text-lg font-semibold text-amber-700">{previewSummary.late}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Absent</div>
+                        <div className="mt-1 text-lg font-semibold text-rose-700">{previewSummary.absent}</div>
+                      </div>
                     </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Present</div>
-                      <div className="mt-1 text-lg font-semibold text-emerald-700">{previewSummary.present}</div>
+                  ) : selectedReport === "leaves" ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-5">
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{leaveSummary.total}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending</div>
+                        <div className="mt-1 text-lg font-semibold text-amber-700">{leaveSummary.pending}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Approved</div>
+                        <div className="mt-1 text-lg font-semibold text-emerald-700">{leaveSummary.approved}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Rejected</div>
+                        <div className="mt-1 text-lg font-semibold text-rose-700">{leaveSummary.rejected}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Avail. Balance</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{leaveSummary.totalAvailableBalance}</div>
+                      </div>
                     </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late</div>
-                      <div className="mt-1 text-lg font-semibold text-amber-700">{previewSummary.late}</div>
-                    </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Absent</div>
-                      <div className="mt-1 text-lg font-semibold text-rose-700">{previewSummary.absent}</div>
-                    </div>
-                  </div>
+                  ) : null}
 
                   {previewError && (
                     <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -632,6 +735,61 @@ export default function Page() {
                                   className={[
                                     "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
                                     attendanceStatusChip(row.status),
+                                  ].join(" ")}
+                                >
+                                  {row.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : selectedReport === "leaves" ? (
+                    <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                      <table className="min-w-[1120px] w-full text-left text-sm">
+                        <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-3 font-semibold">Employee</th>
+                            <th className="px-3 py-3 font-semibold">Department</th>
+                            <th className="px-3 py-3 font-semibold">Leave Type</th>
+                            <th className="px-3 py-3 font-semibold">From</th>
+                            <th className="px-3 py-3 font-semibold">To</th>
+                            <th className="px-3 py-3 font-semibold">Days</th>
+                            <th className="px-3 py-3 font-semibold">Avail. Balance</th>
+                            <th className="px-3 py-3 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!previewLoading && leavePreviewRows.length === 0 && !previewError && (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                                Generate preview to load leave report rows.
+                              </td>
+                            </tr>
+                          )}
+                          {leavePreviewRows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100 text-slate-700">
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-slate-900">{row.employee}</div>
+                                <div className="text-xs text-slate-500">{row.employeeCode}</div>
+                              </td>
+                              <td className="px-3 py-3">{row.department}</td>
+                              <td className="px-3 py-3">{row.leaveType}</td>
+                              <td className="px-3 py-3">{formatDisplayDate(row.fromDate)}</td>
+                              <td className="px-3 py-3">{formatDisplayDate(row.toDate)}</td>
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-slate-900">{row.days}</div>
+                                <div className="text-xs text-slate-500">
+                                  Paid {row.paidDays} | Unpaid {row.unpaidDays}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">{row.availableBalance}</td>
+                              <td className="px-3 py-3">
+                                <span
+                                  className={[
+                                    "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
+                                    leaveStatusChip(row.status),
                                   ].join(" ")}
                                 >
                                   {row.status}
