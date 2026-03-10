@@ -13,14 +13,15 @@ type EventRow = {
   lon: number;
   effective_punch_at: string | null;
   server_received_at: string;
-  employees?: {
-    id?: string;
-    full_name?: string | null;
-    employee_code?: string | null;
-    department?: string | null;
-    shift_name?: string | null;
-    status?: "active" | "inactive" | null;
-  } | null;
+};
+
+type EmployeeLookupRow = {
+  id: string;
+  full_name: string | null;
+  employee_code: string | null;
+  department: string | null;
+  shift_name: string | null;
+  status: "active" | "inactive" | null;
 };
 
 type AttendanceRow = {
@@ -150,6 +151,7 @@ function rowStatus(firstInIso: string | null, shiftName: string, timeZone: strin
 
 function aggregateRows(
   events: EventRow[],
+  employeesById: Map<string, EmployeeLookupRow>,
   selectedDate: string,
   timeZone: string,
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
@@ -161,7 +163,7 @@ function aggregateRows(
     const punchAt = event.effective_punch_at || event.server_received_at;
     if (!punchAt) return;
     if (isoDateInTimeZone(punchAt, timeZone) !== selectedDate) return;
-    const employee = event.employees;
+    const employee = employeesById.get(event.employee_id);
     if (!employee?.id || employee.status === "inactive") return;
 
     const key = `${employee.id}:${selectedDate}`;
@@ -177,7 +179,7 @@ function aggregateRows(
         const right = new Date(b.effective_punch_at || b.server_received_at).getTime();
         return left - right;
       });
-      const employee = ordered[0]?.employees;
+      const employee = employeesById.get(ordered[0]?.employee_id || "");
       const shift = employee?.shift_name?.trim() || "General";
       const firstIn = ordered.find((event) => event.punch_type === "in") || null;
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
@@ -227,10 +229,7 @@ export async function GET(req: NextRequest) {
   const [eventsResult, shiftResult, companyResult] = await Promise.all([
     context.admin
       .from("attendance_punch_events")
-      .select(
-        "id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at"
-        + ",employees(id,full_name,employee_code,department,shift_name,status)"
-      )
+      .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
       .eq("company_id", context.companyId)
       .in("approval_status", APPROVED_STATUSES)
       .gte("effective_punch_at", fromIso)
@@ -274,8 +273,29 @@ export async function GET(req: NextRequest) {
         graceMins: row.graceMins,
       }));
   const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
+  const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
+  const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
+  const employeesById = new Map<string, EmployeeLookupRow>();
+
+  if (employeeIds.length > 0) {
+    const { data: employeeRows, error: employeeError } = await context.admin
+      .from("employees")
+      .select("id,full_name,employee_code,department,shift_name,status")
+      .eq("company_id", context.companyId)
+      .in("id", employeeIds);
+
+    if (employeeError) {
+      return NextResponse.json({ error: employeeError.message || "Unable to load employee details." }, { status: 400 });
+    }
+
+    for (const row of (employeeRows || []) as EmployeeLookupRow[]) {
+      if (row?.id) employeesById.set(row.id, row);
+    }
+  }
+
   const rows = aggregateRows(
-    Array.isArray(eventsResult.data) ? (eventsResult.data as unknown as EventRow[]) : [],
+    events,
+    employeesById,
     date,
     timeZone,
     effectiveShiftRows,
