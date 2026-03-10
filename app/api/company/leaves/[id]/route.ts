@@ -13,6 +13,31 @@ function normalizeOptional(value?: string) {
   return trimmed ? trimmed : null;
 }
 
+async function findApprovedOverlap(params: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  fromDate: string;
+  toDate: string;
+  excludeId: string;
+}) {
+  const { data, error } = await params.admin
+    .from("employee_leave_requests")
+    .select("id,from_date,to_date")
+    .eq("company_id", params.companyId)
+    .eq("employee_id", params.employeeId)
+    .eq("status", "approved")
+    .neq("id", params.excludeId)
+    .lte("from_date", params.toDate)
+    .gte("to_date", params.fromDate)
+    .order("from_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { row: null, error: error.message || "Unable to verify approved leave overlap." };
+  return { row: data, error: null as string | null };
+}
+
 export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: string }> }) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -33,7 +58,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
 
   const { data: requestRow, error: requestError } = await context.admin
     .from("employee_leave_requests")
-    .select("id,employee_id,leave_policy_code,days,paid_days,status,from_date")
+    .select("id,employee_id,leave_policy_code,days,paid_days,status,from_date,to_date")
     .eq("company_id", context.companyId)
     .eq("id", id)
     .maybeSingle();
@@ -46,7 +71,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
 
   if (body.status === "approved") {
     const year = Number(String(requestRow.from_date || "").slice(0, 4) || todayISOInIndia().slice(0, 4));
-    const [policyResult, usageResult, overrideResult] = await Promise.all([
+    const [policyResult, usageResult, overrideResult, overlapResult] = await Promise.all([
       context.admin
         .from("company_leave_policies")
         .select("annual_quota,carry_forward,accrual_mode,active")
@@ -67,6 +92,14 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
         leavePolicyCode: requestRow.leave_policy_code,
         year,
       }),
+      findApprovedOverlap({
+        admin: context.admin,
+        companyId: context.companyId,
+        employeeId: requestRow.employee_id,
+        fromDate: String(requestRow.from_date || ""),
+        toDate: String(requestRow.to_date || ""),
+        excludeId: requestRow.id,
+      }),
     ]);
 
     if (policyResult.error || !policyResult.data?.active) {
@@ -74,6 +107,12 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     }
     if (usageResult.error) return NextResponse.json({ error: usageResult.error }, { status: 400 });
     if (overrideResult.error) return NextResponse.json({ error: overrideResult.error }, { status: 400 });
+    if (overlapResult.error) return NextResponse.json({ error: overlapResult.error }, { status: 400 });
+    if (overlapResult.row?.id) {
+      return NextResponse.json({
+        error: `Approval blocked. Leave already approved for these dates (${overlapResult.row.from_date} to ${overlapResult.row.to_date}).`,
+      }, { status: 400 });
+    }
 
     const entitlement = computeLeaveEntitlement({
       annualQuota: Number(policyResult.data.annual_quota || 0),

@@ -24,6 +24,29 @@ function diffDaysInclusive(fromDate: string, toDate: string) {
   return Math.floor(diff / 86400000) + 1;
 }
 
+async function findApprovedOverlap(params: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  fromDate: string;
+  toDate: string;
+}) {
+  const { data, error } = await params.admin
+    .from("employee_leave_requests")
+    .select("id,from_date,to_date,leave_name_snapshot")
+    .eq("company_id", params.companyId)
+    .eq("employee_id", params.employeeId)
+    .eq("status", "approved")
+    .lte("from_date", params.toDate)
+    .gte("to_date", params.fromDate)
+    .order("from_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) return { row: null, error: error.message || "Unable to verify approved leave overlap." };
+  return { row: data, error: null as string | null };
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     employeeId?: string;
@@ -58,6 +81,22 @@ export async function POST(req: NextRequest) {
   const days = diffDaysInclusive(fromDate, toDate);
   if (!Number.isFinite(days) || days <= 0) {
     return NextResponse.json({ error: "Leave duration is invalid." }, { status: 400 });
+  }
+
+  const overlapResult = await findApprovedOverlap({
+    admin: session.admin,
+    companyId: session.employee.company_id,
+    employeeId: session.employee.id,
+    fromDate,
+    toDate,
+  });
+  if (overlapResult.error) {
+    return NextResponse.json({ error: overlapResult.error }, { status: 400 });
+  }
+  if (overlapResult.row?.id) {
+    return NextResponse.json({
+      error: `Leave already approved for these dates (${overlapResult.row.from_date} to ${overlapResult.row.to_date}).`,
+    }, { status: 400 });
   }
 
   const { data: policyRows, error: policyError } = await session.admin
