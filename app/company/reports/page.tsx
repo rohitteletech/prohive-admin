@@ -69,6 +69,30 @@ type LeaveSummary = {
   totalAvailableBalance: number;
 };
 
+type ClaimPreviewRow = {
+  id: string;
+  employee: string;
+  employeeCode: string;
+  department: string;
+  claimType: string;
+  amount: number;
+  reason: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  status: "pending" | "approved" | "rejected";
+  submittedAt: string;
+  attachment: boolean;
+};
+
+type ClaimSummary = {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+  totalAmount: number;
+};
+
 function toISODate(d: Date) {
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
@@ -180,9 +204,9 @@ export default function Page() {
         title: "Claims Reports",
         category: "Finance Support",
         description: "Claims register with amount, type, approval status, and processing turnaround tracking.",
-        status: "planned",
+        status: "ready_next",
         primaryMetric: "03",
-        primaryLabel: "Phase two",
+        primaryLabel: "Preview ready",
         exports: ["CSV", "PDF"],
         includes: ["Claim type", "Amount", "Approval status", "Submitted / reviewed dates"],
       },
@@ -219,6 +243,14 @@ export default function Page() {
     rejected: 0,
     totalAvailableBalance: 0,
   });
+  const [claimPreviewRows, setClaimPreviewRows] = useState<ClaimPreviewRow[]>([]);
+  const [claimSummary, setClaimSummary] = useState<ClaimSummary>({
+    total: 0,
+    pending: 0,
+    approved: 0,
+    rejected: 0,
+    totalAmount: 0,
+  });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -232,12 +264,14 @@ export default function Page() {
       : `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
 
   async function handleGeneratePreview() {
-    if (selectedReport !== "attendance" && selectedReport !== "leaves") {
+    if (selectedReport !== "attendance" && selectedReport !== "leaves" && selectedReport !== "claims") {
       setPreviewRows([]);
       setLeavePreviewRows([]);
+      setClaimPreviewRows([]);
       setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
-      setPreviewError("Live preview is currently enabled only for Attendance and Leave reports.");
+      setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
+      setPreviewError("Live preview is currently enabled only for Attendance, Leave, and Claims reports.");
       return;
     }
 
@@ -257,7 +291,9 @@ export default function Page() {
       const endpoint =
         selectedReport === "attendance"
           ? "/api/company/reports/attendance/preview"
-          : "/api/company/reports/leaves/preview";
+          : selectedReport === "leaves"
+            ? "/api/company/reports/leaves/preview"
+            : "/api/company/reports/claims/preview";
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -288,7 +324,9 @@ export default function Page() {
         const rows = Array.isArray(json.rows) ? (json.rows as AttendancePreviewRow[]) : [];
         setPreviewRows(rows);
         setLeavePreviewRows([]);
+        setClaimPreviewRows([]);
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+        setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setPreviewSummary(
           (json.summary as AttendanceSummary) || {
             total: rows.length,
@@ -297,11 +335,13 @@ export default function Page() {
             absent: 0,
           }
         );
-      } else {
+      } else if (selectedReport === "leaves") {
         const rows = Array.isArray(json.rows) ? (json.rows as LeavePreviewRow[]) : [];
         setLeavePreviewRows(rows);
         setPreviewRows([]);
+        setClaimPreviewRows([]);
         setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setLeaveSummary(
           (json.summary as LeaveSummary) || {
             total: rows.length,
@@ -311,12 +351,30 @@ export default function Page() {
             totalAvailableBalance: 0,
           }
         );
+      } else {
+        const rows = Array.isArray(json.rows) ? (json.rows as ClaimPreviewRow[]) : [];
+        setClaimPreviewRows(rows);
+        setPreviewRows([]);
+        setLeavePreviewRows([]);
+        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+        setClaimSummary(
+          (json.summary as ClaimSummary) || {
+            total: rows.length,
+            pending: 0,
+            approved: 0,
+            rejected: 0,
+            totalAmount: 0,
+          }
+        );
       }
     } catch (error) {
       setPreviewRows([]);
       setLeavePreviewRows([]);
+      setClaimPreviewRows([]);
       setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+      setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
       setPreviewError(error instanceof Error ? error.message : "Unable to load attendance preview.");
     } finally {
       setPreviewLoading(false);
@@ -622,13 +680,15 @@ export default function Page() {
                           ? "Attendance preview now loads live data. Other report modules will connect in later tasks."
                           : selectedReport === "leaves"
                             ? "Leave preview now shows requests, balances, and status summary."
+                            : selectedReport === "claims"
+                              ? "Claims preview now shows amounts, status mix, and submitted requests."
                             : "Live preview is not connected yet for this report module."}
                       </p>
                     </div>
                     <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                       {previewLoading
                         ? "Loading..."
-                        : `${selectedReport === "attendance" ? previewSummary.total : selectedReport === "leaves" ? leaveSummary.total : 0} rows`}
+                        : `${selectedReport === "attendance" ? previewSummary.total : selectedReport === "leaves" ? leaveSummary.total : selectedReport === "claims" ? claimSummary.total : 0} rows`}
                     </div>
                   </div>
 
@@ -648,6 +708,8 @@ export default function Page() {
                           ? "Preview + export ready"
                           : selectedReport === "leaves"
                             ? "Preview + export ready"
+                            : selectedReport === "claims"
+                              ? "Preview ready, export next"
                             : selected.exports.join(" / ")}
                       </div>
                     </div>
@@ -693,6 +755,29 @@ export default function Page() {
                       <div className="rounded-xl border border-white bg-white px-4 py-4">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Avail. Balance</div>
                         <div className="mt-1 text-lg font-semibold text-slate-900">{leaveSummary.totalAvailableBalance}</div>
+                      </div>
+                    </div>
+                  ) : selectedReport === "claims" ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-5">
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{claimSummary.total}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Pending</div>
+                        <div className="mt-1 text-lg font-semibold text-amber-700">{claimSummary.pending}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Approved</div>
+                        <div className="mt-1 text-lg font-semibold text-emerald-700">{claimSummary.approved}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Rejected</div>
+                        <div className="mt-1 text-lg font-semibold text-rose-700">{claimSummary.rejected}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Amount</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">INR {claimSummary.totalAmount.toFixed(2)}</div>
                       </div>
                     </div>
                   ) : null}
@@ -790,6 +875,65 @@ export default function Page() {
                                 </div>
                               </td>
                               <td className="px-3 py-3 font-semibold text-slate-900">{row.availableBalance}</td>
+                              <td className="px-3 py-3">
+                                <span
+                                  className={[
+                                    "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
+                                    leaveStatusChip(row.status),
+                                  ].join(" ")}
+                                >
+                                  {row.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : selectedReport === "claims" ? (
+                    <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                      <table className="min-w-[1180px] w-full text-left text-sm">
+                        <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-3 font-semibold">Employee</th>
+                            <th className="px-3 py-3 font-semibold">Department</th>
+                            <th className="px-3 py-3 font-semibold">Period</th>
+                            <th className="px-3 py-3 font-semibold">Claim Type</th>
+                            <th className="px-3 py-3 font-semibold">Amount</th>
+                            <th className="px-3 py-3 font-semibold">Reason</th>
+                            <th className="px-3 py-3 font-semibold">Attachment</th>
+                            <th className="px-3 py-3 font-semibold">Submitted</th>
+                            <th className="px-3 py-3 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!previewLoading && claimPreviewRows.length === 0 && !previewError && (
+                            <tr>
+                              <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500">
+                                Generate preview to load claims report rows.
+                              </td>
+                            </tr>
+                          )}
+                          {claimPreviewRows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100 text-slate-700">
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-slate-900">{row.employee}</div>
+                                <div className="text-xs text-slate-500">{row.employeeCode}</div>
+                              </td>
+                              <td className="px-3 py-3">{row.department}</td>
+                              <td className="px-3 py-3">
+                                {formatDisplayDate(row.fromDate)} to {formatDisplayDate(row.toDate)}
+                                <div className="text-xs text-slate-500">{row.days} day(s)</div>
+                              </td>
+                              <td className="px-3 py-3">{row.claimType}</td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">INR {row.amount.toFixed(2)}</td>
+                              <td className="px-3 py-3">
+                                <div className="max-w-[260px] truncate" title={row.reason}>
+                                  {row.reason || "-"}
+                                </div>
+                              </td>
+                              <td className="px-3 py-3">{row.attachment ? "Attached" : "No attachment"}</td>
+                              <td className="px-3 py-3">{formatDisplayDate(row.submittedAt)}</td>
                               <td className="px-3 py-3">
                                 <span
                                   className={[
