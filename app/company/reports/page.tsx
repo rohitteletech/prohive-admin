@@ -183,6 +183,7 @@ export default function Page() {
   const [previewSummary, setPreviewSummary] = useState<AttendanceSummary>({ total: 0, present: 0, late: 0, absent: 0 });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const selected = reports.find((item) => item.key === selectedReport) || reports[0];
   const selectedMonth = monthOptions.find((item) => item.key === monthKey) || defaultMonth;
@@ -257,6 +258,68 @@ export default function Page() {
       setPreviewError(error instanceof Error ? error.message : "Unable to load attendance preview.");
     } finally {
       setPreviewLoading(false);
+    }
+  }
+
+  async function handleExport() {
+    if (selectedReport !== "attendance") {
+      setPreviewError("Export is currently enabled only for Attendance reports.");
+      return;
+    }
+
+    setExporting(true);
+    setPreviewError(null);
+
+    try {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token || "";
+      const companyId = readStoredCompanyId();
+
+      if (!accessToken) {
+        throw new Error("Company session not found. Please login again.");
+      }
+
+      const response = await fetch("/api/company/reports/attendance/export", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+          ...(companyId ? { "x-company-id": companyId } : {}),
+        },
+        body: JSON.stringify({
+          mode: dateMode,
+          monthKey,
+          startDate,
+          endDate,
+          employeeQuery,
+          department,
+          status,
+          timeZone: INDIA_TIME_ZONE,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || "Unable to export attendance CSV.");
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const disposition = response.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] || "attendance-report.csv";
+      const anchor = document.createElement("a");
+      anchor.href = downloadUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      setPreviewError(error instanceof Error ? error.message : "Unable to export attendance CSV.");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -468,10 +531,11 @@ export default function Page() {
                     </button>
                     <button
                       type="button"
-                      disabled
+                      onClick={handleExport}
+                      disabled={exporting || previewLoading}
                       className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
                     >
-                      Export
+                      {exporting ? "Exporting..." : "Export CSV"}
                     </button>
                   </div>
                 </div>

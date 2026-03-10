@@ -1,6 +1,6 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { getAttendanceReportData } from "@/lib/companyReportsAttendance";
+import { getAttendanceReportData, toAttendanceCsv } from "@/lib/companyReportsAttendance";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const companyIdHint = req.headers.get("x-company-id") || req.cookies.get("prohive_company_id")?.value || "";
     const context = await getCompanyAdminContext(token, { companyIdHint });
     if (!context.ok) {
-      return NextResponse.json({ error: context.error }, { status: context.status });
+      return new Response(context.error, { status: context.status });
     }
 
     const body = (await req.json().catch(() => ({}))) as {
@@ -30,15 +30,22 @@ export async function POST(req: NextRequest) {
     });
 
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.status });
+      return new Response(result.error, { status: result.status });
     }
 
-    return NextResponse.json({
-      rows: result.rows,
-      summary: result.summary,
+    const csv = toAttendanceCsv(result.rows);
+    const filename = `attendance-report_${result.scope.startDate}_to_${result.scope.endDate}.csv`;
+
+    return new Response(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+        "Cache-Control": "no-store",
+      },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unexpected attendance preview error.";
-    return NextResponse.json({ error: `Attendance preview crashed: ${message}` }, { status: 500 });
+    const message = error instanceof Error ? error.message : "Unexpected attendance export error.";
+    return new Response(`Attendance export crashed: ${message}`, { status: 500 });
   }
 }
