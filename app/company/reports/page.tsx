@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { formatDisplayDate, INDIA_TIME_ZONE, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -326,11 +326,33 @@ export default function Page() {
 
   const selected = reports.find((item) => item.key === selectedReport) || reports[0];
   const selectedMonth = monthOptions.find((item) => item.key === monthKey) || defaultMonth;
+  const currentPreviewCount =
+    selectedReport === "attendance"
+      ? previewSummary.total
+      : selectedReport === "leaves"
+        ? leaveSummary.total
+        : selectedReport === "claims"
+          ? claimSummary.total
+          : selectedReport === "corrections"
+            ? correctionSummary.total
+            : employeeSummary.total;
+  const exportReady =
+    (selectedReport === "attendance" && previewRows.length > 0)
+    || (selectedReport === "leaves" && leavePreviewRows.length > 0)
+    || (selectedReport === "claims" && claimPreviewRows.length > 0)
+    || (selectedReport === "corrections" && correctionPreviewRows.length > 0)
+    || (selectedReport === "employees" && employeePreviewRows.length > 0);
 
   const scopeLabel =
     dateMode === "monthly"
       ? `${selectedMonth?.label || "-"}`
       : `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
+
+  useEffect(() => {
+    setPreviewError(null);
+    setStatus("all");
+    setEmployeeQuery("");
+  }, [selectedReport]);
 
   async function handleGeneratePreview() {
     if (
@@ -690,9 +712,7 @@ export default function Page() {
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">
-                      {selectedReport === "attendance" && previewSummary.total > 0 ? `${previewSummary.total} rows ready` : statusLabel(selected.status)}
-                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">{currentPreviewCount > 0 ? `${currentPreviewCount} rows ready` : statusLabel(selected.status)}</div>
                   </div>
                 </div>
               </div>
@@ -818,8 +838,8 @@ export default function Page() {
                     <button
                       type="button"
                       onClick={handleExport}
-                      disabled={exporting || previewLoading}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                      disabled={exporting || previewLoading || !exportReady}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {exporting ? "Exporting..." : "Export CSV"}
                     </button>
@@ -845,9 +865,7 @@ export default function Page() {
                       </p>
                     </div>
                     <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                      {previewLoading
-                        ? "Loading..."
-                        : `${selectedReport === "attendance" ? previewSummary.total : selectedReport === "leaves" ? leaveSummary.total : selectedReport === "claims" ? claimSummary.total : selectedReport === "corrections" ? correctionSummary.total : selectedReport === "employees" ? employeeSummary.total : 0} rows`}
+                      {previewLoading ? "Loading..." : `${currentPreviewCount} rows`}
                     </div>
                   </div>
 
@@ -862,19 +880,7 @@ export default function Page() {
                     </div>
                     <div className="rounded-xl border border-white bg-white px-4 py-4">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export Readiness</div>
-                      <div className="mt-1 text-sm font-semibold text-slate-900">
-                        {selectedReport === "attendance"
-                          ? "Preview + export ready"
-                          : selectedReport === "leaves"
-                            ? "Preview + export ready"
-                            : selectedReport === "claims"
-                              ? "Preview + export ready"
-                              : selectedReport === "corrections"
-                                ? "Preview + export ready"
-                                : selectedReport === "employees"
-                                  ? "Preview + export ready"
-                            : selected.exports.join(" / ")}
-                      </div>
+                      <div className="mt-1 text-sm font-semibold text-slate-900">{exportReady ? "Preview + export ready" : "Generate preview first"}</div>
                     </div>
                   </div>
 
@@ -1284,26 +1290,29 @@ export default function Page() {
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Delivery Plan</p>
                   <div className="mt-3 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-900">Task 1</div>
-                      <div className="mt-1 text-sm text-slate-600">Reports shell, module selector, filters, and preview workspace.</div>
+                      <div className="text-xs font-semibold text-slate-900">Tasks 1-3</div>
+                      <div className="mt-1 text-sm text-slate-600">Reports shell, attendance preview, and attendance CSV export completed.</div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-900">Task 2</div>
-                      <div className="mt-1 text-sm text-slate-600">Attendance report preview with backend data and validation.</div>
+                      <div className="text-xs font-semibold text-slate-900">Tasks 4-5</div>
+                      <div className="mt-1 text-sm text-slate-600">Leave preview and leave CSV export completed.</div>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-900">Task 3</div>
-                      <div className="mt-1 text-sm text-slate-600">Attendance CSV export and production-ready download flow.</div>
+                      <div className="text-xs font-semibold text-slate-900">Tasks 6-11</div>
+                      <div className="mt-1 text-sm text-slate-600">Claims, corrections, and employee master preview/export flows completed.</div>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
+                      <div className="text-xs font-semibold text-emerald-900">Task 12</div>
+                      <div className="mt-1 text-sm text-emerald-700">Polish complete: export gating, status cleanup, and final workspace refinement.</div>
                     </div>
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-slate-900 p-4 text-white">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Build Note</p>
-                  <h3 className="mt-2 text-base font-semibold">Start With Attendance</h3>
+                  <h3 className="mt-2 text-base font-semibold">V1 Reports Ready</h3>
                   <p className="mt-2 text-sm text-slate-300">
-                    Attendance has the strongest data foundation in the app. It should be the first live report before
-                    leaves, claims, and correction audit exports.
+                    The reports workspace now ships five live report modules with preview plus CSV export for company admins.
                   </p>
                 </div>
               </aside>
