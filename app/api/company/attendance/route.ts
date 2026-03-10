@@ -209,97 +209,102 @@ function aggregateRows(
 }
 
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const context = await getCompanyAdminContext(token, {
-    companyIdHint: req.headers.get("x-company-id") || req.cookies.get("prohive_company_id")?.value || "",
-  });
-  if (!context.ok) {
-    return NextResponse.json({ error: context.error }, { status: context.status });
-  }
-
-  const date = normalizeDateParam(req.nextUrl.searchParams.get("date"));
-  if (!date) {
-    return NextResponse.json({ error: "Valid date is required." }, { status: 400 });
-  }
-
-  const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
-  const { fromIso, toIso } = buildQueryWindow(date);
-
-  const [eventsResult, shiftResult, companyResult] = await Promise.all([
-    context.admin
-      .from("attendance_punch_events")
-      .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
-      .eq("company_id", context.companyId)
-      .in("approval_status", APPROVED_STATUSES)
-      .gte("effective_punch_at", fromIso)
-      .lt("effective_punch_at", toIso)
-      .order("effective_punch_at", { ascending: true }),
-    context.admin
-      .from("company_shift_definitions")
-      .select("name,type,start_time,end_time,grace_mins,active")
-      .eq("company_id", context.companyId)
-      .order("created_at", { ascending: true }),
-    context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
-  ]);
-
-  if (eventsResult.error) {
-    return NextResponse.json({ error: eventsResult.error.message || "Unable to load attendance." }, { status: 400 });
-  }
-  if (shiftResult.error) {
-    return NextResponse.json({ error: shiftResult.error.message || "Unable to load shift rules." }, { status: 400 });
-  }
-  if (companyResult.error) {
-    return NextResponse.json({ error: companyResult.error.message || "Unable to load extra hour policy." }, { status: 400 });
-  }
-
-  const shiftRows =
-    ((shiftResult.data || []) as Array<{ name: string; type: string; start_time: string; end_time: string; grace_mins: number; active: boolean }>)
-      .filter((row) => row.active !== false)
-      .map((row) => ({
-        name: row.name,
-        type: row.type,
-        start: row.start_time,
-        end: row.end_time,
-        graceMins: Number(row.grace_mins || 0),
-      }));
-  const effectiveShiftRows = shiftRows.length
-    ? shiftRows
-    : DEFAULT_COMPANY_SHIFTS.map((row) => ({
-        name: row.name,
-        type: row.type,
-        start: row.start,
-        end: row.end,
-        graceMins: row.graceMins,
-      }));
-  const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
-  const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
-  const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
-  const employeesById = new Map<string, EmployeeLookupRow>();
-
-  if (employeeIds.length > 0) {
-    const { data: employeeRows, error: employeeError } = await context.admin
-      .from("employees")
-      .select("id,full_name,employee_code,department,shift_name,status")
-      .eq("company_id", context.companyId)
-      .in("id", employeeIds);
-
-    if (employeeError) {
-      return NextResponse.json({ error: employeeError.message || "Unable to load employee details." }, { status: 400 });
+  try {
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const context = await getCompanyAdminContext(token, {
+      companyIdHint: req.headers.get("x-company-id") || req.cookies.get("prohive_company_id")?.value || "",
+    });
+    if (!context.ok) {
+      return NextResponse.json({ error: context.error }, { status: context.status });
     }
 
-    for (const row of (employeeRows || []) as EmployeeLookupRow[]) {
-      if (row?.id) employeesById.set(row.id, row);
+    const date = normalizeDateParam(req.nextUrl.searchParams.get("date"));
+    if (!date) {
+      return NextResponse.json({ error: "Valid date is required." }, { status: 400 });
     }
-  }
 
-  const rows = aggregateRows(
-    events,
-    employeesById,
-    date,
-    timeZone,
-    effectiveShiftRows,
-    extraHoursPolicy
-  );
-  return NextResponse.json({ rows });
+    const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
+    const { fromIso, toIso } = buildQueryWindow(date);
+
+    const [eventsResult, shiftResult, companyResult] = await Promise.all([
+      context.admin
+        .from("attendance_punch_events")
+        .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
+        .eq("company_id", context.companyId)
+        .in("approval_status", APPROVED_STATUSES)
+        .gte("effective_punch_at", fromIso)
+        .lt("effective_punch_at", toIso)
+        .order("effective_punch_at", { ascending: true }),
+      context.admin
+        .from("company_shift_definitions")
+        .select("name,type,start_time,end_time,grace_mins,active")
+        .eq("company_id", context.companyId)
+        .order("created_at", { ascending: true }),
+      context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
+    ]);
+
+    if (eventsResult.error) {
+      return NextResponse.json({ error: eventsResult.error.message || "Unable to load attendance." }, { status: 400 });
+    }
+    if (shiftResult.error) {
+      return NextResponse.json({ error: shiftResult.error.message || "Unable to load shift rules." }, { status: 400 });
+    }
+    if (companyResult.error) {
+      return NextResponse.json({ error: companyResult.error.message || "Unable to load extra hour policy." }, { status: 400 });
+    }
+
+    const shiftRows =
+      ((shiftResult.data || []) as Array<{ name: string; type: string; start_time: string; end_time: string; grace_mins: number; active: boolean }>)
+        .filter((row) => row.active !== false)
+        .map((row) => ({
+          name: row.name,
+          type: row.type,
+          start: row.start_time,
+          end: row.end_time,
+          graceMins: Number(row.grace_mins || 0),
+        }));
+    const effectiveShiftRows = shiftRows.length
+      ? shiftRows
+      : DEFAULT_COMPANY_SHIFTS.map((row) => ({
+          name: row.name,
+          type: row.type,
+          start: row.start,
+          end: row.end,
+          graceMins: row.graceMins,
+        }));
+    const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
+    const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
+    const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
+    const employeesById = new Map<string, EmployeeLookupRow>();
+
+    if (employeeIds.length > 0) {
+      const { data: employeeRows, error: employeeError } = await context.admin
+        .from("employees")
+        .select("id,full_name,employee_code,department,shift_name,status")
+        .eq("company_id", context.companyId)
+        .in("id", employeeIds);
+
+      if (employeeError) {
+        return NextResponse.json({ error: employeeError.message || "Unable to load employee details." }, { status: 400 });
+      }
+
+      for (const row of (employeeRows || []) as EmployeeLookupRow[]) {
+        if (row?.id) employeesById.set(row.id, row);
+      }
+    }
+
+    const rows = aggregateRows(
+      events,
+      employeesById,
+      date,
+      timeZone,
+      effectiveShiftRows,
+      extraHoursPolicy
+    );
+    return NextResponse.json({ rows });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unexpected attendance error.";
+    return NextResponse.json({ error: `Attendance route crashed: ${message}` }, { status: 500 });
+  }
 }
