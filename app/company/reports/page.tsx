@@ -624,24 +624,38 @@ export default function Page() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Reports</h1>
         <p className="mt-2 max-w-3xl text-sm text-zinc-600">
-          Build a corporate-ready reporting workspace for HR, payroll support, operations, and compliance. This phase
-          defines the reporting shell, filters, and execution flow before live exports are connected.
+          Generate operational and HR reports with live preview and CSV export.
         </p>
       </div>
-
-      <section className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
+      <section className="space-y-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Catalog</p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-900">Report Modules</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Report Type</p>
+              <h2 className="mt-1 text-xl font-semibold text-slate-900">{selected.title}</h2>
+              <p className="mt-2 max-w-3xl text-sm text-slate-600">{selected.description}</p>
             </div>
-            <div className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600">
-              {reports.length} modules
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Scope</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{scopeLabel}</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Format</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">CSV export</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{currentPreviewCount > 0 ? `${currentPreviewCount} rows ready` : "Ready"}</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export</div>
+                <div className="mt-1 text-sm font-semibold text-slate-900">{exportReady ? "Available" : "Preview first"}</div>
+              </div>
             </div>
           </div>
 
-          <div className="mt-4 space-y-3">
+          <div className="mt-4 flex flex-wrap gap-2">
             {reports.map((report) => {
               const active = report.key === selectedReport;
               return (
@@ -650,76 +664,29 @@ export default function Page() {
                   type="button"
                   onClick={() => setSelectedReport(report.key)}
                   className={[
-                    "w-full rounded-2xl border p-4 text-left transition",
+                    "rounded-xl border px-4 py-2 text-sm font-semibold transition",
                     active
-                      ? "border-slate-900 bg-slate-900 text-white shadow-lg"
-                      : "border-slate-200 bg-slate-50 text-slate-900 hover:bg-white",
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50",
                   ].join(" ")}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className={active ? "text-[11px] uppercase tracking-wide text-slate-300" : "text-[11px] uppercase tracking-wide text-slate-500"}>
-                        {report.category}
-                      </div>
-                      <div className="mt-1 text-sm font-semibold">{report.title}</div>
-                    </div>
-                    <span
-                      className={[
-                        "rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide",
-                        active ? "border-white/20 bg-white/10 text-white" : statusBadge(report.status),
-                      ].join(" ")}
-                    >
-                      {statusLabel(report.status)}
-                    </span>
-                  </div>
-                  <p className={active ? "mt-2 text-xs text-slate-300" : "mt-2 text-xs text-slate-600"}>{report.description}</p>
-                  <div className="mt-3 flex items-center justify-between">
-                    <div>
-                      <div className={active ? "text-lg font-bold text-white" : "text-lg font-bold text-slate-900"}>{report.primaryMetric}</div>
-                      <div className={active ? "text-[11px] text-slate-300" : "text-[11px] text-slate-500"}>{report.primaryLabel}</div>
-                    </div>
-                    <div className={active ? "text-[11px] text-slate-300" : "text-[11px] text-slate-500"}>
-                      {report.exports.join(" / ")}
-                    </div>
-                  </div>
+                  {report.title}
                 </button>
               );
             })}
           </div>
-        </aside>
 
-        <div className="space-y-4">
-          <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-200 px-5 py-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Workspace</p>
-                  <h2 className="mt-1 text-xl font-semibold text-slate-900">{selected.title}</h2>
-                  <p className="mt-2 max-w-3xl text-sm text-slate-600">{selected.description}</p>
-                </div>
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Current Scope</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">{scopeLabel}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Format Plan</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">{selected.exports.join(" / ")}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Priority</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">{selected.primaryLabel}</div>
-                  </div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">{currentPreviewCount > 0 ? `${currentPreviewCount} rows ready` : statusLabel(selected.status)}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {selected.includes.map((item) => (
+              <span key={item} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-medium text-slate-600">
+                {item}
+              </span>
+            ))}
+          </div>
+        </div>
 
-            <div className="grid gap-4 p-5 xl:grid-cols-[minmax(0,1.15fr)_320px]">
-              <div className="space-y-4">
+        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="space-y-4 p-5">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <label className="space-y-1.5">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Selection Mode</span>
@@ -846,45 +813,43 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h3 className="text-sm font-semibold text-slate-900">Preview Area</h3>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {selectedReport === "attendance"
-                          ? "Attendance preview now loads live data. Other report modules will connect in later tasks."
-                          : selectedReport === "leaves"
-                            ? "Leave preview now shows requests, balances, and status summary."
-                            : selectedReport === "claims"
-                              ? "Claims preview now shows amounts, status mix, and submitted requests."
-                              : selectedReport === "corrections"
-                                ? "Corrections preview now shows requested punch changes, remarks, and review status."
-                                : selectedReport === "employees"
-                                  ? "Employee master preview now shows employee directory, status, joining dates, and app readiness."
-                              : "Live preview is not connected yet for this report module."}
-                      </p>
-                    </div>
-                    <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                      {previewLoading ? "Loading..." : `${currentPreviewCount} rows`}
-                    </div>
-                  </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900">Preview</h3>
+                  <p className="mt-1 text-sm text-slate-600">
+                    {selectedReport === "attendance"
+                      ? "Attendance preview with presence, lateness, and work hours."
+                      : selectedReport === "leaves"
+                        ? "Leave preview with requests, balances, and approval status."
+                        : selectedReport === "claims"
+                          ? "Claims preview with submitted amounts and approval status."
+                          : selectedReport === "corrections"
+                            ? "Corrections preview with requested punches and review remarks."
+                            : "Employee master preview with status, joining date, and app readiness."}
+                  </p>
+                </div>
+                <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
+                  {previewLoading ? "Loading..." : `${currentPreviewCount} rows`}
+                </div>
+              </div>
 
-                  <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Selected Report</div>
-                      <div className="mt-1 text-sm font-semibold text-slate-900">{selected.title}</div>
-                    </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter Scope</div>
-                      <div className="mt-1 text-sm font-semibold text-slate-900">{scopeLabel}</div>
-                    </div>
-                    <div className="rounded-xl border border-white bg-white px-4 py-4">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export Readiness</div>
-                      <div className="mt-1 text-sm font-semibold text-slate-900">{exportReady ? "Preview + export ready" : "Generate preview first"}</div>
-                    </div>
-                  </div>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-white bg-white px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Selected Report</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{selected.title}</div>
+                </div>
+                <div className="rounded-xl border border-white bg-white px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Filter Scope</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{scopeLabel}</div>
+                </div>
+                <div className="rounded-xl border border-white bg-white px-4 py-4">
+                  <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export</div>
+                  <div className="mt-1 text-sm font-semibold text-slate-900">{exportReady ? "Preview + export ready" : "Generate preview first"}</div>
+                </div>
+              </div>
 
-                  {selectedReport === "attendance" ? (
+              {selectedReport === "attendance" ? (
                     <div className="mt-4 grid gap-3 md:grid-cols-4">
                       <div className="rounded-xl border border-white bg-white px-4 py-4">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
@@ -968,7 +933,7 @@ export default function Page() {
                         <div className="mt-1 text-lg font-semibold text-rose-700">{correctionSummary.rejected}</div>
                       </div>
                     </div>
-                  ) : selectedReport === "employees" ? (
+              ) : selectedReport === "employees" ? (
                     <div className="mt-4 grid gap-3 md:grid-cols-4">
                       <div className="rounded-xl border border-white bg-white px-4 py-4">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
@@ -987,15 +952,15 @@ export default function Page() {
                         <div className="mt-1 text-lg font-semibold text-slate-900">{employeeSummary.mobileActive}</div>
                       </div>
                     </div>
-                  ) : null}
+              ) : null}
 
-                  {previewError && (
-                    <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {previewError}
-                    </div>
-                  )}
+              {previewError && (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {previewError}
+                </div>
+              )}
 
-                  {selectedReport === "attendance" ? (
+              {selectedReport === "attendance" ? (
                     <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
                       <table className="min-w-[900px] w-full text-left text-sm">
                         <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
@@ -1271,54 +1236,9 @@ export default function Page() {
                       Live preview is not connected yet for this report module.
                     </div>
                   )}
-                </div>
-              </div>
-
-              <aside className="space-y-4">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">This Report Includes</p>
-                  <div className="mt-3 space-y-2">
-                    {selected.includes.map((item) => (
-                      <div key={item} className="rounded-xl border border-white bg-white px-3 py-3 text-sm text-slate-700">
-                        {item}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-white p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Delivery Plan</p>
-                  <div className="mt-3 space-y-3">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-900">Tasks 1-3</div>
-                      <div className="mt-1 text-sm text-slate-600">Reports shell, attendance preview, and attendance CSV export completed.</div>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-900">Tasks 4-5</div>
-                      <div className="mt-1 text-sm text-slate-600">Leave preview and leave CSV export completed.</div>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-slate-900">Tasks 6-11</div>
-                      <div className="mt-1 text-sm text-slate-600">Claims, corrections, and employee master preview/export flows completed.</div>
-                    </div>
-                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3">
-                      <div className="text-xs font-semibold text-emerald-900">Task 12</div>
-                      <div className="mt-1 text-sm text-emerald-700">Polish complete: export gating, status cleanup, and final workspace refinement.</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-200 bg-slate-900 p-4 text-white">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">Build Note</p>
-                  <h3 className="mt-2 text-base font-semibold">V1 Reports Ready</h3>
-                  <p className="mt-2 text-sm text-slate-300">
-                    The reports workspace now ships five live report modules with preview plus CSV export for company admins.
-                  </p>
-                </div>
-              </aside>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </section>
     </div>
   );
