@@ -18,9 +18,6 @@ create table if not exists public.companies (
   pin_code text,
   admin_email text,
   admin_password text,
-  company_logo_url text,
-  company_logo_header_url text,
-  company_tagline text,
   office_lat double precision,
   office_lon double precision,
   office_radius_m integer,
@@ -28,6 +25,8 @@ create table if not exists public.companies (
     check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday')),
   allow_punch_on_holiday boolean not null default true,
   allow_punch_on_weekly_off boolean not null default true,
+  extra_hours_policy text not null default 'yes'
+    check (extra_hours_policy in ('yes', 'no')),
   gst text,
   business_nature text,
   created_at timestamptz not null default now()
@@ -37,21 +36,16 @@ alter table public.companies
   alter column id set default gen_random_uuid();
 
 alter table public.companies
-  add column if not exists company_logo_url text;
-
-alter table public.companies
-  add column if not exists company_logo_header_url text;
-
-alter table public.companies
-  add column if not exists company_tagline text;
-
-alter table public.companies
   add column if not exists weekly_off_policy text not null default 'sunday_only'
     check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday'));
 
 alter table public.companies
   add column if not exists allow_punch_on_holiday boolean not null default true,
   add column if not exists allow_punch_on_weekly_off boolean not null default true;
+
+alter table public.companies
+  add column if not exists extra_hours_policy text not null default 'yes'
+    check (extra_hours_policy in ('yes', 'no'));
 
 alter table public.companies enable row level security;
 
@@ -298,12 +292,17 @@ create table if not exists public.company_leave_policies (
   code text not null,
   annual_quota integer not null default 0 check (annual_quota >= 0),
   carry_forward integer not null default 0 check (carry_forward >= 0),
+  accrual_mode text not null default 'monthly' check (accrual_mode in ('monthly', 'upfront')),
   encashable boolean not null default false,
   active boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (company_id, code)
 );
+
+alter table public.company_leave_policies
+  add column if not exists accrual_mode text not null default 'monthly'
+    check (accrual_mode in ('monthly', 'upfront'));
 
 create index if not exists company_leave_policies_company_idx
   on public.company_leave_policies(company_id, active desc, name asc);
@@ -336,6 +335,55 @@ with check (true);
 
 create policy "company_leave_policies_delete_authenticated"
 on public.company_leave_policies
+for delete
+to authenticated
+using (true);
+
+create table if not exists public.employee_leave_balance_overrides (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  employee_id uuid not null references public.employees(id) on delete cascade,
+  leave_policy_code text not null,
+  year integer not null check (year >= 2000 and year <= 9999),
+  extra_days numeric(6,2) not null default 0,
+  reason text not null,
+  updated_by text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, employee_id, leave_policy_code, year)
+);
+
+create index if not exists employee_leave_balance_overrides_company_year_idx
+  on public.employee_leave_balance_overrides(company_id, year desc, employee_id);
+
+alter table public.employee_leave_balance_overrides enable row level security;
+
+drop policy if exists "employee_leave_balance_overrides_select_authenticated" on public.employee_leave_balance_overrides;
+drop policy if exists "employee_leave_balance_overrides_insert_authenticated" on public.employee_leave_balance_overrides;
+drop policy if exists "employee_leave_balance_overrides_update_authenticated" on public.employee_leave_balance_overrides;
+drop policy if exists "employee_leave_balance_overrides_delete_authenticated" on public.employee_leave_balance_overrides;
+
+create policy "employee_leave_balance_overrides_select_authenticated"
+on public.employee_leave_balance_overrides
+for select
+to authenticated
+using (true);
+
+create policy "employee_leave_balance_overrides_insert_authenticated"
+on public.employee_leave_balance_overrides
+for insert
+to authenticated
+with check (true);
+
+create policy "employee_leave_balance_overrides_update_authenticated"
+on public.employee_leave_balance_overrides
+for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "employee_leave_balance_overrides_delete_authenticated"
+on public.employee_leave_balance_overrides
 for delete
 to authenticated
 using (true);
@@ -382,6 +430,56 @@ with check (true);
 
 create policy "company_holidays_delete_authenticated"
 on public.company_holidays
+for delete
+to authenticated
+using (true);
+
+create table if not exists public.company_shift_definitions (
+  id text primary key,
+  company_id uuid not null references public.companies(id) on delete cascade,
+  name text not null,
+  type text not null,
+  start_time text not null,
+  end_time text not null,
+  grace_mins integer not null default 10 check (grace_mins >= 0 and grace_mins <= 120),
+  early_window_mins integer not null default 15 check (early_window_mins >= 0 and early_window_mins <= 240),
+  min_work_before_out_mins integer not null default 60 check (min_work_before_out_mins >= 0 and min_work_before_out_mins <= 1440),
+  active boolean not null default true,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists company_shift_definitions_company_idx
+  on public.company_shift_definitions(company_id, active desc, name asc);
+
+alter table public.company_shift_definitions enable row level security;
+
+drop policy if exists "company_shift_definitions_select_authenticated" on public.company_shift_definitions;
+drop policy if exists "company_shift_definitions_insert_authenticated" on public.company_shift_definitions;
+drop policy if exists "company_shift_definitions_update_authenticated" on public.company_shift_definitions;
+drop policy if exists "company_shift_definitions_delete_authenticated" on public.company_shift_definitions;
+
+create policy "company_shift_definitions_select_authenticated"
+on public.company_shift_definitions
+for select
+to authenticated
+using (true);
+
+create policy "company_shift_definitions_insert_authenticated"
+on public.company_shift_definitions
+for insert
+to authenticated
+with check (true);
+
+create policy "company_shift_definitions_update_authenticated"
+on public.company_shift_definitions
+for update
+to authenticated
+using (true)
+with check (true);
+
+create policy "company_shift_definitions_delete_authenticated"
+on public.company_shift_definitions
 for delete
 to authenticated
 using (true);
@@ -450,3 +548,35 @@ on public.employee_leave_requests
 for delete
 to authenticated
 using (true);
+
+create table if not exists public.government_holiday_template_sets (
+  id uuid primary key default gen_random_uuid(),
+  year integer not null check (year >= 2000 and year <= 9999),
+  state text not null,
+  source_name text not null default 'Super Admin',
+  source_url text,
+  status text not null default 'draft' check (status in ('draft', 'published')),
+  created_by text not null,
+  created_at timestamptz not null default timezone('utc', now()),
+  updated_at timestamptz not null default timezone('utc', now()),
+  unique (year, state)
+);
+
+create table if not exists public.government_holiday_template_items (
+  id uuid primary key default gen_random_uuid(),
+  template_set_id uuid not null references public.government_holiday_template_sets(id) on delete cascade,
+  holiday_date date not null,
+  name text not null,
+  scope text not null default 'state' check (scope in ('national', 'state')),
+  type text not null default 'national' check (type in ('national', 'festival', 'company')),
+  created_at timestamptz not null default timezone('utc', now())
+);
+
+create index if not exists govt_holiday_template_sets_year_state_idx
+  on public.government_holiday_template_sets(year asc, state asc);
+
+create index if not exists govt_holiday_template_items_template_idx
+  on public.government_holiday_template_items(template_set_id, holiday_date asc);
+
+alter table public.government_holiday_template_sets enable row level security;
+alter table public.government_holiday_template_items enable row level security;

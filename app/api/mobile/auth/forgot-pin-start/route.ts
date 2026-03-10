@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
-import { resolveRequestOrigin } from "@/lib/mobileCompanyLogo";
 import {
   expiresAtIso,
   generateOtp,
@@ -25,7 +24,6 @@ type EmployeeRow = {
 };
 
 export async function POST(req: NextRequest) {
-  const requestOrigin = resolveRequestOrigin(req);
   const body = (await req.json().catch(() => ({}))) as {
     employeeCode?: string;
     mobile?: string;
@@ -105,7 +103,7 @@ export async function POST(req: NextRequest) {
     state: "RESET_PIN_OTP_REQUIRED",
     challengeId: otpRow.id,
     expiresAt,
-    employee: await buildMobileEmployeePayload(admin, { ...employee, mobile }, { requestOrigin }),
+    employee: await buildMobileEmployeePayload(admin, { ...employee, mobile }),
     ...(isProduction() ? {} : { devOtp: otpCode }),
   });
 }

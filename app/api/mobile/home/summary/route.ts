@@ -2,12 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShifts";
-
-function timeToMinutes(value: string) {
-  const [h, m] = String(value || "").split(":").map(Number);
-  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
-  return h * 60 + m;
-}
+import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes } from "@/lib/shiftWorkPolicy";
 
 function normalizeText(value: string | null | undefined) {
   return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -32,7 +27,7 @@ function buildQueryWindow(date: string) {
   };
 }
 
-function workMinutes(checkInIso: string | null, checkOutIso: string | null) {
+function rawWorkMinutes(checkInIso: string | null, checkOutIso: string | null) {
   if (!checkInIso || !checkOutIso) return 0;
   const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
   if (!Number.isFinite(diffMs) || diffMs <= 0) return 0;
@@ -69,7 +64,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off")
+      .select("name,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -128,12 +123,13 @@ export async function POST(req: NextRequest) {
     early_window_mins: number;
     min_work_before_out_mins: number;
     active: boolean;
-  }>)
+    }>)
     .filter((row) => row.active !== false)
     .map((row) => ({
       name: row.name,
       type: row.type,
       startTime: row.start_time,
+      endTime: row.end_time,
       graceMins: Number(row.grace_mins || 0),
       earlyWindowMins: Number(row.early_window_mins || 0),
       minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
@@ -143,6 +139,7 @@ export async function POST(req: NextRequest) {
     name: row.name,
     type: row.type,
     startTime: row.start,
+    endTime: row.end,
     graceMins: row.graceMins,
     earlyWindowMins: row.earlyWindowMins,
     minWorkBeforeOutMins: row.minWorkBeforeOutMins,
@@ -159,6 +156,9 @@ export async function POST(req: NextRequest) {
     shiftPool.find((row) => normalizeText(row.name) === "general") ||
     shiftPool[0];
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
+  const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
+  const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
+  const workingMinutes = applyExtraHoursPolicy(rawWorkMinutes(checkInAt, checkOutAt), effectiveScheduledWorkMin, extraHoursPolicy);
 
   return NextResponse.json({
     employee: {
@@ -168,15 +168,13 @@ export async function POST(req: NextRequest) {
       designation: employeeResult.data?.designation || "",
       shiftName: employeeShiftName,
       companyName: companyResult.data?.name || "",
-      companyTagline: companyResult.data?.company_tagline || "",
-      company_tagline: companyResult.data?.company_tagline || "",
     },
     today: {
       date: today,
       status: currentStatus,
       punchInAt: checkInAt,
       punchOutAt: checkOutAt,
-      workingMinutes: workMinutes(checkInAt, checkOutAt),
+      workingMinutes,
     },
     config: {
       shiftName: employeeShiftName,
@@ -184,6 +182,8 @@ export async function POST(req: NextRequest) {
       graceMins: matchedShift?.graceMins || 10,
       earlyWindowMin: matchedShift?.earlyWindowMins || 15,
       minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || 60,
+      scheduledWorkMin: effectiveScheduledWorkMin || 0,
+      extraHoursPolicy,
       weeklyOffPolicy: companyResult.data?.weekly_off_policy || "sunday_only",
       allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
       allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,

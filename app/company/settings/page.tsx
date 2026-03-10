@@ -11,14 +11,11 @@ function CompanySettingsPageContent() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [savedTagline, setSavedTagline] = useState("");
-  const [taglineInput, setTaglineInput] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [officeLat, setOfficeLat] = useState("");
   const [officeLon, setOfficeLon] = useState("");
   const [officeRadiusM, setOfficeRadiusM] = useState("");
   const [savingAttendance, setSavingAttendance] = useState(false);
-  const [savingTagline, setSavingTagline] = useState(false);
 
   function showToast(message: string) {
     setToast(message);
@@ -42,30 +39,11 @@ function CompanySettingsPageContent() {
         office_lat?: number | null;
         office_lon?: number | null;
         office_radius_m?: number | null;
-        company_tagline?: string | null;
       };
       if (!response.ok || ignore) return;
       setOfficeLat(result.office_lat == null ? "" : String(result.office_lat));
       setOfficeLon(result.office_lon == null ? "" : String(result.office_lon));
       setOfficeRadiusM(result.office_radius_m == null ? "" : String(result.office_radius_m));
-      setSavedTagline(result.company_tagline || "");
-      setTaglineInput(result.company_tagline || "");
-
-      try {
-        const raw = localStorage.getItem("phv_company");
-        if (raw) {
-          const company = JSON.parse(raw);
-          localStorage.setItem(
-            "phv_company",
-            JSON.stringify({
-              ...company,
-              company_tagline: result.company_tagline || "",
-            })
-          );
-        }
-      } catch {
-        // Ignore localStorage parse failures.
-      }
     }
     loadSettings();
     return () => {
@@ -168,55 +146,6 @@ function CompanySettingsPageContent() {
     showToast("Office attendance settings saved.");
   }
 
-  function handleSaveTagline() {
-    void (async () => {
-      const tagline = taglineInput.trim();
-      if (tagline.length > 100) {
-        return showToast("Tagline must be 100 characters or less.");
-      }
-
-      const supabase = getSupabaseBrowserClient("company");
-      const sessionResult = supabase ? await supabase.auth.getSession() : null;
-      const accessToken = sessionResult?.data.session?.access_token;
-      if (!accessToken) return showToast("Company session not found. Please login again.");
-
-      setSavingTagline(true);
-      const response = await fetch("/api/company/settings", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          company_tagline: tagline || null,
-        }),
-      });
-      const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      setSavingTagline(false);
-      if (!response.ok || !result.ok) {
-        return showToast(result.error || "Unable to save company tagline.");
-      }
-
-      setSavedTagline(tagline);
-      try {
-        const raw = localStorage.getItem("phv_company");
-        if (raw) {
-          const company = JSON.parse(raw);
-          localStorage.setItem(
-            "phv_company",
-            JSON.stringify({
-              ...company,
-              company_tagline: tagline,
-            })
-          );
-        }
-      } catch {
-        // Ignore localStorage parse failures.
-      }
-      showToast("Company tagline saved.");
-    })();
-  }
-
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <div className="mb-6">
@@ -314,37 +243,6 @@ function CompanySettingsPageContent() {
           className="mt-4 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
         >
           {savingAttendance ? "Saving..." : "Save Office Attendance Settings"}
-        </button>
-      </section>
-
-      <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Company Tagline</h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Add a short line that represents your company. Employees will see it in app branding areas.
-        </p>
-        <label className="mt-3 grid gap-1.5">
-          <span className="text-sm text-slate-700">Tagline (max 100 chars)</span>
-          <input
-            value={taglineInput}
-            onChange={(e) => setTaglineInput(e.target.value)}
-            maxLength={100}
-            placeholder="Example: Trusted service, every day."
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
-          />
-        </label>
-        <div className="mt-2 text-xs text-slate-500">{taglineInput.trim().length}/100</div>
-        <button
-          type="button"
-          onClick={handleSaveTagline}
-          disabled={savingTagline || taglineInput.trim() === savedTagline}
-          className={[
-            "mt-4 rounded-lg px-3 py-2 text-sm font-semibold",
-            savingTagline || taglineInput.trim() === savedTagline
-              ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-              : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
-          ].join(" ")}
-        >
-          {savingTagline ? "Saving..." : "Save Tagline"}
         </button>
       </section>
 

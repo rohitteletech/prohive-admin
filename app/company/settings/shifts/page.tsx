@@ -88,7 +88,11 @@ export default function Page() {
       const response = await fetch("/api/company/settings/shifts", {
         headers: { authorization: `Bearer ${accessToken}` },
       });
-      const result = (await response.json().catch(() => ({}))) as { rows?: ShiftRow[]; error?: string };
+      const result = (await response.json().catch(() => ({}))) as {
+        rows?: ShiftRow[];
+        extraHoursPolicy?: "yes" | "no";
+        error?: string;
+      };
       if (ignore) return;
       setLoading(false);
       if (!response.ok) {
@@ -99,6 +103,9 @@ export default function Page() {
       const nextRows = Array.isArray(result.rows) && result.rows.length ? result.rows : DEFAULT_COMPANY_SHIFTS;
       setRows(nextRows);
       saveCompanyShifts(nextRows);
+      if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
+        setExtraHoursPolicy(result.extraHoursPolicy);
+      }
     }
 
     void loadRows();
@@ -209,9 +216,14 @@ export default function Page() {
         "Content-Type": "application/json",
         authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ rows: nextRows }),
+      body: JSON.stringify({ rows: nextRows, extraHoursPolicy }),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; rows?: ShiftRow[]; error?: string };
+    const result = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      rows?: ShiftRow[];
+      extraHoursPolicy?: "yes" | "no";
+      error?: string;
+    };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return showToast(result.error || "Unable to save shifts.");
@@ -219,6 +231,9 @@ export default function Page() {
     const savedRows = Array.isArray(result.rows) && result.rows.length ? result.rows : nextRows;
     setRows(savedRows);
     saveCompanyShifts(savedRows);
+    if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
+      setExtraHoursPolicy(result.extraHoursPolicy);
+    }
     showToast("Shift settings saved.");
   }
 

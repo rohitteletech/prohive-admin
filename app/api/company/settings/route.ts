@@ -5,7 +5,6 @@ type Body = {
   office_lat?: number | null;
   office_lon?: number | null;
   office_radius_m?: number | null;
-  company_tagline?: string | null;
 };
 
 function normalizeNumber(value: unknown) {
@@ -15,13 +14,6 @@ function normalizeNumber(value: unknown) {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
-}
-
-function normalizeTagline(value: unknown) {
-  if (value == null) return null;
-  if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed || null;
 }
 
 export async function GET(req: NextRequest) {
@@ -34,7 +26,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("companies")
-    .select("office_lat,office_lon,office_radius_m,company_tagline")
+    .select("office_lat,office_lon,office_radius_m")
     .eq("id", context.companyId)
     .maybeSingle();
 
@@ -46,7 +38,6 @@ export async function GET(req: NextRequest) {
     office_lat: data?.office_lat ?? null,
     office_lon: data?.office_lon ?? null,
     office_radius_m: data?.office_radius_m ?? null,
-    company_tagline: data?.company_tagline ?? null,
   });
 }
 
@@ -63,9 +54,7 @@ export async function PUT(req: NextRequest) {
   const hasOfficeLon = Object.prototype.hasOwnProperty.call(body, "office_lon");
   const hasOfficeRadiusM = Object.prototype.hasOwnProperty.call(body, "office_radius_m");
   const hasAttendanceUpdate = hasOfficeLat || hasOfficeLon || hasOfficeRadiusM;
-  const hasTaglineUpdate = Object.prototype.hasOwnProperty.call(body, "company_tagline");
-
-  if (!hasAttendanceUpdate && !hasTaglineUpdate) {
+  if (!hasAttendanceUpdate) {
     return NextResponse.json({ error: "No settings fields provided." }, { status: 400 });
   }
 
@@ -73,7 +62,6 @@ export async function PUT(req: NextRequest) {
     office_lat?: number | null;
     office_lon?: number | null;
     office_radius_m?: number | null;
-    company_tagline?: string | null;
   } = {};
 
   if (hasAttendanceUpdate) {
@@ -103,14 +91,6 @@ export async function PUT(req: NextRequest) {
     payload.office_lat = officeLat;
     payload.office_lon = officeLon;
     payload.office_radius_m = officeRadiusM == null ? null : Math.round(officeRadiusM);
-  }
-
-  if (hasTaglineUpdate) {
-    const tagline = normalizeTagline(body.company_tagline);
-    if (tagline && tagline.length > 100) {
-      return NextResponse.json({ error: "Company tagline must be 100 characters or less." }, { status: 400 });
-    }
-    payload.company_tagline = tagline;
   }
 
   const { error } = await context.admin.from("companies").update(payload).eq("id", context.companyId);

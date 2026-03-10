@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShifts";
+import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
 
 type EventRow = {
   id: string;
@@ -38,11 +40,6 @@ type AttendanceRow = {
 };
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
-const DEFAULT_SHIFT_STARTS: Record<string, string> = {
-  general: "09:00",
-  morning: "06:00",
-  evening: "14:00",
-};
 const DEFAULT_SHIFT_GRACE_MINS = 10;
 
 function normalizeDateParam(value: string | null) {
@@ -113,38 +110,51 @@ function localMinutesInTimeZone(iso: string, timeZone: string) {
   return hour * 60 + minute;
 }
 
-function shiftStartMinutes(shiftName: string) {
-  const normalized = shiftName.trim().toLowerCase();
-  const hhmm = DEFAULT_SHIFT_STARTS[normalized] || DEFAULT_SHIFT_STARTS.general;
-  const [hour, minute] = hhmm.split(":").map(Number);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  return hour * 60 + minute;
-}
-
-function workHoursLabel(checkInIso: string | null, checkOutIso: string | null) {
-  if (!checkInIso || !checkOutIso) return "-";
-  const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
-  if (!Number.isFinite(diffMs) || diffMs <= 0) return "-";
-  const totalMinutes = Math.floor(diffMs / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-}
-
 function latLngLabel(lat: number | null | undefined, lon: number | null | undefined) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return "-";
   return `${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}`;
 }
 
-function rowStatus(firstInIso: string | null, shiftName: string, timeZone: string): AttendanceRow["status"] {
-  if (!firstInIso) return "absent";
-  const actualMinutes = localMinutesInTimeZone(firstInIso, timeZone);
-  const shiftMinutes = shiftStartMinutes(shiftName);
-  if (actualMinutes === null || shiftMinutes === null) return "present";
-  return actualMinutes > shiftMinutes + DEFAULT_SHIFT_GRACE_MINS ? "late" : "present";
+function rawWorkMinutes(checkInIso: string | null, checkOutIso: string | null) {
+  if (!checkInIso || !checkOutIso) return 0;
+  const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return 0;
+  return Math.floor(diffMs / 60000);
 }
 
-function aggregateRows(events: EventRow[], selectedDate: string, timeZone: string) {
+function findShiftConfig(
+  shiftName: string,
+  shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>
+) {
+  const normalized = shiftName.trim().toLowerCase();
+  return (
+    shiftRows.find((row) => {
+      const name = row.name.trim().toLowerCase();
+      const type = row.type.trim().toLowerCase();
+      return normalized ? normalized === name || normalized === type : false;
+    }) ||
+    shiftRows.find((row) => row.name.trim().toLowerCase() === "general") ||
+    shiftRows[0]
+  );
+}
+
+function rowStatus(firstInIso: string | null, shiftName: string, timeZone: string, shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>): AttendanceRow["status"] {
+  if (!firstInIso) return "absent";
+  const actualMinutes = localMinutesInTimeZone(firstInIso, timeZone);
+  const shift = findShiftConfig(shiftName, shiftRows);
+  const shiftMinutes = shift ? timeToMinutes(shift.start) : null;
+  if (actualMinutes === null || shiftMinutes === null) return "present";
+  const grace = shift?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS;
+  return actualMinutes > shiftMinutes + grace ? "late" : "present";
+}
+
+function aggregateRows(
+  events: EventRow[],
+  selectedDate: string,
+  timeZone: string,
+  shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
+  extraHoursPolicy: string
+) {
   const grouped = new Map<string, EventRow[]>();
 
   events.forEach((event) => {
@@ -173,6 +183,9 @@ function aggregateRows(events: EventRow[], selectedDate: string, timeZone: strin
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
       const checkInIso = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
       const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
+      const shiftConfig = findShiftConfig(shift, shiftRows);
+      const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
+      const effectiveMinutes = applyExtraHoursPolicy(rawWorkMinutes(checkInIso, checkOutIso), scheduledMinutes, extraHoursPolicy);
 
       return {
         id: key,
@@ -186,8 +199,8 @@ function aggregateRows(events: EventRow[], selectedDate: string, timeZone: strin
         checkOut: checkOutIso ? displayTimeInTimeZone(checkOutIso, timeZone) : "-",
         checkOutAddress: lastOut?.address_text?.trim() || "-",
         checkOutLatLng: lastOut ? latLngLabel(lastOut.lat, lastOut.lon) : "-",
-        workHours: workHoursLabel(checkInIso, checkOutIso),
-        status: rowStatus(checkInIso, shift, timeZone),
+        workHours: effectiveMinutes > 0 ? workHoursLabel(effectiveMinutes) : "-",
+        status: rowStatus(checkInIso, shift, timeZone, shiftRows),
       } satisfies AttendanceRow;
     })
     .sort((a, b) => a.employee.localeCompare(b.employee));
@@ -211,22 +224,62 @@ export async function GET(req: NextRequest) {
   const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
   const { fromIso, toIso } = buildQueryWindow(date);
 
-  const { data, error } = await context.admin
-    .from("attendance_punch_events")
-    .select(
-      "id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at"
-      + ",employees(id,full_name,employee_code,department,shift_name,status)"
-    )
-    .eq("company_id", context.companyId)
-    .in("approval_status", APPROVED_STATUSES)
-    .gte("effective_punch_at", fromIso)
-    .lt("effective_punch_at", toIso)
-    .order("effective_punch_at", { ascending: true });
+  const [eventsResult, shiftResult, companyResult] = await Promise.all([
+    context.admin
+      .from("attendance_punch_events")
+      .select(
+        "id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at"
+        + ",employees(id,full_name,employee_code,department,shift_name,status)"
+      )
+      .eq("company_id", context.companyId)
+      .in("approval_status", APPROVED_STATUSES)
+      .gte("effective_punch_at", fromIso)
+      .lt("effective_punch_at", toIso)
+      .order("effective_punch_at", { ascending: true }),
+    context.admin
+      .from("company_shift_definitions")
+      .select("name,type,start_time,end_time,grace_mins,active")
+      .eq("company_id", context.companyId)
+      .order("created_at", { ascending: true }),
+    context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
+  ]);
 
-  if (error) {
-    return NextResponse.json({ error: error.message || "Unable to load attendance." }, { status: 400 });
+  if (eventsResult.error) {
+    return NextResponse.json({ error: eventsResult.error.message || "Unable to load attendance." }, { status: 400 });
+  }
+  if (shiftResult.error) {
+    return NextResponse.json({ error: shiftResult.error.message || "Unable to load shift rules." }, { status: 400 });
+  }
+  if (companyResult.error) {
+    return NextResponse.json({ error: companyResult.error.message || "Unable to load extra hour policy." }, { status: 400 });
   }
 
-  const rows = aggregateRows(Array.isArray(data) ? (data as unknown as EventRow[]) : [], date, timeZone);
+  const shiftRows =
+    ((shiftResult.data || []) as Array<{ name: string; type: string; start_time: string; end_time: string; grace_mins: number; active: boolean }>)
+      .filter((row) => row.active !== false)
+      .map((row) => ({
+        name: row.name,
+        type: row.type,
+        start: row.start_time,
+        end: row.end_time,
+        graceMins: Number(row.grace_mins || 0),
+      }));
+  const effectiveShiftRows = shiftRows.length
+    ? shiftRows
+    : DEFAULT_COMPANY_SHIFTS.map((row) => ({
+        name: row.name,
+        type: row.type,
+        start: row.start,
+        end: row.end,
+        graceMins: row.graceMins,
+      }));
+  const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
+  const rows = aggregateRows(
+    Array.isArray(eventsResult.data) ? (eventsResult.data as unknown as EventRow[]) : [],
+    date,
+    timeZone,
+    effectiveShiftRows,
+    extraHoursPolicy
+  );
   return NextResponse.json({ rows });
 }
