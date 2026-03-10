@@ -117,3 +117,49 @@ export async function getClaimsReportData(params: {
     },
   };
 }
+
+function csvEscape(value: string | number | boolean) {
+  const text = String(value ?? "");
+  if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+  return text;
+}
+
+export function toClaimsCsv(rows: ClaimReportRow[]) {
+  const headers = [
+    "Employee",
+    "Employee Code",
+    "Department",
+    "Claim Type",
+    "Amount",
+    "Reason",
+    "From Date",
+    "To Date",
+    "Days",
+    "Submitted At",
+    "Status",
+    "Attachment",
+  ];
+
+  const lines = rows.map((row) =>
+    [
+      row.employee,
+      row.employeeCode,
+      row.department,
+      row.claimType,
+      row.amount,
+      row.reason,
+      row.fromDate,
+      row.toDate,
+      row.days,
+      row.submittedAt,
+      row.status,
+      row.attachment ? "Yes" : "No",
+    ]
+      .map(csvEscape)
+      .join(",")
+  );
+
+  return [headers.join(","), ...lines].join("\n");
+}
