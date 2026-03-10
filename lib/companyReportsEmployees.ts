@@ -98,3 +98,45 @@ export async function getEmployeesReportData(params: {
     },
   };
 }
+
+function csvEscape(value: string | number) {
+  const text = String(value ?? "");
+  if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+  return text;
+}
+
+export function toEmployeesCsv(rows: EmployeeReportRow[]) {
+  const headers = [
+    "Employee",
+    "Employee Code",
+    "Department",
+    "Designation",
+    "Shift",
+    "Mobile",
+    "Joined On",
+    "Attendance Mode",
+    "Mobile App Status",
+    "Status",
+  ];
+
+  const lines = rows.map((row) =>
+    [
+      row.employee,
+      row.employeeCode,
+      row.department,
+      row.designation,
+      row.shift,
+      row.mobile,
+      row.joinedOn,
+      row.attendanceMode,
+      row.mobileAppStatus,
+      row.status,
+    ]
+      .map(csvEscape)
+      .join(",")
+  );
+
+  return [headers.join(","), ...lines].join("\n");
+}
