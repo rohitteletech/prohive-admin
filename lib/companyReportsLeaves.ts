@@ -208,3 +208,49 @@ export async function getLeaveReportData(params: {
     },
   };
 }
+
+function csvEscape(value: string | number) {
+  const text = String(value ?? "");
+  if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+  return text;
+}
+
+export function toLeaveCsv(rows: LeaveReportRow[]) {
+  const headers = [
+    "Employee",
+    "Employee Code",
+    "Department",
+    "Leave Type",
+    "From Date",
+    "To Date",
+    "Days",
+    "Paid Days",
+    "Unpaid Days",
+    "Available Balance",
+    "Status",
+    "Submitted At",
+  ];
+
+  const lines = rows.map((row) =>
+    [
+      row.employee,
+      row.employeeCode,
+      row.department,
+      row.leaveType,
+      row.fromDate,
+      row.toDate,
+      row.days,
+      row.paidDays,
+      row.unpaidDays,
+      row.availableBalance,
+      row.status,
+      row.submittedAt,
+    ]
+      .map(csvEscape)
+      .join(",")
+  );
+
+  return [headers.join(","), ...lines].join("\n");
+}

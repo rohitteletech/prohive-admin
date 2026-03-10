@@ -169,9 +169,9 @@ export default function Page() {
         title: "Leave Reports",
         category: "HR",
         description: "Leave balance, approvals, pending requests, and policy-wise leave usage summaries.",
-        status: "planned",
+        status: "ready_next",
         primaryMetric: "02",
-        primaryLabel: "After attendance",
+        primaryLabel: "Preview + export ready",
         exports: ["CSV", "XLSX"],
         includes: ["Leave balance", "Approved / Pending", "Policy-wise usage", "Employee-wise summary"],
       },
@@ -324,8 +324,8 @@ export default function Page() {
   }
 
   async function handleExport() {
-    if (selectedReport !== "attendance") {
-      setPreviewError("Export is currently enabled only for Attendance reports.");
+    if (selectedReport !== "attendance" && selectedReport !== "leaves") {
+      setPreviewError("Export is currently enabled only for Attendance and Leave reports.");
       return;
     }
 
@@ -342,7 +342,12 @@ export default function Page() {
         throw new Error("Company session not found. Please login again.");
       }
 
-      const response = await fetch("/api/company/reports/attendance/export", {
+      const endpoint =
+        selectedReport === "attendance"
+          ? "/api/company/reports/attendance/export"
+          : "/api/company/reports/leaves/export";
+
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -363,14 +368,14 @@ export default function Page() {
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(errorText || "Unable to export attendance CSV.");
+        throw new Error(errorText || "Unable to export report CSV.");
       }
 
       const blob = await response.blob();
       const downloadUrl = window.URL.createObjectURL(blob);
       const disposition = response.headers.get("Content-Disposition") || "";
       const match = disposition.match(/filename="([^"]+)"/);
-      const filename = match?.[1] || "attendance-report.csv";
+      const filename = match?.[1] || `${selectedReport}-report.csv`;
       const anchor = document.createElement("a");
       anchor.href = downloadUrl;
       anchor.download = filename;
@@ -379,7 +384,7 @@ export default function Page() {
       anchor.remove();
       window.URL.revokeObjectURL(downloadUrl);
     } catch (error) {
-      setPreviewError(error instanceof Error ? error.message : "Unable to export attendance CSV.");
+      setPreviewError(error instanceof Error ? error.message : "Unable to export report CSV.");
     } finally {
       setExporting(false);
     }
@@ -640,9 +645,9 @@ export default function Page() {
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export Readiness</div>
                       <div className="mt-1 text-sm font-semibold text-slate-900">
                         {selectedReport === "attendance"
-                          ? "Preview ready, export next"
+                          ? "Preview + export ready"
                           : selectedReport === "leaves"
-                            ? "Preview ready, export later"
+                            ? "Preview + export ready"
                             : selected.exports.join(" / ")}
                       </div>
                     </div>
