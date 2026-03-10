@@ -441,8 +441,8 @@ export default function Page() {
   }
 
   async function handleExport() {
-    if (selectedReport !== "attendance" && selectedReport !== "leaves" && selectedReport !== "claims") {
-      setPreviewError("Export is currently enabled only for Attendance, Leave, and Claims reports.");
+    if (selectedReport !== "attendance" && selectedReport !== "leaves" && selectedReport !== "claims" && selectedReport !== "corrections") {
+      setPreviewError("Export is currently enabled only for Attendance, Leave, Claims, and Corrections reports.");
       return;
     }
 
@@ -464,7 +464,9 @@ export default function Page() {
           ? "/api/company/reports/attendance/export"
           : selectedReport === "leaves"
             ? "/api/company/reports/leaves/export"
-            : "/api/company/reports/claims/export";
+            : selectedReport === "claims"
+              ? "/api/company/reports/claims/export"
+              : "/api/company/reports/corrections/export";
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -774,7 +776,7 @@ export default function Page() {
                             : selectedReport === "claims"
                               ? "Preview + export ready"
                               : selectedReport === "corrections"
-                                ? "Preview ready, export next"
+                                ? "Preview + export ready"
                             : selected.exports.join(" / ")}
                       </div>
                     </div>

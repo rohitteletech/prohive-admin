@@ -85,3 +85,47 @@ export async function getCorrectionsReportData(params: {
     },
   };
 }
+
+function csvEscape(value: string | number) {
+  const text = String(value ?? "");
+  if (text.includes(",") || text.includes("\"") || text.includes("\n")) {
+    return `"${text.replace(/"/g, "\"\"")}"`;
+  }
+  return text;
+}
+
+export function toCorrectionsCsv(rows: CorrectionReportRow[]) {
+  const headers = [
+    "Employee",
+    "Employee Code",
+    "Correction Date",
+    "Requested In",
+    "Requested Out",
+    "Reason",
+    "Submitted At",
+    "Submitted Date",
+    "Submitted Time",
+    "Status",
+    "Admin Remark",
+  ];
+
+  const lines = rows.map((row) =>
+    [
+      row.employee,
+      row.employeeCode,
+      row.correctionDateIso,
+      row.requestedIn,
+      row.requestedOut,
+      row.reason,
+      row.submittedAt,
+      row.submittedDate,
+      row.submittedTime,
+      row.status,
+      row.adminRemark || "",
+    ]
+      .map(csvEscape)
+      .join(",")
+  );
+
+  return [headers.join(","), ...lines].join("\n");
+}
