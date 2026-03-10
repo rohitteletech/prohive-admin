@@ -13,6 +13,7 @@ const primaryItems = [
   { href: "/company/claims", label: "Claims" },
   { href: "/company/leaves", label: "Leaves" },
   { href: "/company/reports", label: "Reports" },
+  { href: "/company/hr-policy", label: "HR Policy" },
   { href: "/company/settings/shifts", label: "Shift Control" },
   { href: "/company/settings/leaves", label: "Leave Settings" },
   { href: "/company/settings/holidays", label: "Manage Holidays" },
