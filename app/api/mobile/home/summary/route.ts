@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy")
+      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -168,6 +168,8 @@ export async function POST(req: NextRequest) {
       designation: employeeResult.data?.designation || "",
       shiftName: employeeShiftName,
       companyName: companyResult.data?.name || "",
+      companyTagline: companyResult.data?.company_tagline || "",
+      company_tagline: companyResult.data?.company_tagline || "",
     },
     today: {
       date: today,

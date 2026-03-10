@@ -18,6 +18,7 @@ create table if not exists public.companies (
   pin_code text,
   admin_email text,
   admin_password text,
+  company_tagline text,
   office_lat double precision,
   office_lon double precision,
   office_radius_m integer,
@@ -46,6 +47,9 @@ alter table public.companies
 alter table public.companies
   add column if not exists extra_hours_policy text not null default 'yes'
     check (extra_hours_policy in ('yes', 'no'));
+
+alter table public.companies
+  add column if not exists company_tagline text;
 
 alter table public.companies enable row level security;
 

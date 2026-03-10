@@ -14,6 +14,7 @@ export type MobileEmployeeBase = {
 
 type CompanyAttendanceRow = {
   name: string | null;
+  company_tagline: string | null;
   office_lat: number | null;
   office_lon: number | null;
   office_radius_m: number | null;
@@ -22,7 +23,7 @@ type CompanyAttendanceRow = {
 export async function loadCompanyAttendanceConfig(admin: AdminClient, companyId: string) {
   const { data } = await admin
     .from("companies")
-    .select("name,office_lat,office_lon,office_radius_m")
+    .select("name,company_tagline,office_lat,office_lon,office_radius_m")
     .eq("id", companyId)
     .maybeSingle();
 
@@ -50,6 +51,8 @@ export async function buildMobileEmployeePayload(
     id: employee.id,
     companyId: employee.company_id,
     companyName: company?.name?.trim() || "",
+    companyTagline: company?.company_tagline?.trim() || "",
+    company_tagline: company?.company_tagline?.trim() || "",
     employeeCode: employee.employee_code,
     fullName: employee.full_name,
     ...(designation ? { designation } : {}),
