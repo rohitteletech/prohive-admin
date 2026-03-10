@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { formatDisplayDate, INDIA_TIME_ZONE, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type ReportKey = "attendance" | "leaves" | "claims" | "corrections";
+type ReportKey = "attendance" | "leaves" | "claims" | "corrections" | "employees";
 type DateMode = "monthly" | "date_range";
 
 type MonthOption = {
@@ -114,6 +114,27 @@ type CorrectionSummary = {
   pending: number;
   approved: number;
   rejected: number;
+};
+
+type EmployeePreviewRow = {
+  id: string;
+  employee: string;
+  employeeCode: string;
+  department: string;
+  designation: string;
+  shift: string;
+  mobile: string;
+  status: "active" | "inactive";
+  joinedOn: string;
+  mobileAppStatus: string;
+  attendanceMode: string;
+};
+
+type EmployeeSummary = {
+  total: number;
+  active: number;
+  inactive: number;
+  mobileActive: number;
 };
 
 function toISODate(d: Date) {
@@ -244,6 +265,17 @@ export default function Page() {
         exports: ["CSV", "PDF"],
         includes: ["Requested change", "Approval status", "Admin remark", "Audit-ready history"],
       },
+      {
+        key: "employees",
+        title: "Employee Master",
+        category: "HR Master",
+        description: "Employee directory, status, department, shift, and mobile-app readiness for HR operations.",
+        status: "ready_next",
+        primaryMetric: "05",
+        primaryLabel: "Preview ready",
+        exports: ["CSV", "XLSX"],
+        includes: ["Employee directory", "Department and shift", "Joining date", "Mobile app status"],
+      },
     ],
     []
   );
@@ -281,6 +313,13 @@ export default function Page() {
     approved: 0,
     rejected: 0,
   });
+  const [employeePreviewRows, setEmployeePreviewRows] = useState<EmployeePreviewRow[]>([]);
+  const [employeeSummary, setEmployeeSummary] = useState<EmployeeSummary>({
+    total: 0,
+    active: 0,
+    inactive: 0,
+    mobileActive: 0,
+  });
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
@@ -294,16 +333,24 @@ export default function Page() {
       : `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
 
   async function handleGeneratePreview() {
-    if (selectedReport !== "attendance" && selectedReport !== "leaves" && selectedReport !== "claims" && selectedReport !== "corrections") {
+    if (
+      selectedReport !== "attendance"
+      && selectedReport !== "leaves"
+      && selectedReport !== "claims"
+      && selectedReport !== "corrections"
+      && selectedReport !== "employees"
+    ) {
       setPreviewRows([]);
       setLeavePreviewRows([]);
       setClaimPreviewRows([]);
       setCorrectionPreviewRows([]);
+      setEmployeePreviewRows([]);
       setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
       setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
-      setPreviewError("Live preview is currently enabled only for Attendance, Leave, Claims, and Corrections reports.");
+      setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
+      setPreviewError("Live preview is currently enabled only for Attendance, Leave, Claims, Corrections, and Employee Master reports.");
       return;
     }
 
@@ -327,7 +374,9 @@ export default function Page() {
             ? "/api/company/reports/leaves/preview"
             : selectedReport === "claims"
               ? "/api/company/reports/claims/preview"
-              : "/api/company/reports/corrections/preview";
+              : selectedReport === "corrections"
+                ? "/api/company/reports/corrections/preview"
+                : "/api/company/reports/employees/preview";
 
       const response = await fetch(endpoint, {
         method: "POST",
@@ -360,9 +409,11 @@ export default function Page() {
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
+        setEmployeePreviewRows([]);
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
+        setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
         setPreviewSummary(
           (json.summary as AttendanceSummary) || {
             total: rows.length,
@@ -377,9 +428,11 @@ export default function Page() {
         setPreviewRows([]);
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
+        setEmployeePreviewRows([]);
         setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
+        setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
         setLeaveSummary(
           (json.summary as LeaveSummary) || {
             total: rows.length,
@@ -395,9 +448,11 @@ export default function Page() {
         setPreviewRows([]);
         setLeavePreviewRows([]);
         setCorrectionPreviewRows([]);
+        setEmployeePreviewRows([]);
         setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
+        setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
         setClaimSummary(
           (json.summary as ClaimSummary) || {
             total: rows.length,
@@ -407,15 +462,17 @@ export default function Page() {
             totalAmount: 0,
           }
         );
-      } else {
+      } else if (selectedReport === "corrections") {
         const rows = Array.isArray(json.rows) ? (json.rows as CorrectionPreviewRow[]) : [];
         setCorrectionPreviewRows(rows);
         setPreviewRows([]);
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
+        setEmployeePreviewRows([]);
         setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
+        setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
         setCorrectionSummary(
           (json.summary as CorrectionSummary) || {
             total: rows.length,
@@ -424,16 +481,37 @@ export default function Page() {
             rejected: 0,
           }
         );
+      } else {
+        const rows = Array.isArray(json.rows) ? (json.rows as EmployeePreviewRow[]) : [];
+        setEmployeePreviewRows(rows);
+        setPreviewRows([]);
+        setLeavePreviewRows([]);
+        setClaimPreviewRows([]);
+        setCorrectionPreviewRows([]);
+        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+        setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
+        setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
+        setEmployeeSummary(
+          (json.summary as EmployeeSummary) || {
+            total: rows.length,
+            active: 0,
+            inactive: 0,
+            mobileActive: 0,
+          }
+        );
       }
     } catch (error) {
       setPreviewRows([]);
       setLeavePreviewRows([]);
       setClaimPreviewRows([]);
       setCorrectionPreviewRows([]);
+      setEmployeePreviewRows([]);
       setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
       setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
+      setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
       setPreviewError(error instanceof Error ? error.message : "Unable to load attendance preview.");
     } finally {
       setPreviewLoading(false);
@@ -703,15 +781,21 @@ export default function Page() {
                       className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     >
                       <option value="all">All Status</option>
-                      <option value={selectedReport === "attendance" ? "present" : "pending"}>
-                        {selectedReport === "attendance" ? "Present" : "Pending"}
+                      <option
+                        value={selectedReport === "attendance" ? "present" : selectedReport === "employees" ? "active" : "pending"}
+                      >
+                        {selectedReport === "attendance" ? "Present" : selectedReport === "employees" ? "Active" : "Pending"}
                       </option>
-                      <option value={selectedReport === "attendance" ? "late" : "approved"}>
-                        {selectedReport === "attendance" ? "Late" : "Approved"}
+                      <option
+                        value={selectedReport === "attendance" ? "late" : selectedReport === "employees" ? "inactive" : "approved"}
+                      >
+                        {selectedReport === "attendance" ? "Late" : selectedReport === "employees" ? "Inactive" : "Approved"}
                       </option>
-                      <option value={selectedReport === "attendance" ? "absent" : "rejected"}>
-                        {selectedReport === "attendance" ? "Absent" : "Rejected"}
-                      </option>
+                      {selectedReport !== "employees" && (
+                        <option value={selectedReport === "attendance" ? "absent" : "rejected"}>
+                          {selectedReport === "attendance" ? "Absent" : "Rejected"}
+                        </option>
+                      )}
                     </select>
                   </label>
 
@@ -747,13 +831,15 @@ export default function Page() {
                               ? "Claims preview now shows amounts, status mix, and submitted requests."
                               : selectedReport === "corrections"
                                 ? "Corrections preview now shows requested punch changes, remarks, and review status."
+                                : selectedReport === "employees"
+                                  ? "Employee master preview now shows employee directory, status, joining dates, and app readiness."
                               : "Live preview is not connected yet for this report module."}
                       </p>
                     </div>
                     <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
                       {previewLoading
                         ? "Loading..."
-                        : `${selectedReport === "attendance" ? previewSummary.total : selectedReport === "leaves" ? leaveSummary.total : selectedReport === "claims" ? claimSummary.total : selectedReport === "corrections" ? correctionSummary.total : 0} rows`}
+                        : `${selectedReport === "attendance" ? previewSummary.total : selectedReport === "leaves" ? leaveSummary.total : selectedReport === "claims" ? claimSummary.total : selectedReport === "corrections" ? correctionSummary.total : selectedReport === "employees" ? employeeSummary.total : 0} rows`}
                     </div>
                   </div>
 
@@ -777,6 +863,8 @@ export default function Page() {
                               ? "Preview + export ready"
                               : selectedReport === "corrections"
                                 ? "Preview + export ready"
+                                : selectedReport === "employees"
+                                  ? "Preview ready, export next"
                             : selected.exports.join(" / ")}
                       </div>
                     </div>
@@ -864,6 +952,25 @@ export default function Page() {
                       <div className="rounded-xl border border-white bg-white px-4 py-4">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Rejected</div>
                         <div className="mt-1 text-lg font-semibold text-rose-700">{correctionSummary.rejected}</div>
+                      </div>
+                    </div>
+                  ) : selectedReport === "employees" ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{employeeSummary.total}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Active</div>
+                        <div className="mt-1 text-lg font-semibold text-emerald-700">{employeeSummary.active}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Inactive</div>
+                        <div className="mt-1 text-lg font-semibold text-rose-700">{employeeSummary.inactive}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Mobile Active</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{employeeSummary.mobileActive}</div>
                       </div>
                     </div>
                   ) : null}
@@ -1081,6 +1188,60 @@ export default function Page() {
                                   className={[
                                     "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
                                     leaveStatusChip(row.status),
+                                  ].join(" ")}
+                                >
+                                  {row.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : selectedReport === "employees" ? (
+                    <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                      <table className="min-w-[1240px] w-full text-left text-sm">
+                        <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-3 font-semibold">Employee</th>
+                            <th className="px-3 py-3 font-semibold">Department</th>
+                            <th className="px-3 py-3 font-semibold">Designation</th>
+                            <th className="px-3 py-3 font-semibold">Shift</th>
+                            <th className="px-3 py-3 font-semibold">Mobile</th>
+                            <th className="px-3 py-3 font-semibold">Joined</th>
+                            <th className="px-3 py-3 font-semibold">Attendance Mode</th>
+                            <th className="px-3 py-3 font-semibold">App Status</th>
+                            <th className="px-3 py-3 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!previewLoading && employeePreviewRows.length === 0 && !previewError && (
+                            <tr>
+                              <td colSpan={9} className="px-4 py-10 text-center text-sm text-slate-500">
+                                Generate preview to load employee master rows.
+                              </td>
+                            </tr>
+                          )}
+                          {employeePreviewRows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100 text-slate-700">
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-slate-900">{row.employee}</div>
+                                <div className="text-xs text-slate-500">{row.employeeCode}</div>
+                              </td>
+                              <td className="px-3 py-3">{row.department}</td>
+                              <td className="px-3 py-3">{row.designation}</td>
+                              <td className="px-3 py-3">{row.shift}</td>
+                              <td className="px-3 py-3">{row.mobile || "-"}</td>
+                              <td className="px-3 py-3">{formatDisplayDate(row.joinedOn)}</td>
+                              <td className="px-3 py-3">{row.attendanceMode}</td>
+                              <td className="px-3 py-3">{row.mobileAppStatus}</td>
+                              <td className="px-3 py-3">
+                                <span
+                                  className={[
+                                    "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
+                                    row.status === "active"
+                                      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                      : "border-rose-200 bg-rose-50 text-rose-700",
                                   ].join(" ")}
                                 >
                                   {row.status}
