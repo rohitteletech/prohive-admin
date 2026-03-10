@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
+import { formatDisplayDate, INDIA_TIME_ZONE, todayISOInIndia } from "@/lib/dateTime";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ReportKey = "attendance" | "leaves" | "claims" | "corrections";
 type DateMode = "monthly" | "date_range";
@@ -23,6 +24,25 @@ type ReportCard = {
   primaryLabel: string;
   exports: string[];
   includes: string[];
+};
+
+type AttendancePreviewRow = {
+  id: string;
+  employee: string;
+  department: string;
+  shift: string;
+  date: string;
+  checkIn: string;
+  checkOut: string;
+  workHours: string;
+  status: "present" | "late" | "absent";
+};
+
+type AttendanceSummary = {
+  total: number;
+  present: number;
+  late: number;
+  absent: number;
 };
 
 function toISODate(d: Date) {
@@ -69,6 +89,24 @@ function statusBadge(status: ReportCard["status"]) {
 
 function statusLabel(status: ReportCard["status"]) {
   return status === "ready_next" ? "Build Next" : "Planned";
+}
+
+function attendanceStatusChip(status: AttendancePreviewRow["status"]) {
+  if (status === "present") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "late") return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-rose-200 bg-rose-50 text-rose-700";
+}
+
+function readStoredCompanyId() {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem("phv_company");
+    if (!raw) return "";
+    const parsed = JSON.parse(raw) as { id?: string | null };
+    return parsed?.id || "";
+  } catch {
+    return "";
+  }
 }
 
 export default function Page() {
@@ -141,6 +179,10 @@ export default function Page() {
   const [employeeQuery, setEmployeeQuery] = useState("");
   const [department, setDepartment] = useState("all");
   const [status, setStatus] = useState("all");
+  const [previewRows, setPreviewRows] = useState<AttendancePreviewRow[]>([]);
+  const [previewSummary, setPreviewSummary] = useState<AttendanceSummary>({ total: 0, present: 0, late: 0, absent: 0 });
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   const selected = reports.find((item) => item.key === selectedReport) || reports[0];
   const selectedMonth = monthOptions.find((item) => item.key === monthKey) || defaultMonth;
@@ -149,6 +191,74 @@ export default function Page() {
     dateMode === "monthly"
       ? `${selectedMonth?.label || "-"}`
       : `${formatDisplayDate(startDate)} to ${formatDisplayDate(endDate)}`;
+
+  async function handleGeneratePreview() {
+    if (selectedReport !== "attendance") {
+      setPreviewRows([]);
+      setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+      setPreviewError("Live preview is currently enabled only for Attendance reports.");
+      return;
+    }
+
+    setPreviewLoading(true);
+    setPreviewError(null);
+
+    try {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const accessToken = sessionResult?.data.session?.access_token || "";
+      const companyId = readStoredCompanyId();
+
+      if (!accessToken) {
+        throw new Error("Company session not found. Please login again.");
+      }
+
+      const response = await fetch("/api/company/reports/attendance/preview", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+          ...(companyId ? { "x-company-id": companyId } : {}),
+        },
+        body: JSON.stringify({
+          mode: dateMode,
+          monthKey,
+          startDate,
+          endDate,
+          employeeQuery,
+          department,
+          status,
+          timeZone: INDIA_TIME_ZONE,
+        }),
+      });
+
+      const json = (await response.json().catch(() => ({}))) as {
+        rows?: AttendancePreviewRow[];
+        summary?: AttendanceSummary;
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(json.error || "Unable to load attendance preview.");
+      }
+
+      setPreviewRows(Array.isArray(json.rows) ? json.rows : []);
+      setPreviewSummary(
+        json.summary || {
+          total: Array.isArray(json.rows) ? json.rows.length : 0,
+          present: 0,
+          late: 0,
+          absent: 0,
+        }
+      );
+    } catch (error) {
+      setPreviewRows([]);
+      setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+      setPreviewError(error instanceof Error ? error.message : "Unable to load attendance preview.");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
@@ -243,7 +353,9 @@ export default function Page() {
                   </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                     <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status</div>
-                    <div className="mt-1 text-sm font-semibold text-slate-900">{statusLabel(selected.status)}</div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {selectedReport === "attendance" && previewSummary.total > 0 ? `${previewSummary.total} rows ready` : statusLabel(selected.status)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -340,21 +452,23 @@ export default function Page() {
                       className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     >
                       <option value="all">All Status</option>
-                      <option value="approved">Approved</option>
-                      <option value="pending">Pending</option>
-                      <option value="rejected">Rejected</option>
+                      <option value="present">Present</option>
+                      <option value="late">Late</option>
+                      <option value="absent">Absent</option>
                     </select>
                   </label>
 
                   <div className="flex items-end gap-3">
                     <button
                       type="button"
+                      onClick={handleGeneratePreview}
                       className="flex-1 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm"
                     >
-                      Generate Preview
+                      {previewLoading ? "Loading..." : "Generate Preview"}
                     </button>
                     <button
                       type="button"
+                      disabled
                       className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
                     >
                       Export
@@ -367,11 +481,11 @@ export default function Page() {
                     <div>
                       <h3 className="text-sm font-semibold text-slate-900">Preview Area</h3>
                       <p className="mt-1 text-sm text-slate-600">
-                        This panel will show live report rows once preview APIs are connected in the next task.
+                        Attendance preview now loads live data. Other report modules will connect in later tasks.
                       </p>
                     </div>
                     <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-600">
-                      0 rows
+                      {previewLoading ? "Loading..." : `${previewSummary.total} rows`}
                     </div>
                   </div>
 
@@ -386,9 +500,89 @@ export default function Page() {
                     </div>
                     <div className="rounded-xl border border-white bg-white px-4 py-4">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Export Readiness</div>
-                      <div className="mt-1 text-sm font-semibold text-slate-900">{selected.exports.join(" / ")}</div>
+                      <div className="mt-1 text-sm font-semibold text-slate-900">
+                        {selectedReport === "attendance" ? "Preview ready, export next" : selected.exports.join(" / ")}
+                      </div>
                     </div>
                   </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    <div className="rounded-xl border border-white bg-white px-4 py-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
+                      <div className="mt-1 text-lg font-semibold text-slate-900">{previewSummary.total}</div>
+                    </div>
+                    <div className="rounded-xl border border-white bg-white px-4 py-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Present</div>
+                      <div className="mt-1 text-lg font-semibold text-emerald-700">{previewSummary.present}</div>
+                    </div>
+                    <div className="rounded-xl border border-white bg-white px-4 py-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late</div>
+                      <div className="mt-1 text-lg font-semibold text-amber-700">{previewSummary.late}</div>
+                    </div>
+                    <div className="rounded-xl border border-white bg-white px-4 py-4">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Absent</div>
+                      <div className="mt-1 text-lg font-semibold text-rose-700">{previewSummary.absent}</div>
+                    </div>
+                  </div>
+
+                  {previewError && (
+                    <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                      {previewError}
+                    </div>
+                  )}
+
+                  {selectedReport === "attendance" ? (
+                    <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                      <table className="min-w-[900px] w-full text-left text-sm">
+                        <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-3 font-semibold">Employee</th>
+                            <th className="px-3 py-3 font-semibold">Department</th>
+                            <th className="px-3 py-3 font-semibold">Shift</th>
+                            <th className="px-3 py-3 font-semibold">Date</th>
+                            <th className="px-3 py-3 font-semibold">Check In</th>
+                            <th className="px-3 py-3 font-semibold">Check Out</th>
+                            <th className="px-3 py-3 font-semibold">Work Hours</th>
+                            <th className="px-3 py-3 font-semibold">Status</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!previewLoading && previewRows.length === 0 && !previewError && (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                                Generate preview to load attendance report rows.
+                              </td>
+                            </tr>
+                          )}
+                          {previewRows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100 text-slate-700">
+                              <td className="px-3 py-3 font-semibold text-slate-900">{row.employee}</td>
+                              <td className="px-3 py-3">{row.department}</td>
+                              <td className="px-3 py-3">{row.shift}</td>
+                              <td className="px-3 py-3">{row.date}</td>
+                              <td className="px-3 py-3">{row.checkIn}</td>
+                              <td className="px-3 py-3">{row.checkOut}</td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">{row.workHours}</td>
+                              <td className="px-3 py-3">
+                                <span
+                                  className={[
+                                    "rounded-full border px-2.5 py-1 text-[11px] font-semibold capitalize",
+                                    attendanceStatusChip(row.status),
+                                  ].join(" ")}
+                                >
+                                  {row.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">
+                      Live preview is not connected yet for this report module.
+                    </div>
+                  )}
                 </div>
               </div>
 
