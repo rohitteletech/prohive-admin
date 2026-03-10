@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShifts";
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { sanitizeCompanyShiftRows, shiftFromDb, shiftToDb } from "@/lib/companyShiftDefinitions";
 import { normalizeExtraHoursPolicy } from "@/lib/shiftWorkPolicy";
 

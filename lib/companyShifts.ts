@@ -1,5 +1,7 @@
 "use client";
 
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
+
 export type CompanyShift = {
   id: string;
   name: string;
@@ -13,42 +15,7 @@ export type CompanyShift = {
 };
 
 export const COMPANY_SHIFT_STORAGE_KEY = "phv_company_shifts_v1";
-
-export const DEFAULT_COMPANY_SHIFTS: CompanyShift[] = [
-  {
-    id: "default-general",
-    name: "General",
-    type: "Day",
-    start: "09:00",
-    end: "18:00",
-    graceMins: 10,
-    earlyWindowMins: 15,
-    minWorkBeforeOutMins: 60,
-    active: true,
-  },
-  {
-    id: "default-morning",
-    name: "Morning",
-    type: "Early",
-    start: "06:00",
-    end: "15:00",
-    graceMins: 10,
-    earlyWindowMins: 15,
-    minWorkBeforeOutMins: 60,
-    active: true,
-  },
-  {
-    id: "default-evening",
-    name: "Evening",
-    type: "Late",
-    start: "14:00",
-    end: "22:00",
-    graceMins: 10,
-    earlyWindowMins: 15,
-    minWorkBeforeOutMins: 60,
-    active: true,
-  },
-];
+export { DEFAULT_COMPANY_SHIFTS };
 
 function normalizeShift(row: Partial<CompanyShift>, fallback: CompanyShift): CompanyShift {
   return {

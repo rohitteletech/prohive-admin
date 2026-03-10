@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShifts";
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes } from "@/lib/shiftWorkPolicy";
 
 function normalizeText(value: string | null | undefined) {

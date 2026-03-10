@@ -1,4 +1,5 @@
-import { CompanyShift, DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShifts";
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
+import { CompanyShift } from "@/lib/companyShifts";
 
 type CompanyShiftDbRow = {
   id: string;
