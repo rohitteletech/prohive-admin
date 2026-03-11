@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { formatDisplayDate, INDIA_TIME_ZONE, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type ReportKey = "attendance" | "leaves" | "claims" | "corrections" | "employees";
+type ReportKey = "attendance" | "late_penalty" | "leaves" | "claims" | "corrections" | "employees";
 type DateMode = "monthly" | "date_range";
 
 type MonthOption = {
@@ -35,14 +35,37 @@ type AttendancePreviewRow = {
   checkIn: string;
   checkOut: string;
   workHours: string;
-  status: "present" | "late" | "absent";
+  status: "present" | "late" | "half_day" | "absent";
 };
 
 type AttendanceSummary = {
   total: number;
   present: number;
   late: number;
+  halfDay: number;
   absent: number;
+  latePenaltyDays: number;
+};
+
+type LatePenaltyPreviewRow = {
+  id: string;
+  employee: string;
+  employeeCode: string;
+  department: string;
+  shift: string;
+  lateCount: number;
+  lateUpToCount: number;
+  lateAboveCount: number;
+  penaltyDays: number;
+  ruleApplied: string;
+};
+
+type LatePenaltySummary = {
+  total: number;
+  totalLateMarks: number;
+  totalLateUpTo: number;
+  totalLateAbove: number;
+  totalPenaltyDays: number;
 };
 
 type LeavePreviewRow = {
@@ -186,6 +209,7 @@ function statusLabel(status: ReportCard["status"]) {
 function attendanceStatusChip(status: AttendancePreviewRow["status"]) {
   if (status === "present") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "late") return "border-amber-200 bg-amber-50 text-amber-700";
+  if (status === "half_day") return "border-sky-200 bg-sky-50 text-sky-700";
   return "border-rose-200 bg-rose-50 text-rose-700";
 }
 
@@ -233,12 +257,23 @@ export default function Page() {
         includes: ["Present / Late / Absent", "Check-in / Check-out", "Work hours", "Shift-wise filters"],
       },
       {
+        key: "late_penalty",
+        title: "Late Penalty Report",
+        category: "HR Policy",
+        description: "Employee-wise late marks, bracket counts, and calculated penalty days for the selected period.",
+        status: "ready_next",
+        primaryMetric: "02",
+        primaryLabel: "Preview + export ready",
+        exports: ["CSV"],
+        includes: ["Late count", "Up to / above bracket split", "Penalty days", "Rule applied"],
+      },
+      {
         key: "leaves",
         title: "Leave Reports",
         category: "HR",
         description: "Leave balance, approvals, pending requests, and policy-wise leave usage summaries.",
         status: "ready_next",
-        primaryMetric: "02",
+        primaryMetric: "03",
         primaryLabel: "Preview + export ready",
         exports: ["CSV", "XLSX"],
         includes: ["Leave balance", "Approved / Pending", "Policy-wise usage", "Employee-wise summary"],
@@ -249,7 +284,7 @@ export default function Page() {
         category: "Finance Support",
         description: "Claims register with amount, type, approval status, and processing turnaround tracking.",
         status: "ready_next",
-        primaryMetric: "03",
+        primaryMetric: "04",
         primaryLabel: "Preview ready",
         exports: ["CSV", "PDF"],
         includes: ["Claim type", "Amount", "Approval status", "Submitted / reviewed dates"],
@@ -260,7 +295,7 @@ export default function Page() {
         category: "Compliance",
         description: "Attendance correction audit trail for manager review, remark visibility, and approval tracking.",
         status: "ready_next",
-        primaryMetric: "04",
+        primaryMetric: "05",
         primaryLabel: "Preview ready",
         exports: ["CSV", "PDF"],
         includes: ["Requested change", "Approval status", "Admin remark", "Audit-ready history"],
@@ -271,7 +306,7 @@ export default function Page() {
         category: "HR Master",
         description: "Employee directory, status, department, shift, and mobile-app readiness for HR operations.",
         status: "ready_next",
-        primaryMetric: "05",
+        primaryMetric: "06",
         primaryLabel: "Preview ready",
         exports: ["CSV", "XLSX"],
         includes: ["Employee directory", "Department and shift", "Joining date", "Mobile app status"],
@@ -289,7 +324,22 @@ export default function Page() {
   const [department, setDepartment] = useState("all");
   const [status, setStatus] = useState("all");
   const [previewRows, setPreviewRows] = useState<AttendancePreviewRow[]>([]);
-  const [previewSummary, setPreviewSummary] = useState<AttendanceSummary>({ total: 0, present: 0, late: 0, absent: 0 });
+  const [previewSummary, setPreviewSummary] = useState<AttendanceSummary>({
+    total: 0,
+    present: 0,
+    late: 0,
+    halfDay: 0,
+    absent: 0,
+    latePenaltyDays: 0,
+  });
+  const [latePenaltyPreviewRows, setLatePenaltyPreviewRows] = useState<LatePenaltyPreviewRow[]>([]);
+  const [latePenaltySummary, setLatePenaltySummary] = useState<LatePenaltySummary>({
+    total: 0,
+    totalLateMarks: 0,
+    totalLateUpTo: 0,
+    totalLateAbove: 0,
+    totalPenaltyDays: 0,
+  });
   const [leavePreviewRows, setLeavePreviewRows] = useState<LeavePreviewRow[]>([]);
   const [leaveSummary, setLeaveSummary] = useState<LeaveSummary>({
     total: 0,
@@ -329,7 +379,9 @@ export default function Page() {
   const currentPreviewCount =
     selectedReport === "attendance"
       ? previewSummary.total
-      : selectedReport === "leaves"
+      : selectedReport === "late_penalty"
+        ? latePenaltySummary.total
+        : selectedReport === "leaves"
         ? leaveSummary.total
         : selectedReport === "claims"
           ? claimSummary.total
@@ -338,6 +390,7 @@ export default function Page() {
             : employeeSummary.total;
   const exportReady =
     (selectedReport === "attendance" && previewRows.length > 0)
+    || (selectedReport === "late_penalty" && latePenaltyPreviewRows.length > 0)
     || (selectedReport === "leaves" && leavePreviewRows.length > 0)
     || (selectedReport === "claims" && claimPreviewRows.length > 0)
     || (selectedReport === "corrections" && correctionPreviewRows.length > 0)
@@ -357,22 +410,25 @@ export default function Page() {
   async function handleGeneratePreview() {
     if (
       selectedReport !== "attendance"
+      && selectedReport !== "late_penalty"
       && selectedReport !== "leaves"
       && selectedReport !== "claims"
       && selectedReport !== "corrections"
       && selectedReport !== "employees"
     ) {
       setPreviewRows([]);
+      setLatePenaltyPreviewRows([]);
       setLeavePreviewRows([]);
       setClaimPreviewRows([]);
       setCorrectionPreviewRows([]);
       setEmployeePreviewRows([]);
-      setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+      setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+      setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
       setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
       setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
-      setPreviewError("Live preview is currently enabled only for Attendance, Leave, Claims, Corrections, and Employee Master reports.");
+      setPreviewError("Live preview is currently enabled only for Attendance, Late Penalty, Leave, Claims, Corrections, and Employee Master reports.");
       return;
     }
 
@@ -392,6 +448,8 @@ export default function Page() {
       const endpoint =
         selectedReport === "attendance"
           ? "/api/company/reports/attendance/preview"
+          : selectedReport === "late_penalty"
+            ? "/api/company/reports/late-penalty/preview"
           : selectedReport === "leaves"
             ? "/api/company/reports/leaves/preview"
             : selectedReport === "claims"
@@ -428,10 +486,12 @@ export default function Page() {
       if (selectedReport === "attendance") {
         const rows = Array.isArray(json.rows) ? (json.rows as AttendancePreviewRow[]) : [];
         setPreviewRows(rows);
+        setLatePenaltyPreviewRows([]);
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
         setEmployeePreviewRows([]);
+        setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -441,17 +501,43 @@ export default function Page() {
             total: rows.length,
             present: 0,
             late: 0,
+            halfDay: 0,
             absent: 0,
+            latePenaltyDays: 0,
+          }
+        );
+      } else if (selectedReport === "late_penalty") {
+        const rows = Array.isArray(json.rows) ? (json.rows as LatePenaltyPreviewRow[]) : [];
+        setLatePenaltyPreviewRows(rows);
+        setPreviewRows([]);
+        setLeavePreviewRows([]);
+        setClaimPreviewRows([]);
+        setCorrectionPreviewRows([]);
+        setEmployeePreviewRows([]);
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
+        setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
+        setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
+        setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
+        setLatePenaltySummary(
+          (json.summary as LatePenaltySummary) || {
+            total: rows.length,
+            totalLateMarks: 0,
+            totalLateUpTo: 0,
+            totalLateAbove: 0,
+            totalPenaltyDays: 0,
           }
         );
       } else if (selectedReport === "leaves") {
         const rows = Array.isArray(json.rows) ? (json.rows as LeavePreviewRow[]) : [];
         setLeavePreviewRows(rows);
         setPreviewRows([]);
+        setLatePenaltyPreviewRows([]);
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
         setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
@@ -468,10 +554,12 @@ export default function Page() {
         const rows = Array.isArray(json.rows) ? (json.rows as ClaimPreviewRow[]) : [];
         setClaimPreviewRows(rows);
         setPreviewRows([]);
+        setLatePenaltyPreviewRows([]);
         setLeavePreviewRows([]);
         setCorrectionPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
         setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
@@ -488,10 +576,12 @@ export default function Page() {
         const rows = Array.isArray(json.rows) ? (json.rows as CorrectionPreviewRow[]) : [];
         setCorrectionPreviewRows(rows);
         setPreviewRows([]);
+        setLatePenaltyPreviewRows([]);
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setEmployeeSummary({ total: 0, active: 0, inactive: 0, mobileActive: 0 });
@@ -507,10 +597,12 @@ export default function Page() {
         const rows = Array.isArray(json.rows) ? (json.rows as EmployeePreviewRow[]) : [];
         setEmployeePreviewRows(rows);
         setPreviewRows([]);
+        setLatePenaltyPreviewRows([]);
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -525,11 +617,13 @@ export default function Page() {
       }
     } catch (error) {
       setPreviewRows([]);
+      setLatePenaltyPreviewRows([]);
       setLeavePreviewRows([]);
       setClaimPreviewRows([]);
       setCorrectionPreviewRows([]);
       setEmployeePreviewRows([]);
-      setPreviewSummary({ total: 0, present: 0, late: 0, absent: 0 });
+      setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+      setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
       setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -543,12 +637,13 @@ export default function Page() {
   async function handleExport() {
     if (
       selectedReport !== "attendance"
+      && selectedReport !== "late_penalty"
       && selectedReport !== "leaves"
       && selectedReport !== "claims"
       && selectedReport !== "corrections"
       && selectedReport !== "employees"
     ) {
-      setPreviewError("Export is currently enabled only for Attendance, Leave, Claims, Corrections, and Employee Master reports.");
+      setPreviewError("Export is currently enabled only for Attendance, Late Penalty, Leave, Claims, Corrections, and Employee Master reports.");
       return;
     }
 
@@ -568,6 +663,8 @@ export default function Page() {
       const endpoint =
         selectedReport === "attendance"
           ? "/api/company/reports/attendance/export"
+          : selectedReport === "late_penalty"
+            ? "/api/company/reports/late-penalty/export"
           : selectedReport === "leaves"
             ? "/api/company/reports/leaves/export"
             : selectedReport === "claims"
@@ -776,19 +873,16 @@ export default function Page() {
                       className="w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 outline-none"
                     >
                       <option value="all">All Status</option>
-                      <option
-                        value={selectedReport === "attendance" ? "present" : selectedReport === "employees" ? "active" : "pending"}
-                      >
-                        {selectedReport === "attendance" ? "Present" : selectedReport === "employees" ? "Active" : "Pending"}
+                      <option value={selectedReport === "attendance" ? "present" : selectedReport === "late_penalty" ? "with_penalty" : selectedReport === "employees" ? "active" : "pending"}>
+                        {selectedReport === "attendance" ? "Present" : selectedReport === "late_penalty" ? "With Penalty" : selectedReport === "employees" ? "Active" : "Pending"}
                       </option>
-                      <option
-                        value={selectedReport === "attendance" ? "late" : selectedReport === "employees" ? "inactive" : "approved"}
-                      >
-                        {selectedReport === "attendance" ? "Late" : selectedReport === "employees" ? "Inactive" : "Approved"}
+                      <option value={selectedReport === "attendance" ? "late" : selectedReport === "late_penalty" ? "late_only" : selectedReport === "employees" ? "inactive" : "approved"}>
+                        {selectedReport === "attendance" ? "Late" : selectedReport === "late_penalty" ? "Late Only" : selectedReport === "employees" ? "Inactive" : "Approved"}
                       </option>
+                      {selectedReport === "attendance" && <option value="half_day">Half Day</option>}
                       {selectedReport !== "employees" && (
-                        <option value={selectedReport === "attendance" ? "absent" : "rejected"}>
-                          {selectedReport === "attendance" ? "Absent" : "Rejected"}
+                        <option value={selectedReport === "attendance" ? "absent" : selectedReport === "late_penalty" ? "no_penalty" : "rejected"}>
+                          {selectedReport === "attendance" ? "Absent" : selectedReport === "late_penalty" ? "No Penalty" : "Rejected"}
                         </option>
                       )}
                     </select>
@@ -850,7 +944,7 @@ export default function Page() {
               </div>
 
               {selectedReport === "attendance" ? (
-                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    <div className="mt-4 grid gap-3 md:grid-cols-6">
                       <div className="rounded-xl border border-white bg-white px-4 py-4">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total</div>
                         <div className="mt-1 text-lg font-semibold text-slate-900">{previewSummary.total}</div>
@@ -864,8 +958,39 @@ export default function Page() {
                         <div className="mt-1 text-lg font-semibold text-amber-700">{previewSummary.late}</div>
                       </div>
                       <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Half Day</div>
+                        <div className="mt-1 text-lg font-semibold text-sky-700">{previewSummary.halfDay}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Absent</div>
                         <div className="mt-1 text-lg font-semibold text-rose-700">{previewSummary.absent}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late Penalty</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{previewSummary.latePenaltyDays}</div>
+                      </div>
+                    </div>
+                  ) : selectedReport === "late_penalty" ? (
+                    <div className="mt-4 grid gap-3 md:grid-cols-5">
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Employees</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{latePenaltySummary.total}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late Marks</div>
+                        <div className="mt-1 text-lg font-semibold text-amber-700">{latePenaltySummary.totalLateMarks}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late Up To</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{latePenaltySummary.totalLateUpTo}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Late Above</div>
+                        <div className="mt-1 text-lg font-semibold text-slate-900">{latePenaltySummary.totalLateAbove}</div>
+                      </div>
+                      <div className="rounded-xl border border-white bg-white px-4 py-4">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Penalty Days</div>
+                        <div className="mt-1 text-lg font-semibold text-rose-700">{latePenaltySummary.totalPenaltyDays}</div>
                       </div>
                     </div>
                   ) : selectedReport === "leaves" ? (
@@ -1001,6 +1126,49 @@ export default function Page() {
                                 >
                                   {row.status}
                                 </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : selectedReport === "late_penalty" ? (
+                    <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
+                      <table className="min-w-[1080px] w-full text-left text-sm">
+                        <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="px-3 py-3 font-semibold">Employee</th>
+                            <th className="px-3 py-3 font-semibold">Department</th>
+                            <th className="px-3 py-3 font-semibold">Shift</th>
+                            <th className="px-3 py-3 font-semibold">Late Count</th>
+                            <th className="px-3 py-3 font-semibold">Late Up To</th>
+                            <th className="px-3 py-3 font-semibold">Late Above</th>
+                            <th className="px-3 py-3 font-semibold">Penalty Days</th>
+                            <th className="px-3 py-3 font-semibold">Rule Applied</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {!previewLoading && latePenaltyPreviewRows.length === 0 && !previewError && (
+                            <tr>
+                              <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                                Generate preview to load late penalty report rows.
+                              </td>
+                            </tr>
+                          )}
+                          {latePenaltyPreviewRows.map((row) => (
+                            <tr key={row.id} className="border-t border-slate-100 text-slate-700">
+                              <td className="px-3 py-3">
+                                <div className="font-semibold text-slate-900">{row.employee}</div>
+                                <div className="text-xs text-slate-500">{row.employeeCode}</div>
+                              </td>
+                              <td className="px-3 py-3">{row.department}</td>
+                              <td className="px-3 py-3">{row.shift}</td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">{row.lateCount}</td>
+                              <td className="px-3 py-3">{row.lateUpToCount}</td>
+                              <td className="px-3 py-3">{row.lateAboveCount}</td>
+                              <td className="px-3 py-3 font-semibold text-rose-700">{row.penaltyDays}</td>
+                              <td className="px-3 py-3">
+                                <div className="max-w-[300px]">{row.ruleApplied}</div>
                               </td>
                             </tr>
                           ))}

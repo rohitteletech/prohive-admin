@@ -4,9 +4,9 @@ import {
   applyExtraHoursPolicy,
   normalizeExtraHoursPolicy,
   shiftDurationMinutes,
-  timeToMinutes,
   workHoursLabel,
 } from "@/lib/shiftWorkPolicy";
+import { buildDailyAttendanceDecision, calculateMonthlyLatePenalty, rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type AdminClientLike = {
   from: (table: string) => any;
@@ -41,7 +41,11 @@ export type AttendanceReportRow = {
   checkIn: string;
   checkOut: string;
   workHours: string;
-  status: "present" | "late" | "absent";
+  status: "present" | "late" | "half_day" | "absent";
+};
+
+type AttendanceReportRowWithLate = AttendanceReportRow & {
+  lateMinutes: number;
 };
 
 export type AttendanceReportInput = {
@@ -138,21 +142,6 @@ function displayTimeInTimeZone(iso: string, timeZone: string) {
   return `${parts.hour}:${parts.minute}`;
 }
 
-function localMinutesInTimeZone(iso: string, timeZone: string) {
-  const parts = partsInTimeZone(iso, timeZone);
-  const hour = Number(parts.hour);
-  const minute = Number(parts.minute);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  return hour * 60 + minute;
-}
-
-function rawWorkMinutes(checkInIso: string | null, checkOutIso: string | null) {
-  if (!checkInIso || !checkOutIso) return 0;
-  const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
-  if (!Number.isFinite(diffMs) || diffMs <= 0) return 0;
-  return Math.floor(diffMs / 60000);
-}
-
 function findShiftConfig(
   shiftName: string,
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>
@@ -167,21 +156,6 @@ function findShiftConfig(
     shiftRows.find((row) => row.name.trim().toLowerCase() === "general") ||
     shiftRows[0]
   );
-}
-
-function rowStatus(
-  firstInIso: string | null,
-  shiftName: string,
-  timeZone: string,
-  shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>
-): AttendanceReportRow["status"] {
-  if (!firstInIso) return "absent";
-  const actualMinutes = localMinutesInTimeZone(firstInIso, timeZone);
-  const shift = findShiftConfig(shiftName, shiftRows);
-  const shiftMinutes = shift ? timeToMinutes(shift.start) : null;
-  if (actualMinutes === null || shiftMinutes === null) return "present";
-  const grace = shift?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS;
-  return actualMinutes > shiftMinutes + grace ? "late" : "present";
 }
 
 function buildQueryWindow(startDate: string, endDate: string) {
@@ -201,6 +175,15 @@ function aggregateRows(params: {
   timeZone: string;
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>;
   extraHoursPolicy: string;
+  halfDayMinWorkMins: number;
+  latePenaltyPolicy: {
+    enabled: boolean;
+    upToMins: number;
+    repeatCount: number;
+    repeatDays: number;
+    aboveMins: number;
+    aboveDays: number;
+  };
 }) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -216,7 +199,7 @@ function aggregateRows(params: {
     grouped.set(key, bucket);
   }
 
-  return Array.from(grouped.entries())
+  const rows = Array.from(grouped.entries())
     .map(([key, bucket]) => {
       const ordered = [...bucket].sort((a, b) => {
         const left = new Date(a.effective_punch_at || a.server_received_at).getTime();
@@ -232,10 +215,19 @@ function aggregateRows(params: {
       const shiftConfig = findShiftConfig(shift, params.shiftRows);
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
       const effectiveMinutes = applyExtraHoursPolicy(
-        rawWorkMinutes(checkInIso, checkOutIso),
+        rawWorkedMinutes(checkInIso, checkOutIso),
         scheduledMinutes,
         params.extraHoursPolicy
       );
+      const decision = buildDailyAttendanceDecision({
+        checkInIso,
+        checkOutIso,
+        timeZone: params.timeZone,
+        shiftStart: shiftConfig?.start || null,
+        scheduledMinutes,
+        graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
+        halfDayMinWorkMins: params.halfDayMinWorkMins,
+      });
 
       return {
         id: key,
@@ -246,14 +238,25 @@ function aggregateRows(params: {
         checkIn: checkInIso ? displayTimeInTimeZone(checkInIso, params.timeZone) : "-",
         checkOut: checkOutIso ? displayTimeInTimeZone(checkOutIso, params.timeZone) : "-",
         workHours: effectiveMinutes > 0 ? workHoursLabel(effectiveMinutes) : "-",
-        status: rowStatus(checkInIso, shift, params.timeZone, params.shiftRows),
-      } satisfies AttendanceReportRow;
+        status: decision.status,
+        lateMinutes: decision.lateMinutes,
+      } satisfies AttendanceReportRowWithLate;
     })
     .sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
       return a.employee.localeCompare(b.employee);
     });
+
+  const penalty = calculateMonthlyLatePenalty(
+    rows.map((row) => row.lateMinutes || 0),
+    params.latePenaltyPolicy
+  );
+
+  return {
+    rows,
+    penalty,
+  };
 }
 
 export async function getAttendanceReportData(params: {
@@ -286,7 +289,13 @@ export async function getAttendanceReportData(params: {
       .select("name,type,start_time,end_time,grace_mins,active")
       .eq("company_id", params.companyId)
       .order("created_at", { ascending: true }),
-    params.admin.from("companies").select("extra_hours_policy").eq("id", params.companyId).maybeSingle(),
+    params.admin
+      .from("companies")
+      .select(
+        "extra_hours_policy,half_day_min_work_mins,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days"
+      )
+      .eq("id", params.companyId)
+      .maybeSingle(),
   ]);
 
   if (eventsResult.error) {
@@ -339,13 +348,23 @@ export async function getAttendanceReportData(params: {
     }
   }
 
-  const rows = aggregateRows({
+  const aggregation = aggregateRows({
     events,
     employeesById,
     timeZone,
     shiftRows: effectiveShiftRows,
     extraHoursPolicy: normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy),
-  }).filter((row) => {
+    halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
+    latePenaltyPolicy: {
+      enabled: companyResult.data?.late_penalty_enabled === true,
+      upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
+      repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
+      repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
+      aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
+      aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
+    },
+  });
+  const filteredRows = aggregation.rows.filter((row) => {
     const matchesEmployee = employeeQuery
       ? `${row.employee} ${row.department} ${row.shift}`.toLowerCase().includes(employeeQuery)
       : true;
@@ -353,6 +372,18 @@ export async function getAttendanceReportData(params: {
     const matchesStatus = statusFilter === "all" ? true : row.status === statusFilter;
     return matchesEmployee && matchesDepartment && matchesStatus;
   });
+  const filteredPenalty = calculateMonthlyLatePenalty(
+    filteredRows.map((row) => row.lateMinutes),
+    {
+      enabled: companyResult.data?.late_penalty_enabled === true,
+      upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
+      repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
+      repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
+      aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
+      aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
+    }
+  );
+  const rows = filteredRows.map(({ lateMinutes, ...row }) => row);
 
   return {
     ok: true as const,
@@ -362,7 +393,9 @@ export async function getAttendanceReportData(params: {
       total: rows.length,
       present: rows.filter((row) => row.status === "present").length,
       late: rows.filter((row) => row.status === "late").length,
+      halfDay: rows.filter((row) => row.status === "half_day").length,
       absent: rows.filter((row) => row.status === "absent").length,
+      latePenaltyDays: filteredPenalty.penaltyDays,
     },
   };
 }

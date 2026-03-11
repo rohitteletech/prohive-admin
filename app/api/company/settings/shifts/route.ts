@@ -2,7 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { sanitizeCompanyShiftRows, shiftFromDb, shiftToDb } from "@/lib/companyShiftDefinitions";
-import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
+import {
+  normalizeExtraHoursPolicy,
+  normalizeHalfDayMinWorkMins,
+  normalizeLatePenaltyCount,
+  normalizeLatePenaltyMinutes,
+  normalizeLoginAccessRule,
+  normalizePenaltyDayValue,
+} from "@/lib/shiftWorkPolicy";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
@@ -20,7 +27,9 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: true }),
     context.admin
       .from("companies")
-      .select("extra_hours_policy,login_access_rule,allow_punch_on_holiday,allow_punch_on_weekly_off,half_day_min_work_mins")
+      .select(
+        "extra_hours_policy,login_access_rule,allow_punch_on_holiday,allow_punch_on_weekly_off,half_day_min_work_mins,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days"
+      )
       .eq("id", context.companyId)
       .maybeSingle(),
   ]);
@@ -43,6 +52,12 @@ export async function GET(req: NextRequest) {
     loginAccessRule: normalizeLoginAccessRule(companyResult.data?.login_access_rule),
     allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
     allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
+    latePenaltyEnabled: companyResult.data?.late_penalty_enabled === true,
+    latePenaltyUpToMins: normalizeLatePenaltyMinutes(companyResult.data?.late_penalty_up_to_mins),
+    latePenaltyRepeatCount: normalizeLatePenaltyCount(companyResult.data?.late_penalty_repeat_count),
+    latePenaltyRepeatDays: normalizePenaltyDayValue(companyResult.data?.late_penalty_repeat_days, 1),
+    latePenaltyAboveMins: normalizeLatePenaltyMinutes(companyResult.data?.late_penalty_above_mins),
+    latePenaltyAboveDays: normalizePenaltyDayValue(companyResult.data?.late_penalty_above_days, 0.5),
   });
 }
 
@@ -61,6 +76,12 @@ export async function PUT(req: NextRequest) {
     loginAccessRule?: unknown;
     allowPunchOnHoliday?: unknown;
     allowPunchOnWeeklyOff?: unknown;
+    latePenaltyEnabled?: unknown;
+    latePenaltyUpToMins?: unknown;
+    latePenaltyRepeatCount?: unknown;
+    latePenaltyRepeatDays?: unknown;
+    latePenaltyAboveMins?: unknown;
+    latePenaltyAboveDays?: unknown;
   };
   let rows = DEFAULT_COMPANY_SHIFTS;
   const extraHoursPolicy = normalizeExtraHoursPolicy(body.extraHoursPolicy);
@@ -68,6 +89,12 @@ export async function PUT(req: NextRequest) {
   const loginAccessRule = normalizeLoginAccessRule(body.loginAccessRule);
   const allowPunchOnHoliday = body.allowPunchOnHoliday !== false;
   const allowPunchOnWeeklyOff = body.allowPunchOnWeeklyOff !== false;
+  const latePenaltyEnabled = body.latePenaltyEnabled === true;
+  const latePenaltyUpToMins = normalizeLatePenaltyMinutes(body.latePenaltyUpToMins);
+  const latePenaltyRepeatCount = normalizeLatePenaltyCount(body.latePenaltyRepeatCount);
+  const latePenaltyRepeatDays = normalizePenaltyDayValue(body.latePenaltyRepeatDays, 1);
+  const latePenaltyAboveMins = normalizeLatePenaltyMinutes(body.latePenaltyAboveMins);
+  const latePenaltyAboveDays = normalizePenaltyDayValue(body.latePenaltyAboveDays, 0.5);
 
   try {
     rows = sanitizeCompanyShiftRows(body.rows || []);
@@ -105,6 +132,12 @@ export async function PUT(req: NextRequest) {
       login_access_rule: loginAccessRule,
       allow_punch_on_holiday: allowPunchOnHoliday,
       allow_punch_on_weekly_off: allowPunchOnWeeklyOff,
+      late_penalty_enabled: latePenaltyEnabled,
+      late_penalty_up_to_mins: latePenaltyUpToMins,
+      late_penalty_repeat_count: latePenaltyRepeatCount,
+      late_penalty_repeat_days: latePenaltyRepeatDays,
+      late_penalty_above_mins: latePenaltyAboveMins,
+      late_penalty_above_days: latePenaltyAboveDays,
     })
     .eq("id", context.companyId);
   if (companyError) {
@@ -119,5 +152,11 @@ export async function PUT(req: NextRequest) {
     loginAccessRule,
     allowPunchOnHoliday,
     allowPunchOnWeeklyOff,
+    latePenaltyEnabled,
+    latePenaltyUpToMins,
+    latePenaltyRepeatCount,
+    latePenaltyRepeatDays,
+    latePenaltyAboveMins,
+    latePenaltyAboveDays,
   });
 }

@@ -107,6 +107,13 @@ function timeToMinutes(value: string) {
   return h * 60 + m;
 }
 
+function rawWorkedMinutes(checkInIso: string | null, checkOutIso: string | null) {
+  if (!checkInIso || !checkOutIso) return 0;
+  const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return 0;
+  return Math.floor(diffMs / 60000);
+}
+
 function isMinuteInWrappedRange(value: number, start: number, end: number) {
   if (start <= end) return value >= start && value <= end;
   return value >= start || value <= end;
@@ -506,6 +513,59 @@ Deno.serve(async (req) => {
 
     if (!isPreviousDayOpenPunch) {
       return json({ code: "INVALID_PUNCH_SEQUENCE", error: "Punch sequence is invalid." }, 409);
+    }
+  }
+
+  if (payload.punch_type === "out" && lastEvent?.punch_type === "in") {
+    const { data: shiftRows, error: shiftError } = await supabase
+      .from("company_shift_definitions")
+      .select("name,type,start_time,end_time,early_window_mins,min_work_before_out_mins,active")
+      .eq("company_id", payload.company_id)
+      .eq("active", true)
+      .order("created_at", { ascending: true });
+
+    if (shiftError) {
+      return json({ error: shiftError.message || "Unable to load shift work-out policy." }, 500);
+    }
+
+    const effectiveShiftRows = ((shiftRows || []) as Array<{
+      name: string;
+      type: string;
+      start_time: string;
+      end_time: string;
+      early_window_mins: number;
+      min_work_before_out_mins: number;
+    }>).map((row) => ({
+      name: row.name,
+      type: row.type,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      earlyWindowMins: Number(row.early_window_mins || 0),
+      minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
+    }));
+
+    const fallbackShiftRows = [
+      { name: "General", type: "Day", startTime: "09:00", endTime: "18:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
+      { name: "Morning", type: "Early", startTime: "06:00", endTime: "15:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
+      { name: "Evening", type: "Late", startTime: "14:00", endTime: "22:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
+    ];
+
+    const matchedShift = findMatchingShiftRule(
+      String(employee.shift_name || "General"),
+      effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows
+    );
+    const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
+    const workedMinutes = rawWorkedMinutes(lastPunchAt, currentPunchIso);
+    const minWorkBeforeOut = Math.max(0, Math.floor(Number(matchedShift?.minWorkBeforeOutMins || 0)));
+
+    if (workedMinutes < minWorkBeforeOut) {
+      return json(
+        {
+          code: "MIN_WORK_OUT_NOT_REACHED",
+          error: `Punch Out is allowed only after ${minWorkBeforeOut} minutes of work.`,
+        },
+        403
+      );
     }
   }
 

@@ -27,6 +27,30 @@ export function normalizeHalfDayMinWorkMins(value: unknown, fallback = 240) {
   return rounded;
 }
 
+export function normalizeLatePenaltyMinutes(value: unknown, fallback = 30) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded < 0 || rounded > 180) return fallback;
+  return rounded;
+}
+
+export function normalizeLatePenaltyCount(value: unknown, fallback = 3) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded < 1 || rounded > 31) return fallback;
+  return rounded;
+}
+
+export function normalizePenaltyDayValue(value: unknown, fallback = 0.5) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed * 2) / 2;
+  if (rounded < 0 || rounded > 31) return fallback;
+  return rounded;
+}
+
 type ShiftTimingRule = {
   name: string;
   type: string;

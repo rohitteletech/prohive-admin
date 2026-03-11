@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { findMatchingShiftRule, isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
+import { rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type JsonBody = {
   [key: string]: unknown;
@@ -453,6 +454,63 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
     if (!isPreviousDayOpenPunch) {
       return { status: 409, body: { code: "INVALID_PUNCH_SEQUENCE", error: "Punch sequence is invalid." } };
+    }
+  }
+
+  if (payload.punch_type === "out" && lastEvent?.punch_type === "in") {
+    const { data: shiftRows, error: shiftError } = await admin
+      .from("company_shift_definitions")
+      .select("name,type,start_time,end_time,early_window_mins,min_work_before_out_mins,active")
+      .eq("company_id", payload.company_id)
+      .eq("active", true)
+      .order("created_at", { ascending: true });
+
+    if (shiftError) {
+      return { status: 500, body: { error: shiftError.message || "Unable to load shift work-out policy." } };
+    }
+
+    const effectiveShiftRows =
+      ((shiftRows || []) as Array<{
+        name: string;
+        type: string;
+        start_time: string;
+        end_time: string;
+        early_window_mins: number;
+        min_work_before_out_mins: number;
+      }>).map((row) => ({
+        name: row.name,
+        type: row.type,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        earlyWindowMins: Number(row.early_window_mins || 0),
+        minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
+      })) || [];
+
+    const fallbackShiftRows = DEFAULT_COMPANY_SHIFTS.map((row) => ({
+      name: row.name,
+      type: row.type,
+      startTime: row.start,
+      endTime: row.end,
+      earlyWindowMins: row.earlyWindowMins,
+      minWorkBeforeOutMins: row.minWorkBeforeOutMins,
+    }));
+
+    const matchedShift = findMatchingShiftRule(
+      String(employee.shift_name || "General"),
+      effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows
+    );
+    const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
+    const workedMinutes = rawWorkedMinutes(lastPunchAt, currentPunchIso);
+    const minWorkBeforeOut = Math.max(0, Math.floor(Number(matchedShift?.minWorkBeforeOutMins || 0)));
+
+    if (workedMinutes < minWorkBeforeOut) {
+      return {
+        status: 403,
+        body: {
+          code: "MIN_WORK_OUT_NOT_REACHED",
+          error: `Punch Out is allowed only after ${minWorkBeforeOut} minutes of work.`,
+        },
+      };
     }
   }
 

@@ -14,6 +14,12 @@ type ExtraPolicyConfig = {
   loginAccessRule: "any_time" | "shift_time_only";
   allowPunchOnHoliday: boolean;
   allowPunchOnWeeklyOff: boolean;
+  latePenaltyEnabled: boolean;
+  latePenaltyUpToMins: number;
+  latePenaltyRepeatCount: number;
+  latePenaltyRepeatDays: number;
+  latePenaltyAboveMins: number;
+  latePenaltyAboveDays: number;
 };
 
 const EXTRA_POLICY_STORAGE_KEY = "phv_company_extra_hr_policy_v1";
@@ -77,6 +83,7 @@ export default function Page() {
   const [toast, setToast] = useState<string | null>(null);
   const [employees, setEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
   const [extraHoursPolicy, setExtraHoursPolicy] = useState<"yes" | "no">("yes");
+  const [extraHoursPolicyDraft, setExtraHoursPolicyDraft] = useState<"yes" | "no">("yes");
   const [showExtraPolicyWindow, setShowExtraPolicyWindow] = useState(false);
   const [extraPolicyDraft, setExtraPolicyDraft] = useState<ExtraPolicyConfig>({
     halfDayMinWorkMins: 240,
@@ -86,6 +93,12 @@ export default function Page() {
     loginAccessRule: "any_time",
     allowPunchOnHoliday: true,
     allowPunchOnWeeklyOff: true,
+    latePenaltyEnabled: false,
+    latePenaltyUpToMins: 30,
+    latePenaltyRepeatCount: 3,
+    latePenaltyRepeatDays: 1,
+    latePenaltyAboveMins: 30,
+    latePenaltyAboveDays: 0.5,
   });
   const [extraPolicyConfig, setExtraPolicyConfig] = useState<ExtraPolicyConfig>({
     halfDayMinWorkMins: 240,
@@ -95,6 +108,12 @@ export default function Page() {
     loginAccessRule: "any_time",
     allowPunchOnHoliday: true,
     allowPunchOnWeeklyOff: true,
+    latePenaltyEnabled: false,
+    latePenaltyUpToMins: 30,
+    latePenaltyRepeatCount: 3,
+    latePenaltyRepeatDays: 1,
+    latePenaltyAboveMins: 30,
+    latePenaltyAboveDays: 0.5,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -125,6 +144,12 @@ export default function Page() {
         loginAccessRule?: "any_time" | "shift_time_only";
         allowPunchOnHoliday?: boolean;
         allowPunchOnWeeklyOff?: boolean;
+        latePenaltyEnabled?: boolean;
+        latePenaltyUpToMins?: number;
+        latePenaltyRepeatCount?: number;
+        latePenaltyRepeatDays?: number;
+        latePenaltyAboveMins?: number;
+        latePenaltyAboveDays?: number;
         error?: string;
       };
       if (ignore) return;
@@ -153,6 +178,27 @@ export default function Page() {
           allowPunchOnHoliday: typeof result.allowPunchOnHoliday === "boolean" ? result.allowPunchOnHoliday : extraPolicyConfig.allowPunchOnHoliday,
           allowPunchOnWeeklyOff:
             typeof result.allowPunchOnWeeklyOff === "boolean" ? result.allowPunchOnWeeklyOff : extraPolicyConfig.allowPunchOnWeeklyOff,
+          latePenaltyEnabled: result.latePenaltyEnabled === true,
+          latePenaltyUpToMins:
+            Number.isFinite(result.latePenaltyUpToMins) && Number(result.latePenaltyUpToMins) >= 0 && Number(result.latePenaltyUpToMins) <= 180
+              ? Math.round(Number(result.latePenaltyUpToMins))
+              : extraPolicyConfig.latePenaltyUpToMins,
+          latePenaltyRepeatCount:
+            Number.isFinite(result.latePenaltyRepeatCount) && Number(result.latePenaltyRepeatCount) >= 1 && Number(result.latePenaltyRepeatCount) <= 31
+              ? Math.round(Number(result.latePenaltyRepeatCount))
+              : extraPolicyConfig.latePenaltyRepeatCount,
+          latePenaltyRepeatDays:
+            Number.isFinite(result.latePenaltyRepeatDays) && Number(result.latePenaltyRepeatDays) >= 0 && Number(result.latePenaltyRepeatDays) <= 31
+              ? Math.round(Number(result.latePenaltyRepeatDays) * 2) / 2
+              : extraPolicyConfig.latePenaltyRepeatDays,
+          latePenaltyAboveMins:
+            Number.isFinite(result.latePenaltyAboveMins) && Number(result.latePenaltyAboveMins) >= 0 && Number(result.latePenaltyAboveMins) <= 180
+              ? Math.round(Number(result.latePenaltyAboveMins))
+              : extraPolicyConfig.latePenaltyAboveMins,
+          latePenaltyAboveDays:
+            Number.isFinite(result.latePenaltyAboveDays) && Number(result.latePenaltyAboveDays) >= 0 && Number(result.latePenaltyAboveDays) <= 31
+              ? Math.round(Number(result.latePenaltyAboveDays) * 2) / 2
+              : extraPolicyConfig.latePenaltyAboveDays,
         };
         setExtraPolicyConfig(nextPolicy);
         setExtraPolicyDraft(nextPolicy);
@@ -160,6 +206,7 @@ export default function Page() {
       }
       if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
         setExtraHoursPolicy(result.extraHoursPolicy);
+        setExtraHoursPolicyDraft(result.extraHoursPolicy);
       }
     }
 
@@ -181,6 +228,12 @@ export default function Page() {
       const loginAccessRule = parsed.loginAccessRule;
       const allowPunchOnHoliday = parsed.allowPunchOnHoliday;
       const allowPunchOnWeeklyOff = parsed.allowPunchOnWeeklyOff;
+      const latePenaltyEnabled = parsed.latePenaltyEnabled;
+      const latePenaltyUpToMins = Number(parsed.latePenaltyUpToMins);
+      const latePenaltyRepeatCount = Number(parsed.latePenaltyRepeatCount);
+      const latePenaltyRepeatDays = Number(parsed.latePenaltyRepeatDays);
+      const latePenaltyAboveMins = Number(parsed.latePenaltyAboveMins);
+      const latePenaltyAboveDays = Number(parsed.latePenaltyAboveDays);
       if (Number.isFinite(halfDayMinWorkMins) && halfDayMinWorkMins >= 0 && halfDayMinWorkMins <= 1440) {
         const next: ExtraPolicyConfig = {
           halfDayMinWorkMins,
@@ -193,6 +246,23 @@ export default function Page() {
           loginAccessRule: loginAccessRule === "shift_time_only" ? "shift_time_only" : "any_time",
           allowPunchOnHoliday: allowPunchOnHoliday !== false,
           allowPunchOnWeeklyOff: allowPunchOnWeeklyOff !== false,
+          latePenaltyEnabled: latePenaltyEnabled === true,
+          latePenaltyUpToMins:
+            Number.isFinite(latePenaltyUpToMins) && latePenaltyUpToMins >= 0 && latePenaltyUpToMins <= 180 ? Math.round(latePenaltyUpToMins) : 30,
+          latePenaltyRepeatCount:
+            Number.isFinite(latePenaltyRepeatCount) && latePenaltyRepeatCount >= 1 && latePenaltyRepeatCount <= 31
+              ? Math.round(latePenaltyRepeatCount)
+              : 3,
+          latePenaltyRepeatDays:
+            Number.isFinite(latePenaltyRepeatDays) && latePenaltyRepeatDays >= 0 && latePenaltyRepeatDays <= 31
+              ? Math.round(latePenaltyRepeatDays * 2) / 2
+              : 1,
+          latePenaltyAboveMins:
+            Number.isFinite(latePenaltyAboveMins) && latePenaltyAboveMins >= 0 && latePenaltyAboveMins <= 180 ? Math.round(latePenaltyAboveMins) : 30,
+          latePenaltyAboveDays:
+            Number.isFinite(latePenaltyAboveDays) && latePenaltyAboveDays >= 0 && latePenaltyAboveDays <= 31
+              ? Math.round(latePenaltyAboveDays * 2) / 2
+              : 0.5,
         };
         setExtraPolicyConfig(next);
         setExtraPolicyDraft(next);
@@ -230,6 +300,16 @@ export default function Page() {
     const hrs = Math.floor(safe / 60);
     const mins = safe % 60;
     return `${hrs}h ${String(mins).padStart(2, "0")}m`;
+  }
+
+  function formatPenaltyDays(value: number) {
+    const safe = Number.isFinite(value) ? value : 0;
+    return `${Number.isInteger(safe) ? safe : safe.toFixed(1)} day`;
+  }
+
+  function latePenaltySummary(config: ExtraPolicyConfig) {
+    if (!config.latePenaltyEnabled) return "Disabled";
+    return `Up to ${config.latePenaltyUpToMins} min x ${config.latePenaltyRepeatCount}/month = ${formatPenaltyDays(config.latePenaltyRepeatDays)}, above ${config.latePenaltyAboveMins} min = ${formatPenaltyDays(config.latePenaltyAboveDays)}`;
   }
 
   function persistExtraPolicyConfig(next: ExtraPolicyConfig) {
@@ -280,6 +360,11 @@ export default function Page() {
       label: "Allow Punch On Weekly Offs",
       value: extraPolicyConfig.allowPunchOnWeeklyOff ? "Yes" : "No",
       description: "Lets employees create attendance punches on configured weekly off days.",
+    },
+    {
+      label: "Late Punch Penalty",
+      value: latePenaltySummary(extraPolicyConfig),
+      description: "Stores HR-configured monthly late punch penalty brackets for attendance deductions.",
     },
   ];
 
@@ -359,6 +444,21 @@ export default function Page() {
     if (extraPolicyDraft.minWorkOutMins < 0 || extraPolicyDraft.minWorkOutMins > 1440) {
       return showToast("Min Work Out must be between 0 and 1440 minutes.");
     }
+    if (extraPolicyDraft.latePenaltyUpToMins < 0 || extraPolicyDraft.latePenaltyUpToMins > 180) {
+      return showToast("Late Punch up-to minutes must be between 0 and 180.");
+    }
+    if (extraPolicyDraft.latePenaltyRepeatCount < 1 || extraPolicyDraft.latePenaltyRepeatCount > 31) {
+      return showToast("Late Punch repeat count must be between 1 and 31 days.");
+    }
+    if (extraPolicyDraft.latePenaltyRepeatDays < 0 || extraPolicyDraft.latePenaltyRepeatDays > 31) {
+      return showToast("Late Punch repeat penalty must be between 0 and 31 days.");
+    }
+    if (extraPolicyDraft.latePenaltyAboveMins < 0 || extraPolicyDraft.latePenaltyAboveMins > 180) {
+      return showToast("Late Punch above minutes must be between 0 and 180.");
+    }
+    if (extraPolicyDraft.latePenaltyAboveDays < 0 || extraPolicyDraft.latePenaltyAboveDays > 31) {
+      return showToast("Late Punch above penalty must be between 0 and 31 days.");
+    }
     const nextRows = rows.map((row) => ({
       ...row,
       graceMins: extraPolicyDraft.gracePeriodAllowedMins,
@@ -366,6 +466,7 @@ export default function Page() {
       minWorkBeforeOutMins: extraPolicyDraft.minWorkOutMins,
     }));
     setExtraPolicyConfig(extraPolicyDraft);
+    setExtraHoursPolicy(extraHoursPolicyDraft);
     persistExtraPolicyConfig(extraPolicyDraft);
     setRows(nextRows);
     setDraft((current) =>
@@ -380,10 +481,14 @@ export default function Page() {
     );
     setShowExtraPolicyWindow(false);
     showToast("Saving extra HR policy...");
-    await persistRows(nextRows, extraPolicyDraft);
+    await persistRows(nextRows, extraPolicyDraft, extraHoursPolicyDraft);
   }
 
-  async function persistRows(nextRows: ShiftRow[], policyOverride?: ExtraPolicyConfig) {
+  async function persistRows(
+    nextRows: ShiftRow[],
+    policyOverride?: ExtraPolicyConfig,
+    extraHoursPolicyOverride?: "yes" | "no"
+  ) {
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
     const accessToken = sessionResult?.data.session?.access_token;
@@ -392,6 +497,7 @@ export default function Page() {
     }
 
     const policyToSave = policyOverride || extraPolicyConfig;
+    const extraHoursPolicyToSave = extraHoursPolicyOverride || extraHoursPolicy;
     setSaving(true);
     const response = await fetch("/api/company/settings/shifts", {
       method: "PUT",
@@ -401,11 +507,17 @@ export default function Page() {
       },
       body: JSON.stringify({
         rows: nextRows,
-        extraHoursPolicy,
+        extraHoursPolicy: extraHoursPolicyToSave,
         halfDayMinWorkMins: policyToSave.halfDayMinWorkMins,
         loginAccessRule: policyToSave.loginAccessRule,
         allowPunchOnHoliday: policyToSave.allowPunchOnHoliday,
         allowPunchOnWeeklyOff: policyToSave.allowPunchOnWeeklyOff,
+        latePenaltyEnabled: policyToSave.latePenaltyEnabled,
+        latePenaltyUpToMins: policyToSave.latePenaltyUpToMins,
+        latePenaltyRepeatCount: policyToSave.latePenaltyRepeatCount,
+        latePenaltyRepeatDays: policyToSave.latePenaltyRepeatDays,
+        latePenaltyAboveMins: policyToSave.latePenaltyAboveMins,
+        latePenaltyAboveDays: policyToSave.latePenaltyAboveDays,
       }),
     });
     const result = (await response.json().catch(() => ({}))) as {
@@ -416,6 +528,12 @@ export default function Page() {
       loginAccessRule?: "any_time" | "shift_time_only";
       allowPunchOnHoliday?: boolean;
       allowPunchOnWeeklyOff?: boolean;
+      latePenaltyEnabled?: boolean;
+      latePenaltyUpToMins?: number;
+      latePenaltyRepeatCount?: number;
+      latePenaltyRepeatDays?: number;
+      latePenaltyAboveMins?: number;
+      latePenaltyAboveDays?: number;
       error?: string;
     };
     setSaving(false);
@@ -439,12 +557,34 @@ export default function Page() {
         typeof result.allowPunchOnHoliday === "boolean" ? result.allowPunchOnHoliday : policyToSave.allowPunchOnHoliday,
       allowPunchOnWeeklyOff:
         typeof result.allowPunchOnWeeklyOff === "boolean" ? result.allowPunchOnWeeklyOff : policyToSave.allowPunchOnWeeklyOff,
+      latePenaltyEnabled: result.latePenaltyEnabled === true,
+      latePenaltyUpToMins:
+        Number.isFinite(result.latePenaltyUpToMins) && Number(result.latePenaltyUpToMins) >= 0 && Number(result.latePenaltyUpToMins) <= 180
+          ? Math.round(Number(result.latePenaltyUpToMins))
+          : policyToSave.latePenaltyUpToMins,
+      latePenaltyRepeatCount:
+        Number.isFinite(result.latePenaltyRepeatCount) && Number(result.latePenaltyRepeatCount) >= 1 && Number(result.latePenaltyRepeatCount) <= 31
+          ? Math.round(Number(result.latePenaltyRepeatCount))
+          : policyToSave.latePenaltyRepeatCount,
+      latePenaltyRepeatDays:
+        Number.isFinite(result.latePenaltyRepeatDays) && Number(result.latePenaltyRepeatDays) >= 0 && Number(result.latePenaltyRepeatDays) <= 31
+          ? Math.round(Number(result.latePenaltyRepeatDays) * 2) / 2
+          : policyToSave.latePenaltyRepeatDays,
+      latePenaltyAboveMins:
+        Number.isFinite(result.latePenaltyAboveMins) && Number(result.latePenaltyAboveMins) >= 0 && Number(result.latePenaltyAboveMins) <= 180
+          ? Math.round(Number(result.latePenaltyAboveMins))
+          : policyToSave.latePenaltyAboveMins,
+      latePenaltyAboveDays:
+        Number.isFinite(result.latePenaltyAboveDays) && Number(result.latePenaltyAboveDays) >= 0 && Number(result.latePenaltyAboveDays) <= 31
+          ? Math.round(Number(result.latePenaltyAboveDays) * 2) / 2
+          : policyToSave.latePenaltyAboveDays,
     };
     setExtraPolicyConfig(nextPolicyConfig);
     setExtraPolicyDraft(nextPolicyConfig);
     persistExtraPolicyConfig(nextPolicyConfig);
     if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
       setExtraHoursPolicy(result.extraHoursPolicy);
+      setExtraHoursPolicyDraft(result.extraHoursPolicy);
     }
     showToast("Shift settings saved.");
   }
@@ -480,17 +620,18 @@ export default function Page() {
 
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <h2 className="text-base font-semibold text-slate-900">Shift Definitions</h2>
+          <h2 className="sr-only">Shift policy settings</h2>
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
             <button
               type="button"
               onClick={() => {
+                setExtraHoursPolicyDraft(extraHoursPolicy);
                 setExtraPolicyDraft(extraPolicyConfig);
                 setShowExtraPolicyWindow(true);
               }}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
             >
-              Extra Hr Policy Control
+              Attendance Policy Settings
             </button>
           </div>
         </div>
@@ -698,8 +839,8 @@ export default function Page() {
           <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <h3 className="text-xl font-semibold text-slate-900">Extra Hr Policy Control</h3>
-                <p className="mt-1 text-sm text-slate-600">Configure extra-hour approval behavior and half-day minimum work rules.</p>
+                <h3 className="text-xl font-semibold text-slate-900">Attendance Policy Settings</h3>
+                <p className="mt-1 text-sm text-slate-600">Configure punch access, extra hours, half-day minimums, and work timing rules.</p>
               </div>
               <button
                 type="button"
@@ -731,8 +872,8 @@ export default function Page() {
               <label className="grid gap-1.5">
                 <span className="text-sm font-semibold text-slate-700">Extra Hr Policy</span>
                 <select
-                  value={extraHoursPolicy}
-                  onChange={(e) => setExtraHoursPolicy(e.target.value as "yes" | "no")}
+                  value={extraHoursPolicyDraft}
+                  onChange={(e) => setExtraHoursPolicyDraft(e.target.value === "no" ? "no" : "yes")}
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
                 >
                   <option value="yes">Yes</option>
@@ -843,6 +984,110 @@ export default function Page() {
                   <option value="no">No</option>
                 </select>
               </label>
+
+              <label className="grid gap-1.5 md:col-span-2">
+                <span className="text-sm font-semibold text-slate-700">Late Punch Penalty</span>
+                <select
+                  value={extraPolicyDraft.latePenaltyEnabled ? "yes" : "no"}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      latePenaltyEnabled: e.target.value === "yes",
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="no">Disabled</option>
+                  <option value="yes">Enabled</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Late Punch Up To Mins</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={180}
+                  value={extraPolicyDraft.latePenaltyUpToMins}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      latePenaltyUpToMins: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Repeat Late Days In Month</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={extraPolicyDraft.latePenaltyRepeatCount}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      latePenaltyRepeatCount: Number(e.target.value || 1),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Penalty For Repeat Late</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={31}
+                  step={0.5}
+                  value={extraPolicyDraft.latePenaltyRepeatDays}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      latePenaltyRepeatDays: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Late Punch Above Mins</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={180}
+                  value={extraPolicyDraft.latePenaltyAboveMins}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      latePenaltyAboveMins: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Penalty For Late Above Limit</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={31}
+                  step={0.5}
+                  value={extraPolicyDraft.latePenaltyAboveDays}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      latePenaltyAboveDays: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
             </div>
 
             <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
@@ -866,6 +1111,9 @@ export default function Page() {
               </div>
               <div className="mt-1">
                 Allow Punch On Weekly Offs: <span className="font-semibold">{extraPolicyDraft.allowPunchOnWeeklyOff ? "Yes" : "No"}</span>
+              </div>
+              <div className="mt-1">
+                Late Punch Penalty: <span className="font-semibold">{latePenaltySummary(extraPolicyDraft)}</span>
               </div>
             </div>
 

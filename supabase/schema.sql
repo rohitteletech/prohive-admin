@@ -30,6 +30,17 @@ create table if not exists public.companies (
     check (extra_hours_policy in ('yes', 'no')),
   half_day_min_work_mins integer not null default 240
     check (half_day_min_work_mins >= 0 and half_day_min_work_mins <= 1440),
+  late_penalty_enabled boolean not null default false,
+  late_penalty_up_to_mins integer not null default 30
+    check (late_penalty_up_to_mins >= 0 and late_penalty_up_to_mins <= 180),
+  late_penalty_repeat_count integer not null default 3
+    check (late_penalty_repeat_count >= 1 and late_penalty_repeat_count <= 31),
+  late_penalty_repeat_days numeric(4,1) not null default 1.0
+    check (late_penalty_repeat_days >= 0 and late_penalty_repeat_days <= 31),
+  late_penalty_above_mins integer not null default 30
+    check (late_penalty_above_mins >= 0 and late_penalty_above_mins <= 180),
+  late_penalty_above_days numeric(4,1) not null default 0.5
+    check (late_penalty_above_days >= 0 and late_penalty_above_days <= 31),
   login_access_rule text not null default 'any_time'
     check (login_access_rule in ('any_time', 'shift_time_only')),
   gst text,
@@ -55,6 +66,19 @@ alter table public.companies
 alter table public.companies
   add column if not exists half_day_min_work_mins integer not null default 240
     check (half_day_min_work_mins >= 0 and half_day_min_work_mins <= 1440);
+
+alter table public.companies
+  add column if not exists late_penalty_enabled boolean not null default false,
+  add column if not exists late_penalty_up_to_mins integer not null default 30
+    check (late_penalty_up_to_mins >= 0 and late_penalty_up_to_mins <= 180),
+  add column if not exists late_penalty_repeat_count integer not null default 3
+    check (late_penalty_repeat_count >= 1 and late_penalty_repeat_count <= 31),
+  add column if not exists late_penalty_repeat_days numeric(4,1) not null default 1.0
+    check (late_penalty_repeat_days >= 0 and late_penalty_repeat_days <= 31),
+  add column if not exists late_penalty_above_mins integer not null default 30
+    check (late_penalty_above_mins >= 0 and late_penalty_above_mins <= 180),
+  add column if not exists late_penalty_above_days numeric(4,1) not null default 0.5
+    check (late_penalty_above_days >= 0 and late_penalty_above_days <= 31);
 
 alter table public.companies
   add column if not exists login_access_rule text not null default 'any_time'

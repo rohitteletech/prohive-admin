@@ -3,6 +3,10 @@ import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
+  buildDailyAttendanceDecision,
+  rawWorkedMinutes,
+} from "@/lib/attendancePolicy";
+import {
   applyExtraHoursPolicy,
   findMatchingShiftRule,
   normalizeExtraHoursPolicy,
@@ -29,13 +33,6 @@ function buildQueryWindow(date: string) {
     fromIso: start.toISOString(),
     toIso: end.toISOString(),
   };
-}
-
-function rawWorkMinutes(checkInIso: string | null, checkOutIso: string | null) {
-  if (!checkInIso || !checkOutIso) return 0;
-  const diffMs = new Date(checkOutIso).getTime() - new Date(checkInIso).getTime();
-  if (!Number.isFinite(diffMs) || diffMs <= 0) return 0;
-  return Math.floor(diffMs / 60000);
 }
 
 export async function POST(req: NextRequest) {
@@ -155,7 +152,17 @@ export async function POST(req: NextRequest) {
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
   const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
   const loginAccessRule = normalizeLoginAccessRule(companyResult.data?.login_access_rule);
-  const workingMinutes = applyExtraHoursPolicy(rawWorkMinutes(checkInAt, checkOutAt), effectiveScheduledWorkMin, extraHoursPolicy);
+  const actualWorkedMinutes = rawWorkedMinutes(checkInAt, checkOutAt);
+  const workingMinutes = applyExtraHoursPolicy(actualWorkedMinutes, effectiveScheduledWorkMin, extraHoursPolicy);
+  const attendanceDecision = buildDailyAttendanceDecision({
+    checkInIso: checkInAt,
+    checkOutIso: checkOutAt,
+    timeZone,
+    shiftStart: matchedShift?.startTime || null,
+    scheduledMinutes: effectiveScheduledWorkMin,
+    graceMins: matchedShift?.graceMins || 10,
+    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(companyResult.data?.half_day_min_work_mins),
+  });
 
   return NextResponse.json({
     employee: {
@@ -171,6 +178,7 @@ export async function POST(req: NextRequest) {
     today: {
       date: today,
       status: currentStatus,
+      attendanceStatus: attendanceDecision.status,
       punchInAt: checkInAt,
       punchOutAt: checkOutAt,
       workingMinutes,
