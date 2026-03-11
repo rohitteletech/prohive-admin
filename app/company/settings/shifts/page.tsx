@@ -240,6 +240,49 @@ export default function Page() {
     return value === "shift_time_only" ? "Shift Time Only" : "Any Time";
   }
 
+  const policySummaryItems = [
+    {
+      label: "Extra Hr Policy",
+      value: extraHoursPolicy === "yes" ? "Enabled" : "Disabled",
+      description: "Controls whether worked time beyond scheduled shift hours is counted.",
+    },
+    {
+      label: "Punch In Access Rule",
+      value: loginAccessRuleLabel(extraPolicyConfig.loginAccessRule),
+      description: "Defines whether employees can punch in at any time or only around shift hours.",
+    },
+    {
+      label: "Half Day Minimum Working Hrs",
+      value: formatHourMinuteLabel(extraPolicyConfig.halfDayMinWorkMins),
+      description: "Minimum worked time required before the day can be treated as half-day eligible.",
+    },
+    {
+      label: "Grace Period Allowed",
+      value: `${extraPolicyConfig.gracePeriodAllowedMins} min`,
+      description: "Extra minutes allowed after shift start before punch-in is treated as late.",
+    },
+    {
+      label: "Early In",
+      value: `${extraPolicyConfig.earlyInMins} min`,
+      description: "How early before shift start an employee can punch in.",
+    },
+    {
+      label: "Min Work Out",
+      value: `${extraPolicyConfig.minWorkOutMins} min`,
+      description: "Minimum worked minutes before punch-out is allowed.",
+    },
+    {
+      label: "Allow Punch On Holidays",
+      value: extraPolicyConfig.allowPunchOnHoliday ? "Yes" : "No",
+      description: "Lets employees create attendance punches on company holiday dates.",
+    },
+    {
+      label: "Allow Punch On Weekly Offs",
+      value: extraPolicyConfig.allowPunchOnWeeklyOff ? "Yes" : "No",
+      description: "Lets employees create attendance punches on configured weekly off days.",
+    },
+  ];
+
   function startEdit(row: ShiftRow) {
     setEditingId(row.id);
     setDraft({ ...row });
@@ -452,43 +495,23 @@ export default function Page() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Extra Hr Policy</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{extraHoursPolicy === "yes" ? "Enabled" : "Disabled"}</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Login Access Rule</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{loginAccessRuleLabel(extraPolicyConfig.loginAccessRule)}</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Half Day Minimum Working Hrs</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{formatHourMinuteLabel(extraPolicyConfig.halfDayMinWorkMins)}</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Grace Period Allowed</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.gracePeriodAllowedMins} min</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Early In</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.earlyInMins} min</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Min Work Out</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.minWorkOutMins} min</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Allow Punch On Holidays</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.allowPunchOnHoliday ? "Yes" : "No"}</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Allow Punch On Weekly Offs</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.allowPunchOnWeeklyOff ? "Yes" : "No"}</div>
-          </article>
-          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2 xl:col-span-1">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Policy Window</div>
-            <div className="mt-1 text-lg font-semibold text-slate-900">Editable</div>
-          </article>
+        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+          {policySummaryItems.map((item, index) => (
+            <article
+              key={item.label}
+              className={`px-4 py-3 sm:px-5 ${index === 0 ? "" : "border-t border-slate-200"}`}
+            >
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-slate-900">
+                    {index + 1}. {item.label}
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">{item.description}</p>
+                </div>
+                <div className="shrink-0 text-base font-semibold text-slate-900 sm:pt-0.5">{item.value}</div>
+              </div>
+            </article>
+          ))}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
