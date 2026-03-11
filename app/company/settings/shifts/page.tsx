@@ -121,6 +121,7 @@ export default function Page() {
       const result = (await response.json().catch(() => ({}))) as {
         rows?: ShiftRow[];
         extraHoursPolicy?: "yes" | "no";
+        halfDayMinWorkMins?: number;
         loginAccessRule?: "any_time" | "shift_time_only";
         allowPunchOnHoliday?: boolean;
         allowPunchOnWeeklyOff?: boolean;
@@ -138,7 +139,10 @@ export default function Page() {
       saveCompanyShifts(nextRows);
       if (nextRows.length > 0) {
         const nextPolicy = {
-          halfDayMinWorkMins: extraPolicyConfig.halfDayMinWorkMins,
+          halfDayMinWorkMins:
+            Number.isFinite(result.halfDayMinWorkMins) && Number(result.halfDayMinWorkMins) >= 0 && Number(result.halfDayMinWorkMins) <= 1440
+              ? Math.round(Number(result.halfDayMinWorkMins))
+              : extraPolicyConfig.halfDayMinWorkMins,
           gracePeriodAllowedMins: nextRows[0].graceMins,
           earlyInMins: nextRows[0].earlyWindowMins,
           minWorkOutMins: nextRows[0].minWorkBeforeOutMins,
@@ -299,7 +303,7 @@ export default function Page() {
     setDraft((prev) => (prev ? { ...prev, [key]: value } : prev));
   }
 
-  function saveExtraPolicyWindow() {
+  async function saveExtraPolicyWindow() {
     if (extraPolicyDraft.halfDayMinWorkMins < 0 || extraPolicyDraft.halfDayMinWorkMins > 1440) {
       return showToast("Half day minimum work hours must be between 0 and 24 hours.");
     }
@@ -312,16 +316,15 @@ export default function Page() {
     if (extraPolicyDraft.minWorkOutMins < 0 || extraPolicyDraft.minWorkOutMins > 1440) {
       return showToast("Min Work Out must be between 0 and 1440 minutes.");
     }
+    const nextRows = rows.map((row) => ({
+      ...row,
+      graceMins: extraPolicyDraft.gracePeriodAllowedMins,
+      earlyWindowMins: extraPolicyDraft.earlyInMins,
+      minWorkBeforeOutMins: extraPolicyDraft.minWorkOutMins,
+    }));
     setExtraPolicyConfig(extraPolicyDraft);
     persistExtraPolicyConfig(extraPolicyDraft);
-    setRows((current) =>
-      current.map((row) => ({
-        ...row,
-        graceMins: extraPolicyDraft.gracePeriodAllowedMins,
-        earlyWindowMins: extraPolicyDraft.earlyInMins,
-        minWorkBeforeOutMins: extraPolicyDraft.minWorkOutMins,
-      }))
-    );
+    setRows(nextRows);
     setDraft((current) =>
       current
         ? {
@@ -333,10 +336,11 @@ export default function Page() {
         : current
     );
     setShowExtraPolicyWindow(false);
-    showToast("Extra HR policy settings applied to all shifts locally.");
+    showToast("Saving extra HR policy...");
+    await persistRows(nextRows, extraPolicyDraft);
   }
 
-  async function persistRows(nextRows: ShiftRow[]) {
+  async function persistRows(nextRows: ShiftRow[], policyOverride?: ExtraPolicyConfig) {
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
     const accessToken = sessionResult?.data.session?.access_token;
@@ -344,6 +348,7 @@ export default function Page() {
       return showToast("Company session not found. Please login again.");
     }
 
+    const policyToSave = policyOverride || extraPolicyConfig;
     setSaving(true);
     const response = await fetch("/api/company/settings/shifts", {
       method: "PUT",
@@ -354,15 +359,17 @@ export default function Page() {
       body: JSON.stringify({
         rows: nextRows,
         extraHoursPolicy,
-        loginAccessRule: extraPolicyConfig.loginAccessRule,
-        allowPunchOnHoliday: extraPolicyConfig.allowPunchOnHoliday,
-        allowPunchOnWeeklyOff: extraPolicyConfig.allowPunchOnWeeklyOff,
+        halfDayMinWorkMins: policyToSave.halfDayMinWorkMins,
+        loginAccessRule: policyToSave.loginAccessRule,
+        allowPunchOnHoliday: policyToSave.allowPunchOnHoliday,
+        allowPunchOnWeeklyOff: policyToSave.allowPunchOnWeeklyOff,
       }),
     });
     const result = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       rows?: ShiftRow[];
       extraHoursPolicy?: "yes" | "no";
+      halfDayMinWorkMins?: number;
       loginAccessRule?: "any_time" | "shift_time_only";
       allowPunchOnHoliday?: boolean;
       allowPunchOnWeeklyOff?: boolean;
@@ -376,15 +383,19 @@ export default function Page() {
     setRows(savedRows);
     saveCompanyShifts(savedRows);
     const nextPolicyConfig: ExtraPolicyConfig = {
-      ...extraPolicyConfig,
+      ...policyToSave,
+      halfDayMinWorkMins:
+        Number.isFinite(result.halfDayMinWorkMins) && Number(result.halfDayMinWorkMins) >= 0 && Number(result.halfDayMinWorkMins) <= 1440
+          ? Math.round(Number(result.halfDayMinWorkMins))
+          : policyToSave.halfDayMinWorkMins,
       loginAccessRule:
         result.loginAccessRule === "shift_time_only" || result.loginAccessRule === "any_time"
           ? result.loginAccessRule
-          : extraPolicyConfig.loginAccessRule,
+          : policyToSave.loginAccessRule,
       allowPunchOnHoliday:
-        typeof result.allowPunchOnHoliday === "boolean" ? result.allowPunchOnHoliday : extraPolicyConfig.allowPunchOnHoliday,
+        typeof result.allowPunchOnHoliday === "boolean" ? result.allowPunchOnHoliday : policyToSave.allowPunchOnHoliday,
       allowPunchOnWeeklyOff:
-        typeof result.allowPunchOnWeeklyOff === "boolean" ? result.allowPunchOnWeeklyOff : extraPolicyConfig.allowPunchOnWeeklyOff,
+        typeof result.allowPunchOnWeeklyOff === "boolean" ? result.allowPunchOnWeeklyOff : policyToSave.allowPunchOnWeeklyOff,
     };
     setExtraPolicyConfig(nextPolicyConfig);
     setExtraPolicyDraft(nextPolicyConfig);

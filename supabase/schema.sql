@@ -28,6 +28,8 @@ create table if not exists public.companies (
   allow_punch_on_weekly_off boolean not null default true,
   extra_hours_policy text not null default 'yes'
     check (extra_hours_policy in ('yes', 'no')),
+  half_day_min_work_mins integer not null default 240
+    check (half_day_min_work_mins >= 0 and half_day_min_work_mins <= 1440),
   login_access_rule text not null default 'any_time'
     check (login_access_rule in ('any_time', 'shift_time_only')),
   gst text,
@@ -49,6 +51,10 @@ alter table public.companies
 alter table public.companies
   add column if not exists extra_hours_policy text not null default 'yes'
     check (extra_hours_policy in ('yes', 'no'));
+
+alter table public.companies
+  add column if not exists half_day_min_work_mins integer not null default 240
+    check (half_day_min_work_mins >= 0 and half_day_min_work_mins <= 1440);
 
 alter table public.companies
   add column if not exists login_access_rule text not null default 'any_time'

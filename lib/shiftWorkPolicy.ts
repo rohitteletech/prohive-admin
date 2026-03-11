@@ -19,6 +19,14 @@ export function normalizeLoginAccessRule(value: unknown) {
   return String(value || "").trim().toLowerCase() === "shift_time_only" ? "shift_time_only" : "any_time";
 }
 
+export function normalizeHalfDayMinWorkMins(value: unknown, fallback = 240) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  const rounded = Math.round(parsed);
+  if (rounded < 0 || rounded > 1440) return fallback;
+  return rounded;
+}
+
 type ShiftTimingRule = {
   name: string;
   type: string;

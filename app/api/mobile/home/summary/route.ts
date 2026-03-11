@@ -6,6 +6,7 @@ import {
   applyExtraHoursPolicy,
   findMatchingShiftRule,
   normalizeExtraHoursPolicy,
+  normalizeHalfDayMinWorkMins,
   normalizeLoginAccessRule,
   shiftDurationMinutes,
   timeToMinutes,
@@ -67,7 +68,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy,login_access_rule")
+      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy,login_access_rule,half_day_min_work_mins")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -182,6 +183,7 @@ export async function POST(req: NextRequest) {
       minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || 60,
       scheduledWorkMin: effectiveScheduledWorkMin || 0,
       extraHoursPolicy,
+      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(companyResult.data?.half_day_min_work_mins),
       loginAccessRule,
       weeklyOffPolicy: companyResult.data?.weekly_off_policy || "sunday_only",
       allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
