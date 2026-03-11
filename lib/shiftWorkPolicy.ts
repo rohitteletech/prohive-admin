@@ -15,6 +15,68 @@ export function normalizeExtraHoursPolicy(value: unknown) {
   return String(value || "").trim().toLowerCase() === "no" ? "no" : "yes";
 }
 
+export function normalizeLoginAccessRule(value: unknown) {
+  return String(value || "").trim().toLowerCase() === "shift_time_only" ? "shift_time_only" : "any_time";
+}
+
+type ShiftTimingRule = {
+  name: string;
+  type: string;
+  startTime: string;
+  endTime: string;
+  earlyWindowMins: number;
+};
+
+function normalizeShiftText(value: string | null | undefined) {
+  return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function minutesOfDayInTimeZone(iso: string, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const lookup = (type: string) => Number(parts.find((part) => part.type === type)?.value || "0");
+  return lookup("hour") * 60 + lookup("minute");
+}
+
+function isMinuteInWrappedRange(value: number, start: number, end: number) {
+  if (start <= end) return value >= start && value <= end;
+  return value >= start || value <= end;
+}
+
+export function findMatchingShiftRule<T extends ShiftTimingRule>(shiftName: string, shiftRows: T[]) {
+  const normalizedShiftName = normalizeShiftText(shiftName);
+  return (
+    shiftRows.find((row) => {
+      const name = normalizeShiftText(row.name);
+      const type = normalizeShiftText(row.type);
+      return normalizedShiftName ? normalizedShiftName === name || normalizedShiftName === type : false;
+    }) ||
+    shiftRows.find((row) => normalizeShiftText(row.name) === "general") ||
+    shiftRows[0] ||
+    null
+  );
+}
+
+export function isPunchInAllowedByShiftWindow(params: {
+  punchIso: string;
+  timeZone: string;
+  shiftStart: string;
+  shiftEnd: string;
+  earlyWindowMins: number;
+}) {
+  const shiftStartMin = timeToMinutes(params.shiftStart);
+  const shiftEndMin = timeToMinutes(params.shiftEnd);
+  if (shiftStartMin === null || shiftEndMin === null) return true;
+  const currentMin = minutesOfDayInTimeZone(params.punchIso, params.timeZone);
+  const earlyWindow = Math.max(0, Math.min(1440, Math.floor(params.earlyWindowMins || 0)));
+  const windowStart = ((shiftStartMin - earlyWindow) % 1440 + 1440) % 1440;
+  return isMinuteInWrappedRange(currentMin, windowStart, shiftEndMin);
+}
+
 export function applyExtraHoursPolicy(workMinutes: number, scheduledMinutes: number | null, policy: unknown) {
   const normalized = normalizeExtraHoursPolicy(policy);
   const safeWorked = Number.isFinite(workMinutes) && workMinutes > 0 ? Math.floor(workMinutes) : 0;

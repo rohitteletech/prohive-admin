@@ -1,4 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
+import { findMatchingShiftRule, isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 
 type JsonBody = {
   [key: string]: unknown;
@@ -276,7 +278,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const { data: employee, error: employeeError } = await admin
     .from("employees")
-    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id")
+    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id,shift_name")
     .eq("id", payload.employee_id)
     .eq("company_id", payload.company_id)
     .maybeSingle();
@@ -300,7 +302,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const { data: company, error: companyError } = await admin
     .from("companies")
-    .select("id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off")
+    .select("id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,login_access_rule")
     .eq("id", payload.company_id)
     .maybeSingle();
 
@@ -367,6 +369,64 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
         error: "Punch is not allowed on weekly off.",
       },
     };
+  }
+
+  if (payload.punch_type === "in" && normalizeLoginAccessRule(company.login_access_rule) === "shift_time_only") {
+    const { data: shiftRows, error: shiftError } = await admin
+      .from("company_shift_definitions")
+      .select("name,type,start_time,end_time,early_window_mins,active")
+      .eq("company_id", payload.company_id)
+      .eq("active", true)
+      .order("created_at", { ascending: true });
+
+    if (shiftError) {
+      return { status: 500, body: { error: shiftError.message || "Unable to load shift window policy." } };
+    }
+
+    const effectiveShiftRows =
+      ((shiftRows || []) as Array<{
+        name: string;
+        type: string;
+        start_time: string;
+        end_time: string;
+        early_window_mins: number;
+      }>).map((row) => ({
+        name: row.name,
+        type: row.type,
+        startTime: row.start_time,
+        endTime: row.end_time,
+        earlyWindowMins: Number(row.early_window_mins || 0),
+      })) ||
+      [];
+
+    const fallbackShiftRows = DEFAULT_COMPANY_SHIFTS.map((row) => ({
+      name: row.name,
+      type: row.type,
+      startTime: row.start,
+      endTime: row.end,
+      earlyWindowMins: row.earlyWindowMins,
+    }));
+
+    const matchedShift = findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+
+    if (
+      matchedShift &&
+      !isPunchInAllowedByShiftWindow({
+        punchIso: currentPunchIso,
+        timeZone: payload.device_time_zone,
+        shiftStart: matchedShift.startTime,
+        shiftEnd: matchedShift.endTime,
+        earlyWindowMins: matchedShift.earlyWindowMins,
+      })
+    ) {
+      return {
+        status: 403,
+        body: {
+          code: "SHIFT_TIME_ONLY_LOGIN_BLOCKED",
+          error: "Punch In is allowed only during the configured shift window.",
+        },
+      };
+    }
   }
 
   const { data: lastEvent } = await admin

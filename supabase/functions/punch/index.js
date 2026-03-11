@@ -65,6 +65,60 @@ function isWeeklyOffDate(dateIso, policy) {
   return day === 0;
 }
 
+function normalizeLoginAccessRule(value) {
+  return String(value || "").trim().toLowerCase() === "shift_time_only" ? "shift_time_only" : "any_time";
+}
+
+function normalizeText(value) {
+  return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function findMatchingShiftRule(shiftName, shiftRows) {
+  const normalizedShiftName = normalizeText(shiftName);
+  return (
+    shiftRows.find((row) => {
+      const name = normalizeText(row.name);
+      const type = normalizeText(row.type);
+      return normalizedShiftName ? normalizedShiftName === name || normalizedShiftName === type : false;
+    }) ||
+    shiftRows.find((row) => normalizeText(row.name) === "general") ||
+    shiftRows[0] ||
+    null
+  );
+}
+
+function minutesOfDayInTimeZone(iso, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(iso));
+  const lookup = (type) => Number(parts.find((part) => part.type === type)?.value || "0");
+  return lookup("hour") * 60 + lookup("minute");
+}
+
+function timeToMinutes(value) {
+  const [h, m] = String(value || "").split(":").map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+function isMinuteInWrappedRange(value, start, end) {
+  if (start <= end) return value >= start && value <= end;
+  return value >= start || value <= end;
+}
+
+function isPunchInAllowedByShiftWindow({ punchIso, timeZone, shiftStart, shiftEnd, earlyWindowMins }) {
+  const shiftStartMin = timeToMinutes(shiftStart);
+  const shiftEndMin = timeToMinutes(shiftEnd);
+  if (shiftStartMin === null || shiftEndMin === null) return true;
+  const currentMin = minutesOfDayInTimeZone(punchIso, timeZone);
+  const earlyWindow = Math.max(0, Math.min(1440, Math.floor(earlyWindowMins || 0)));
+  const windowStart = ((shiftStartMin - earlyWindow) % 1440 + 1440) % 1440;
+  return isMinuteInWrappedRange(currentMin, windowStart, shiftEndMin);
+}
+
 function haversineDistanceMeters(lat1, lon1, lat2, lon2) {
   const toRad = (deg) => (deg * Math.PI) / 180;
   const earthRadius = 6371000;
@@ -258,7 +312,7 @@ Deno.serve(async (req) => {
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id")
+    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id,shift_name")
     .eq("id", payload.employee_id)
     .eq("company_id", payload.company_id)
     .maybeSingle();
@@ -283,7 +337,7 @@ Deno.serve(async (req) => {
   const { data: company, error: companyError } = await supabase
     .from("companies")
     .select(
-      "id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off"
+      "id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,login_access_rule"
     )
     .eq("id", payload.company_id)
     .maybeSingle();
@@ -352,6 +406,53 @@ Deno.serve(async (req) => {
       },
       403
     );
+  }
+
+  if (payload.punch_type === "in" && normalizeLoginAccessRule(company.login_access_rule) === "shift_time_only") {
+    const { data: shiftRows, error: shiftError } = await supabase
+      .from("company_shift_definitions")
+      .select("name,type,start_time,end_time,early_window_mins,active")
+      .eq("company_id", payload.company_id)
+      .eq("active", true)
+      .order("created_at", { ascending: true });
+
+    if (shiftError) {
+      return json({ error: shiftError.message || "Unable to load shift window policy." }, 500);
+    }
+
+    const effectiveShiftRows = (shiftRows || []).map((row) => ({
+      name: row.name,
+      type: row.type,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      earlyWindowMins: Number(row.early_window_mins || 0),
+    }));
+
+    const fallbackShiftRows = [
+      { name: "General", type: "Day", startTime: "09:00", endTime: "18:00", earlyWindowMins: 15 },
+      { name: "Morning", type: "Early", startTime: "06:00", endTime: "15:00", earlyWindowMins: 15 },
+      { name: "Evening", type: "Late", startTime: "14:00", endTime: "22:00", earlyWindowMins: 15 },
+    ];
+
+    const matchedShift = findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+    if (
+      matchedShift &&
+      !isPunchInAllowedByShiftWindow({
+        punchIso: currentPunchIso,
+        timeZone: payload.device_time_zone,
+        shiftStart: matchedShift.startTime,
+        shiftEnd: matchedShift.endTime,
+        earlyWindowMins: matchedShift.earlyWindowMins,
+      })
+    ) {
+      return json(
+        {
+          code: "SHIFT_TIME_ONLY_LOGIN_BLOCKED",
+          error: "Punch In is allowed only during the configured shift window.",
+        },
+        403
+      );
+    }
   }
 
   const { data: lastEvent } = await supabase

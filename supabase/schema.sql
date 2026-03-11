@@ -28,6 +28,8 @@ create table if not exists public.companies (
   allow_punch_on_weekly_off boolean not null default true,
   extra_hours_policy text not null default 'yes'
     check (extra_hours_policy in ('yes', 'no')),
+  login_access_rule text not null default 'any_time'
+    check (login_access_rule in ('any_time', 'shift_time_only')),
   gst text,
   business_nature text,
   created_at timestamptz not null default now()
@@ -47,6 +49,10 @@ alter table public.companies
 alter table public.companies
   add column if not exists extra_hours_policy text not null default 'yes'
     check (extra_hours_policy in ('yes', 'no'));
+
+alter table public.companies
+  add column if not exists login_access_rule text not null default 'any_time'
+    check (login_access_rule in ('any_time', 'shift_time_only'));
 
 alter table public.companies
   add column if not exists company_tagline text;

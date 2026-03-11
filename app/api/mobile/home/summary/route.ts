@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
-import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes } from "@/lib/shiftWorkPolicy";
-
-function normalizeText(value: string | null | undefined) {
-  return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
-}
+import {
+  applyExtraHoursPolicy,
+  findMatchingShiftRule,
+  normalizeExtraHoursPolicy,
+  normalizeLoginAccessRule,
+  shiftDurationMinutes,
+  timeToMinutes,
+} from "@/lib/shiftWorkPolicy";
 
 function normalizeTimeZone(value: unknown) {
   return normalizeTimeZoneToIndia(value);
@@ -64,7 +67,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy")
+      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy,login_access_rule")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -146,18 +149,11 @@ export async function POST(req: NextRequest) {
   }));
 
   const shiftPool = availableShifts.length ? availableShifts : defaultShifts;
-  const normalizedShiftName = normalizeText(employeeShiftName);
-  const matchedShift =
-    shiftPool.find((row) => {
-      const name = normalizeText(row.name);
-      const type = normalizeText(row.type);
-      return normalizedShiftName ? normalizedShiftName === name || normalizedShiftName === type : false;
-    }) ||
-    shiftPool.find((row) => normalizeText(row.name) === "general") ||
-    shiftPool[0];
+  const matchedShift = findMatchingShiftRule(employeeShiftName, shiftPool);
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
   const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
+  const loginAccessRule = normalizeLoginAccessRule(companyResult.data?.login_access_rule);
   const workingMinutes = applyExtraHoursPolicy(rawWorkMinutes(checkInAt, checkOutAt), effectiveScheduledWorkMin, extraHoursPolicy);
 
   return NextResponse.json({
@@ -186,6 +182,7 @@ export async function POST(req: NextRequest) {
       minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || 60,
       scheduledWorkMin: effectiveScheduledWorkMin || 0,
       extraHoursPolicy,
+      loginAccessRule,
       weeklyOffPolicy: companyResult.data?.weekly_off_policy || "sunday_only",
       allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
       allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,

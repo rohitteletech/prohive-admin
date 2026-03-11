@@ -115,6 +115,7 @@ export default function Page() {
       const result = (await response.json().catch(() => ({}))) as {
         rows?: ShiftRow[];
         extraHoursPolicy?: "yes" | "no";
+        loginAccessRule?: "any_time" | "shift_time_only";
         error?: string;
       };
       if (ignore) return;
@@ -133,7 +134,10 @@ export default function Page() {
           gracePeriodAllowedMins: nextRows[0].graceMins,
           earlyInMins: nextRows[0].earlyWindowMins,
           minWorkOutMins: nextRows[0].minWorkBeforeOutMins,
-          loginAccessRule: extraPolicyConfig.loginAccessRule,
+          loginAccessRule:
+            result.loginAccessRule === "shift_time_only" || result.loginAccessRule === "any_time"
+              ? result.loginAccessRule
+              : extraPolicyConfig.loginAccessRule,
         };
         setExtraPolicyConfig(nextPolicy);
         setExtraPolicyDraft(nextPolicy);
@@ -332,12 +336,13 @@ export default function Page() {
         "Content-Type": "application/json",
         authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ rows: nextRows, extraHoursPolicy }),
+      body: JSON.stringify({ rows: nextRows, extraHoursPolicy, loginAccessRule: extraPolicyConfig.loginAccessRule }),
     });
     const result = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       rows?: ShiftRow[];
       extraHoursPolicy?: "yes" | "no";
+      loginAccessRule?: "any_time" | "shift_time_only";
       error?: string;
     };
     setSaving(false);
@@ -347,7 +352,16 @@ export default function Page() {
     const savedRows = Array.isArray(result.rows) && result.rows.length ? result.rows : nextRows;
     setRows(savedRows);
     saveCompanyShifts(savedRows);
-    persistExtraPolicyConfig(extraPolicyConfig);
+    const nextPolicyConfig: ExtraPolicyConfig = {
+      ...extraPolicyConfig,
+      loginAccessRule:
+        result.loginAccessRule === "shift_time_only" || result.loginAccessRule === "any_time"
+          ? result.loginAccessRule
+          : extraPolicyConfig.loginAccessRule,
+    };
+    setExtraPolicyConfig(nextPolicyConfig);
+    setExtraPolicyDraft(nextPolicyConfig);
+    persistExtraPolicyConfig(nextPolicyConfig);
     if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
       setExtraHoursPolicy(result.extraHoursPolicy);
     }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { sanitizeCompanyShiftRows, shiftFromDb, shiftToDb } from "@/lib/companyShiftDefinitions";
-import { normalizeExtraHoursPolicy } from "@/lib/shiftWorkPolicy";
+import { normalizeExtraHoursPolicy, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
       .select("id,name,type,start_time,end_time,grace_mins,early_window_mins,min_work_before_out_mins,active")
       .eq("company_id", context.companyId)
       .order("created_at", { ascending: true }),
-    context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
+    context.admin.from("companies").select("extra_hours_policy,login_access_rule").eq("id", context.companyId).maybeSingle(),
   ]);
 
   if (shiftResult.error) {
@@ -32,7 +32,11 @@ export async function GET(req: NextRequest) {
     Array.isArray(shiftResult.data) && shiftResult.data.length > 0
       ? shiftResult.data.map((row) => shiftFromDb(row as never))
       : DEFAULT_COMPANY_SHIFTS;
-  return NextResponse.json({ rows, extraHoursPolicy: normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy) });
+  return NextResponse.json({
+    rows,
+    extraHoursPolicy: normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy),
+    loginAccessRule: normalizeLoginAccessRule(companyResult.data?.login_access_rule),
+  });
 }
 
 export async function PUT(req: NextRequest) {
@@ -43,9 +47,10 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { rows?: unknown; extraHoursPolicy?: unknown };
+  const body = (await req.json().catch(() => ({}))) as { rows?: unknown; extraHoursPolicy?: unknown; loginAccessRule?: unknown };
   let rows = DEFAULT_COMPANY_SHIFTS;
   const extraHoursPolicy = normalizeExtraHoursPolicy(body.extraHoursPolicy);
+  const loginAccessRule = normalizeLoginAccessRule(body.loginAccessRule);
 
   try {
     rows = sanitizeCompanyShiftRows(body.rows || []);
@@ -77,7 +82,7 @@ export async function PUT(req: NextRequest) {
 
   const { error: companyError } = await context.admin
     .from("companies")
-    .update({ extra_hours_policy: extraHoursPolicy })
+    .update({ extra_hours_policy: extraHoursPolicy, login_access_rule: loginAccessRule })
     .eq("id", context.companyId);
   if (companyError) {
     return NextResponse.json({ error: companyError.message || "Unable to save extra hour policy." }, { status: 400 });
@@ -87,5 +92,6 @@ export async function PUT(req: NextRequest) {
     ok: true,
     rows: Array.isArray(data) ? data.map((row) => shiftFromDb(row as never)) : rows,
     extraHoursPolicy,
+    loginAccessRule,
   });
 }
