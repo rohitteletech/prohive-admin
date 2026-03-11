@@ -8,6 +8,9 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 type ShiftRow = CompanyShift;
 type ExtraPolicyConfig = {
   halfDayMinWorkMins: number;
+  gracePeriodAllowedMins: number;
+  earlyInMins: number;
+  minWorkOutMins: number;
 };
 
 const EXTRA_POLICY_STORAGE_KEY = "phv_company_extra_hr_policy_v1";
@@ -72,8 +75,18 @@ export default function Page() {
   const [employees, setEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
   const [extraHoursPolicy, setExtraHoursPolicy] = useState<"yes" | "no">("yes");
   const [showExtraPolicyWindow, setShowExtraPolicyWindow] = useState(false);
-  const [extraPolicyDraft, setExtraPolicyDraft] = useState<ExtraPolicyConfig>({ halfDayMinWorkMins: 240 });
-  const [extraPolicyConfig, setExtraPolicyConfig] = useState<ExtraPolicyConfig>({ halfDayMinWorkMins: 240 });
+  const [extraPolicyDraft, setExtraPolicyDraft] = useState<ExtraPolicyConfig>({
+    halfDayMinWorkMins: 240,
+    gracePeriodAllowedMins: 10,
+    earlyInMins: 15,
+    minWorkOutMins: 60,
+  });
+  const [extraPolicyConfig, setExtraPolicyConfig] = useState<ExtraPolicyConfig>({
+    halfDayMinWorkMins: 240,
+    gracePeriodAllowedMins: 10,
+    earlyInMins: 15,
+    minWorkOutMins: 60,
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -111,6 +124,17 @@ export default function Page() {
       const nextRows = Array.isArray(result.rows) && result.rows.length ? result.rows : DEFAULT_COMPANY_SHIFTS;
       setRows(nextRows);
       saveCompanyShifts(nextRows);
+      if (nextRows.length > 0) {
+        const nextPolicy = {
+          halfDayMinWorkMins: extraPolicyConfig.halfDayMinWorkMins,
+          gracePeriodAllowedMins: nextRows[0].graceMins,
+          earlyInMins: nextRows[0].earlyWindowMins,
+          minWorkOutMins: nextRows[0].minWorkBeforeOutMins,
+        };
+        setExtraPolicyConfig(nextPolicy);
+        setExtraPolicyDraft(nextPolicy);
+        persistExtraPolicyConfig(nextPolicy);
+      }
       if (result.extraHoursPolicy === "yes" || result.extraHoursPolicy === "no") {
         setExtraHoursPolicy(result.extraHoursPolicy);
       }
@@ -128,8 +152,19 @@ export default function Page() {
       if (!raw) return;
       const parsed = JSON.parse(raw) as Partial<ExtraPolicyConfig>;
       const halfDayMinWorkMins = Number(parsed.halfDayMinWorkMins);
+      const gracePeriodAllowedMins = Number(parsed.gracePeriodAllowedMins);
+      const earlyInMins = Number(parsed.earlyInMins);
+      const minWorkOutMins = Number(parsed.minWorkOutMins);
       if (Number.isFinite(halfDayMinWorkMins) && halfDayMinWorkMins >= 0 && halfDayMinWorkMins <= 1440) {
-        const next = { halfDayMinWorkMins };
+        const next = {
+          halfDayMinWorkMins,
+          gracePeriodAllowedMins:
+            Number.isFinite(gracePeriodAllowedMins) && gracePeriodAllowedMins >= 0 && gracePeriodAllowedMins <= 120
+              ? gracePeriodAllowedMins
+              : 10,
+          earlyInMins: Number.isFinite(earlyInMins) && earlyInMins >= 0 && earlyInMins <= 240 ? earlyInMins : 15,
+          minWorkOutMins: Number.isFinite(minWorkOutMins) && minWorkOutMins >= 0 && minWorkOutMins <= 1440 ? minWorkOutMins : 60,
+        };
         setExtraPolicyConfig(next);
         setExtraPolicyDraft(next);
       }
@@ -212,9 +247,9 @@ export default function Page() {
       type: "Custom",
       start: "09:00",
       end: "18:00",
-      graceMins: 10,
-      earlyWindowMins: 15,
-      minWorkBeforeOutMins: 60,
+      graceMins: extraPolicyConfig.gracePeriodAllowedMins,
+      earlyWindowMins: extraPolicyConfig.earlyInMins,
+      minWorkBeforeOutMins: extraPolicyConfig.minWorkOutMins,
       active: true,
     };
     setRows((prev) => [next, ...prev]);
@@ -239,10 +274,37 @@ export default function Page() {
     if (extraPolicyDraft.halfDayMinWorkMins < 0 || extraPolicyDraft.halfDayMinWorkMins > 1440) {
       return showToast("Half day minimum work hours must be between 0 and 24 hours.");
     }
+    if (extraPolicyDraft.gracePeriodAllowedMins < 0 || extraPolicyDraft.gracePeriodAllowedMins > 120) {
+      return showToast("Grace period allowed must be between 0 and 120 minutes.");
+    }
+    if (extraPolicyDraft.earlyInMins < 0 || extraPolicyDraft.earlyInMins > 240) {
+      return showToast("Early In must be between 0 and 240 minutes.");
+    }
+    if (extraPolicyDraft.minWorkOutMins < 0 || extraPolicyDraft.minWorkOutMins > 1440) {
+      return showToast("Min Work Out must be between 0 and 1440 minutes.");
+    }
     setExtraPolicyConfig(extraPolicyDraft);
     persistExtraPolicyConfig(extraPolicyDraft);
+    setRows((current) =>
+      current.map((row) => ({
+        ...row,
+        graceMins: extraPolicyDraft.gracePeriodAllowedMins,
+        earlyWindowMins: extraPolicyDraft.earlyInMins,
+        minWorkBeforeOutMins: extraPolicyDraft.minWorkOutMins,
+      }))
+    );
+    setDraft((current) =>
+      current
+        ? {
+            ...current,
+            graceMins: extraPolicyDraft.gracePeriodAllowedMins,
+            earlyWindowMins: extraPolicyDraft.earlyInMins,
+            minWorkBeforeOutMins: extraPolicyDraft.minWorkOutMins,
+          }
+        : current
+    );
     setShowExtraPolicyWindow(false);
-    showToast("Extra HR policy settings saved locally.");
+    showToast("Extra HR policy settings applied to all shifts locally.");
   }
 
   async function persistRows(nextRows: ShiftRow[]) {
@@ -343,7 +405,7 @@ export default function Page() {
           </div>
         </div>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <div className="mt-4 grid gap-3 lg:grid-cols-5">
           <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Extra Hr Policy</div>
             <div className="mt-1 text-lg font-semibold text-slate-900">{extraHoursPolicy === "yes" ? "Enabled" : "Disabled"}</div>
@@ -353,25 +415,34 @@ export default function Page() {
             <div className="mt-1 text-lg font-semibold text-slate-900">{formatHourMinuteLabel(extraPolicyConfig.halfDayMinWorkMins)}</div>
           </article>
           <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Grace Period Allowed</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.gracePeriodAllowedMins} min</div>
+          </article>
+          <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Early In</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.earlyInMins} min</div>
+          </article>
+          <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Min Work Out</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.minWorkOutMins} min</div>
+          </article>
+          <article className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Policy Window</div>
             <div className="mt-1 text-lg font-semibold text-slate-900">Editable</div>
           </article>
         </div>
 
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[1240px] table-fixed text-left">
+          <table className="w-full min-w-[980px] table-fixed text-left">
             <colgroup>
-              <col className="w-[10%]" />
-              <col className="w-[9%]" />
-              <col className="w-[10%]" />
-              <col className="w-[11%]" />
-              <col className="w-[11%]" />
-              <col className="w-[9%]" />
-              <col className="w-[8%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[8%]" />
               <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[14%]" />
+              <col className="w-[12%]" />
+              <col className="w-[10%]" />
+              <col className="w-[12%]" />
             </colgroup>
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
@@ -381,9 +452,6 @@ export default function Page() {
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Start</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">End</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Working Hr</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">Grace</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">Early In</th>
-                <th className="px-4 py-3 font-semibold whitespace-nowrap">Min Work Out</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap">Status</th>
                 <th className="px-4 py-3 font-semibold whitespace-nowrap text-right">Actions</th>
               </tr>
@@ -446,48 +514,6 @@ export default function Page() {
                       )}
                     </td>
                     <td className="px-4 py-3 align-middle font-semibold text-slate-900">{workingHoursLabel(data.start, data.end)}</td>
-                    <td className="px-4 py-3 align-middle">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={120}
-                          value={data.graceMins}
-                          onChange={(e) => setField("graceMins", Number(e.target.value || 0))}
-                          className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none"
-                        />
-                      ) : (
-                        data.graceMins
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={240}
-                          value={data.earlyWindowMins}
-                          onChange={(e) => setField("earlyWindowMins", Number(e.target.value || 0))}
-                          className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none"
-                        />
-                      ) : (
-                        data.earlyWindowMins
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-middle">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          min={0}
-                          max={1440}
-                          value={data.minWorkBeforeOutMins}
-                          onChange={(e) => setField("minWorkBeforeOutMins", Number(e.target.value || 0))}
-                          className="w-full min-w-0 rounded-lg border border-slate-300 bg-white px-3 py-2 outline-none"
-                        />
-                      ) : (
-                        data.minWorkBeforeOutMins
-                      )}
-                    </td>
                     <td className="px-4 py-3 align-middle">
                       {isEditing ? (
                         <select
@@ -557,7 +583,7 @@ export default function Page() {
               })}
               {rows.length === 0 && (
                 <tr className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
-                  <td colSpan={11} className="px-4 py-10 text-center text-slate-500">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-500">
                     No shifts configured yet. Click Add Shift to create your first shift.
                   </td>
                 </tr>
@@ -615,10 +641,72 @@ export default function Page() {
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
                 />
               </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Grace Period Allowed</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  value={extraPolicyDraft.gracePeriodAllowedMins}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      gracePeriodAllowedMins: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Early In</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={240}
+                  value={extraPolicyDraft.earlyInMins}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      earlyInMins: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Min Work Out</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={1440}
+                  value={extraPolicyDraft.minWorkOutMins}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      minWorkOutMins: Number(e.target.value || 0),
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                />
+              </label>
             </div>
 
             <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
-              Current half-day threshold: <span className="font-semibold">{formatHourMinuteLabel(extraPolicyDraft.halfDayMinWorkMins)}</span>
+              <div>
+                Current half-day threshold: <span className="font-semibold">{formatHourMinuteLabel(extraPolicyDraft.halfDayMinWorkMins)}</span>
+              </div>
+              <div className="mt-1">
+                Grace period allowed: <span className="font-semibold">{extraPolicyDraft.gracePeriodAllowedMins} min</span>
+              </div>
+              <div className="mt-1">
+                Early In: <span className="font-semibold">{extraPolicyDraft.earlyInMins} min</span>
+              </div>
+              <div className="mt-1">
+                Min Work Out: <span className="font-semibold">{extraPolicyDraft.minWorkOutMins} min</span>
+              </div>
             </div>
 
             <div className="mt-6 flex justify-end gap-2">
