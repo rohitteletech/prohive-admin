@@ -836,7 +836,7 @@ export default function Page() {
 
       {showExtraPolicyWindow && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4">
-          <div className="w-full max-w-2xl rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
+          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-semibold text-slate-900">Attendance Policy Settings</h3>
