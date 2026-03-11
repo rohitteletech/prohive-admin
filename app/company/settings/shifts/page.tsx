@@ -11,6 +11,7 @@ type ExtraPolicyConfig = {
   gracePeriodAllowedMins: number;
   earlyInMins: number;
   minWorkOutMins: number;
+  loginAccessRule: "any_time" | "shift_time_only";
 };
 
 const EXTRA_POLICY_STORAGE_KEY = "phv_company_extra_hr_policy_v1";
@@ -80,12 +81,14 @@ export default function Page() {
     gracePeriodAllowedMins: 10,
     earlyInMins: 15,
     minWorkOutMins: 60,
+    loginAccessRule: "any_time",
   });
   const [extraPolicyConfig, setExtraPolicyConfig] = useState<ExtraPolicyConfig>({
     halfDayMinWorkMins: 240,
     gracePeriodAllowedMins: 10,
     earlyInMins: 15,
     minWorkOutMins: 60,
+    loginAccessRule: "any_time",
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -130,6 +133,7 @@ export default function Page() {
           gracePeriodAllowedMins: nextRows[0].graceMins,
           earlyInMins: nextRows[0].earlyWindowMins,
           minWorkOutMins: nextRows[0].minWorkBeforeOutMins,
+          loginAccessRule: extraPolicyConfig.loginAccessRule,
         };
         setExtraPolicyConfig(nextPolicy);
         setExtraPolicyDraft(nextPolicy);
@@ -155,8 +159,9 @@ export default function Page() {
       const gracePeriodAllowedMins = Number(parsed.gracePeriodAllowedMins);
       const earlyInMins = Number(parsed.earlyInMins);
       const minWorkOutMins = Number(parsed.minWorkOutMins);
+      const loginAccessRule = parsed.loginAccessRule;
       if (Number.isFinite(halfDayMinWorkMins) && halfDayMinWorkMins >= 0 && halfDayMinWorkMins <= 1440) {
-        const next = {
+        const next: ExtraPolicyConfig = {
           halfDayMinWorkMins,
           gracePeriodAllowedMins:
             Number.isFinite(gracePeriodAllowedMins) && gracePeriodAllowedMins >= 0 && gracePeriodAllowedMins <= 120
@@ -164,6 +169,7 @@ export default function Page() {
               : 10,
           earlyInMins: Number.isFinite(earlyInMins) && earlyInMins >= 0 && earlyInMins <= 240 ? earlyInMins : 15,
           minWorkOutMins: Number.isFinite(minWorkOutMins) && minWorkOutMins >= 0 && minWorkOutMins <= 1440 ? minWorkOutMins : 60,
+          loginAccessRule: loginAccessRule === "shift_time_only" ? "shift_time_only" : "any_time",
         };
         setExtraPolicyConfig(next);
         setExtraPolicyDraft(next);
@@ -205,6 +211,10 @@ export default function Page() {
 
   function persistExtraPolicyConfig(next: ExtraPolicyConfig) {
     window.localStorage.setItem(EXTRA_POLICY_STORAGE_KEY, JSON.stringify(next));
+  }
+
+  function loginAccessRuleLabel(value: ExtraPolicyConfig["loginAccessRule"]) {
+    return value === "shift_time_only" ? "Shift Time Only" : "Any Time";
   }
 
   function startEdit(row: ShiftRow) {
@@ -394,6 +404,10 @@ export default function Page() {
           <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Extra Hr Policy</div>
             <div className="mt-1 text-lg font-semibold text-slate-900">{extraHoursPolicy === "yes" ? "Enabled" : "Disabled"}</div>
+          </article>
+          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Login Access Rule</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{loginAccessRuleLabel(extraPolicyConfig.loginAccessRule)}</div>
           </article>
           <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Half Day Minimum Working Hrs</div>
@@ -615,6 +629,23 @@ export default function Page() {
 
             <div className="mt-6 grid gap-4 md:grid-cols-2">
               <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Login Access Rule</span>
+                <select
+                  value={extraPolicyDraft.loginAccessRule}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      loginAccessRule: e.target.value === "shift_time_only" ? "shift_time_only" : "any_time",
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="any_time">Allow Login Any Time</option>
+                  <option value="shift_time_only">Allow Login Only During Shift Time</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1.5">
                 <span className="text-sm font-semibold text-slate-700">Extra Hr Policy</span>
                 <select
                   value={extraHoursPolicy}
@@ -709,6 +740,9 @@ export default function Page() {
               </div>
               <div className="mt-1">
                 Min Work Out: <span className="font-semibold">{extraPolicyDraft.minWorkOutMins} min</span>
+              </div>
+              <div className="mt-1">
+                Login Access Rule: <span className="font-semibold">{loginAccessRuleLabel(extraPolicyDraft.loginAccessRule)}</span>
               </div>
             </div>
 
