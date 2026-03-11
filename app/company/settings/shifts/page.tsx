@@ -12,6 +12,8 @@ type ExtraPolicyConfig = {
   earlyInMins: number;
   minWorkOutMins: number;
   loginAccessRule: "any_time" | "shift_time_only";
+  allowPunchOnHoliday: boolean;
+  allowPunchOnWeeklyOff: boolean;
 };
 
 const EXTRA_POLICY_STORAGE_KEY = "phv_company_extra_hr_policy_v1";
@@ -82,6 +84,8 @@ export default function Page() {
     earlyInMins: 15,
     minWorkOutMins: 60,
     loginAccessRule: "any_time",
+    allowPunchOnHoliday: true,
+    allowPunchOnWeeklyOff: true,
   });
   const [extraPolicyConfig, setExtraPolicyConfig] = useState<ExtraPolicyConfig>({
     halfDayMinWorkMins: 240,
@@ -89,6 +93,8 @@ export default function Page() {
     earlyInMins: 15,
     minWorkOutMins: 60,
     loginAccessRule: "any_time",
+    allowPunchOnHoliday: true,
+    allowPunchOnWeeklyOff: true,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,6 +122,8 @@ export default function Page() {
         rows?: ShiftRow[];
         extraHoursPolicy?: "yes" | "no";
         loginAccessRule?: "any_time" | "shift_time_only";
+        allowPunchOnHoliday?: boolean;
+        allowPunchOnWeeklyOff?: boolean;
         error?: string;
       };
       if (ignore) return;
@@ -138,6 +146,9 @@ export default function Page() {
             result.loginAccessRule === "shift_time_only" || result.loginAccessRule === "any_time"
               ? result.loginAccessRule
               : extraPolicyConfig.loginAccessRule,
+          allowPunchOnHoliday: typeof result.allowPunchOnHoliday === "boolean" ? result.allowPunchOnHoliday : extraPolicyConfig.allowPunchOnHoliday,
+          allowPunchOnWeeklyOff:
+            typeof result.allowPunchOnWeeklyOff === "boolean" ? result.allowPunchOnWeeklyOff : extraPolicyConfig.allowPunchOnWeeklyOff,
         };
         setExtraPolicyConfig(nextPolicy);
         setExtraPolicyDraft(nextPolicy);
@@ -164,6 +175,8 @@ export default function Page() {
       const earlyInMins = Number(parsed.earlyInMins);
       const minWorkOutMins = Number(parsed.minWorkOutMins);
       const loginAccessRule = parsed.loginAccessRule;
+      const allowPunchOnHoliday = parsed.allowPunchOnHoliday;
+      const allowPunchOnWeeklyOff = parsed.allowPunchOnWeeklyOff;
       if (Number.isFinite(halfDayMinWorkMins) && halfDayMinWorkMins >= 0 && halfDayMinWorkMins <= 1440) {
         const next: ExtraPolicyConfig = {
           halfDayMinWorkMins,
@@ -174,6 +187,8 @@ export default function Page() {
           earlyInMins: Number.isFinite(earlyInMins) && earlyInMins >= 0 && earlyInMins <= 240 ? earlyInMins : 15,
           minWorkOutMins: Number.isFinite(minWorkOutMins) && minWorkOutMins >= 0 && minWorkOutMins <= 1440 ? minWorkOutMins : 60,
           loginAccessRule: loginAccessRule === "shift_time_only" ? "shift_time_only" : "any_time",
+          allowPunchOnHoliday: allowPunchOnHoliday !== false,
+          allowPunchOnWeeklyOff: allowPunchOnWeeklyOff !== false,
         };
         setExtraPolicyConfig(next);
         setExtraPolicyDraft(next);
@@ -336,13 +351,21 @@ export default function Page() {
         "Content-Type": "application/json",
         authorization: `Bearer ${accessToken}`,
       },
-      body: JSON.stringify({ rows: nextRows, extraHoursPolicy, loginAccessRule: extraPolicyConfig.loginAccessRule }),
+      body: JSON.stringify({
+        rows: nextRows,
+        extraHoursPolicy,
+        loginAccessRule: extraPolicyConfig.loginAccessRule,
+        allowPunchOnHoliday: extraPolicyConfig.allowPunchOnHoliday,
+        allowPunchOnWeeklyOff: extraPolicyConfig.allowPunchOnWeeklyOff,
+      }),
     });
     const result = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       rows?: ShiftRow[];
       extraHoursPolicy?: "yes" | "no";
       loginAccessRule?: "any_time" | "shift_time_only";
+      allowPunchOnHoliday?: boolean;
+      allowPunchOnWeeklyOff?: boolean;
       error?: string;
     };
     setSaving(false);
@@ -358,6 +381,10 @@ export default function Page() {
         result.loginAccessRule === "shift_time_only" || result.loginAccessRule === "any_time"
           ? result.loginAccessRule
           : extraPolicyConfig.loginAccessRule,
+      allowPunchOnHoliday:
+        typeof result.allowPunchOnHoliday === "boolean" ? result.allowPunchOnHoliday : extraPolicyConfig.allowPunchOnHoliday,
+      allowPunchOnWeeklyOff:
+        typeof result.allowPunchOnWeeklyOff === "boolean" ? result.allowPunchOnWeeklyOff : extraPolicyConfig.allowPunchOnWeeklyOff,
     };
     setExtraPolicyConfig(nextPolicyConfig);
     setExtraPolicyDraft(nextPolicyConfig);
@@ -438,6 +465,14 @@ export default function Page() {
           <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Min Work Out</div>
             <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.minWorkOutMins} min</div>
+          </article>
+          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Allow Punch On Holidays</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.allowPunchOnHoliday ? "Yes" : "No"}</div>
+          </article>
+          <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Allow Punch On Weekly Offs</div>
+            <div className="mt-1 text-lg font-semibold text-slate-900">{extraPolicyConfig.allowPunchOnWeeklyOff ? "Yes" : "No"}</div>
           </article>
           <article className="min-h-[96px] rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 md:col-span-2 xl:col-span-1">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Policy Window</div>
@@ -740,6 +775,40 @@ export default function Page() {
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
                 />
               </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Allow Punch On Holidays</span>
+                <select
+                  value={extraPolicyDraft.allowPunchOnHoliday ? "yes" : "no"}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      allowPunchOnHoliday: e.target.value === "yes",
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
+
+              <label className="grid gap-1.5">
+                <span className="text-sm font-semibold text-slate-700">Allow Punch On Weekly Offs</span>
+                <select
+                  value={extraPolicyDraft.allowPunchOnWeeklyOff ? "yes" : "no"}
+                  onChange={(e) =>
+                    setExtraPolicyDraft((prev) => ({
+                      ...prev,
+                      allowPunchOnWeeklyOff: e.target.value === "yes",
+                    }))
+                  }
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none"
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
+              </label>
             </div>
 
             <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-900">
@@ -757,6 +826,12 @@ export default function Page() {
               </div>
               <div className="mt-1">
                 Login Access Rule: <span className="font-semibold">{loginAccessRuleLabel(extraPolicyDraft.loginAccessRule)}</span>
+              </div>
+              <div className="mt-1">
+                Allow Punch On Holidays: <span className="font-semibold">{extraPolicyDraft.allowPunchOnHoliday ? "Yes" : "No"}</span>
+              </div>
+              <div className="mt-1">
+                Allow Punch On Weekly Offs: <span className="font-semibold">{extraPolicyDraft.allowPunchOnWeeklyOff ? "Yes" : "No"}</span>
               </div>
             </div>
 

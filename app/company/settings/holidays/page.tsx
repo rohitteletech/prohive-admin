@@ -19,8 +19,6 @@ export default function ManageHolidaysPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [weeklyOffPolicy, setWeeklyOffPolicy] = useState<WeeklyOffPolicy>("sunday_only");
-  const [allowPunchOnHoliday, setAllowPunchOnHoliday] = useState(true);
-  const [allowPunchOnWeeklyOff, setAllowPunchOnWeeklyOff] = useState(true);
   const [govtYear, setGovtYear] = useState<number>(new Date().getFullYear());
   const [govtState, setGovtState] = useState<GovernmentHolidayState>("all_india");
   const [govtSourceUrl, setGovtSourceUrl] = useState("");
@@ -50,8 +48,6 @@ export default function ManageHolidaysPage() {
       const result = (await response.json().catch(() => ({}))) as {
         holidays?: CompanyHoliday[];
         weeklyOffPolicy?: WeeklyOffPolicy;
-        allowPunchOnHoliday?: boolean;
-        allowPunchOnWeeklyOff?: boolean;
         error?: string;
       };
       if (ignore) return;
@@ -62,8 +58,6 @@ export default function ManageHolidaysPage() {
       }
       setRows(Array.isArray(result.holidays) ? result.holidays : []);
       if (result.weeklyOffPolicy) setWeeklyOffPolicy(result.weeklyOffPolicy);
-      if (typeof result.allowPunchOnHoliday === "boolean") setAllowPunchOnHoliday(result.allowPunchOnHoliday);
-      if (typeof result.allowPunchOnWeeklyOff === "boolean") setAllowPunchOnWeeklyOff(result.allowPunchOnWeeklyOff);
     }
 
     loadHolidays();
@@ -225,16 +219,12 @@ export default function ManageHolidaysPage() {
       body: JSON.stringify({
         holidays: rows,
         weeklyOffPolicy,
-        allowPunchOnHoliday,
-        allowPunchOnWeeklyOff,
       }),
     });
     const result = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       holidays?: CompanyHoliday[];
       weeklyOffPolicy?: WeeklyOffPolicy;
-      allowPunchOnHoliday?: boolean;
-      allowPunchOnWeeklyOff?: boolean;
       error?: string;
     };
     setSaving(false);
@@ -243,8 +233,6 @@ export default function ManageHolidaysPage() {
     }
     setRows(Array.isArray(result.holidays) ? result.holidays : []);
     if (result.weeklyOffPolicy) setWeeklyOffPolicy(result.weeklyOffPolicy);
-    if (typeof result.allowPunchOnHoliday === "boolean") setAllowPunchOnHoliday(result.allowPunchOnHoliday);
-    if (typeof result.allowPunchOnWeeklyOff === "boolean") setAllowPunchOnWeeklyOff(result.allowPunchOnWeeklyOff);
     showToast("Holiday calendar saved.");
   }
 
@@ -278,8 +266,8 @@ export default function ManageHolidaysPage() {
           </button>
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-4">
-          <label className="grid gap-1.5 md:col-span-2">
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <label className="grid gap-1.5">
             <span className="text-sm text-slate-700">Weekly Off Policy</span>
             <select
               value={weeklyOffPolicy}
@@ -290,22 +278,6 @@ export default function ManageHolidaysPage() {
               <option value="saturday_sunday">{weeklyOffPolicyLabel("saturday_sunday")}</option>
               <option value="second_fourth_saturday_sunday">{weeklyOffPolicyLabel("second_fourth_saturday_sunday")}</option>
             </select>
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={allowPunchOnHoliday}
-              onChange={(e) => setAllowPunchOnHoliday(e.target.checked)}
-            />
-            Allow punch on holidays
-          </label>
-          <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={allowPunchOnWeeklyOff}
-              onChange={(e) => setAllowPunchOnWeeklyOff(e.target.checked)}
-            />
-            Allow punch on weekly offs
           </label>
         </div>
 

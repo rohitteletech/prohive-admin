@@ -18,7 +18,11 @@ export async function GET(req: NextRequest) {
       .select("id,name,type,start_time,end_time,grace_mins,early_window_mins,min_work_before_out_mins,active")
       .eq("company_id", context.companyId)
       .order("created_at", { ascending: true }),
-    context.admin.from("companies").select("extra_hours_policy,login_access_rule").eq("id", context.companyId).maybeSingle(),
+    context.admin
+      .from("companies")
+      .select("extra_hours_policy,login_access_rule,allow_punch_on_holiday,allow_punch_on_weekly_off")
+      .eq("id", context.companyId)
+      .maybeSingle(),
   ]);
 
   if (shiftResult.error) {
@@ -36,6 +40,8 @@ export async function GET(req: NextRequest) {
     rows,
     extraHoursPolicy: normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy),
     loginAccessRule: normalizeLoginAccessRule(companyResult.data?.login_access_rule),
+    allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
+    allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
   });
 }
 
@@ -47,10 +53,18 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: context.error }, { status: context.status });
   }
 
-  const body = (await req.json().catch(() => ({}))) as { rows?: unknown; extraHoursPolicy?: unknown; loginAccessRule?: unknown };
+  const body = (await req.json().catch(() => ({}))) as {
+    rows?: unknown;
+    extraHoursPolicy?: unknown;
+    loginAccessRule?: unknown;
+    allowPunchOnHoliday?: unknown;
+    allowPunchOnWeeklyOff?: unknown;
+  };
   let rows = DEFAULT_COMPANY_SHIFTS;
   const extraHoursPolicy = normalizeExtraHoursPolicy(body.extraHoursPolicy);
   const loginAccessRule = normalizeLoginAccessRule(body.loginAccessRule);
+  const allowPunchOnHoliday = body.allowPunchOnHoliday !== false;
+  const allowPunchOnWeeklyOff = body.allowPunchOnWeeklyOff !== false;
 
   try {
     rows = sanitizeCompanyShiftRows(body.rows || []);
@@ -82,7 +96,12 @@ export async function PUT(req: NextRequest) {
 
   const { error: companyError } = await context.admin
     .from("companies")
-    .update({ extra_hours_policy: extraHoursPolicy, login_access_rule: loginAccessRule })
+    .update({
+      extra_hours_policy: extraHoursPolicy,
+      login_access_rule: loginAccessRule,
+      allow_punch_on_holiday: allowPunchOnHoliday,
+      allow_punch_on_weekly_off: allowPunchOnWeeklyOff,
+    })
     .eq("id", context.companyId);
   if (companyError) {
     return NextResponse.json({ error: companyError.message || "Unable to save extra hour policy." }, { status: 400 });
@@ -93,5 +112,7 @@ export async function PUT(req: NextRequest) {
     rows: Array.isArray(data) ? data.map((row) => shiftFromDb(row as never)) : rows,
     extraHoursPolicy,
     loginAccessRule,
+    allowPunchOnHoliday,
+    allowPunchOnWeeklyOff,
   });
 }
