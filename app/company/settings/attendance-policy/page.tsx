@@ -8,6 +8,7 @@ type AttendanceRuleState = {
   policyName: string;
   version: string;
   effectiveDate: string;
+  presentMarkRule: "punch_in" | "punch_in_out";
   fullDayHours: string;
   halfDayHours: string;
   graceMinutes: string;
@@ -27,6 +28,7 @@ const initialState: AttendanceRuleState = {
   policyName: "Standard Attendance Policy",
   version: "v1.0",
   effectiveDate: "2026-03-12",
+  presentMarkRule: "punch_in_out",
   fullDayHours: "08:00",
   halfDayHours: "04:00",
   graceMinutes: "10",
@@ -181,6 +183,17 @@ export default function CompanyAttendancePolicyPage() {
                   />
                 </Field>
 
+                <Field label="Present कधी मोजायचा?" hint="Choose whether present should count on punch in alone or only after both punches.">
+                  <select
+                    value={draft.presentMarkRule}
+                    onChange={(event) => update("presentMarkRule", event.target.value as AttendanceRuleState["presentMarkRule"])}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  >
+                    <option value="punch_in">Punch In झाला की Present</option>
+                    <option value="punch_in_out">Punch In + Punch Out दोन्ही झाले तरच Present</option>
+                  </select>
+                </Field>
+
                 <Field label="Full Day Working Hours" hint="Example: 08:00 means 8 hours for full present">
                   <input
                     value={draft.fullDayHours}
@@ -329,6 +342,15 @@ export default function CompanyAttendancePolicyPage() {
             <p className="mt-1 text-sm text-slate-600">Quick preview of the attendance logic this page is setting up.</p>
 
             <div className="mt-5 space-y-3">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Present Trigger</div>
+                <div className="mt-2 text-sm font-medium text-slate-800">
+                  {draft.presentMarkRule === "punch_in"
+                    ? "Present starts on Punch In"
+                    : "Present starts only after Punch In and Punch Out"}
+                </div>
+              </div>
+
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Full Present</div>
                 <div className="mt-2 text-sm font-medium text-slate-800">Working hours at or above {draft.fullDayHours}</div>
