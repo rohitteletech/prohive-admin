@@ -228,7 +228,7 @@ export async function GET(req: NextRequest) {
         .select("name,type,start_time,end_time,grace_mins,active")
         .eq("company_id", context.companyId)
         .order("created_at", { ascending: true }),
-      context.admin.from("companies").select("extra_hours_policy,half_day_min_work_mins").eq("id", context.companyId).maybeSingle(),
+      context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
     ]);
 
     if (eventsResult.error) {
@@ -261,7 +261,7 @@ export async function GET(req: NextRequest) {
           graceMins: row.graceMins,
         }));
     const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
-    const halfDayMinWorkMins = Number(companyResult.data?.half_day_min_work_mins || 240);
+    const halfDayMinWorkMins = 240;
     const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
     const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
     const employeesById = new Map<string, EmployeeLookupRow>();
