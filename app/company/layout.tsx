@@ -1,39 +1,55 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const primaryItems = [
-  { href: "/company/dashboard", label: "Dashboard" },
-  { href: "/company/employees", label: "Employees" },
-  { href: "/company/attendance", label: "Attendance" },
-  { href: "/company/corrections", label: "Attendance Corrections" },
-  { href: "/company/claims", label: "Claims" },
-  { href: "/company/leaves", label: "Leaves" },
-  { href: "/company/reports", label: "Reports" },
-  { href: "/company/hr-policy", label: "HR Policy" },
-  { href: "/company/settings/shifts", label: "Shift Control" },
-  { href: "/company/settings/leaves", label: "Leave Settings" },
-  { href: "/company/settings/holidays", label: "Manage Holidays" },
+  { href: "/company/settings", label: "Profile", description: "Admin account and company settings" },
+  { href: "/company/leaves", label: "Leave", description: "Review and approve leave requests" },
+  { href: "/company/settings/holidays", label: "Calendar", description: "Manage holidays and calendar dates" },
+  { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
+  { href: "/company/corrections", label: "Correction", description: "Resolve attendance correction requests" },
 ];
 
-const secondaryItems = [{ href: "/company/settings", label: "Settings" }];
+const supportItems = [
+  { href: "/company/dashboard", label: "Dashboard", description: "Operational overview" },
+  { href: "/company/employees", label: "Employees", description: "Manage employee records" },
+  { href: "/company/attendance", label: "Attendance", description: "View daily attendance" },
+  { href: "/company/reports", label: "Reports", description: "Export workforce reports" },
+  { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
+  { href: "/company/settings/shifts", label: "Shift Control", description: "Manage shifts and schedules" },
+  { href: "/company/settings/leaves", label: "Leave Settings", description: "Configure leave policy" },
+];
+
+type NavItem = {
+  href: string;
+  label: string;
+  description: string;
+};
+
+type CompanyInfo = {
+  name: string;
+  tagline: string;
+  displayName: string;
+  adminId: string;
+  designation: string;
+};
 
 function navItemStyle(active: boolean) {
   return {
     display: "flex",
-    alignItems: "center",
-    minHeight: 38,
-    padding: "0 10px",
-    borderRadius: 10,
+    alignItems: "flex-start",
+    minHeight: 54,
+    padding: "10px 12px",
+    borderRadius: 14,
     textDecoration: "none",
     fontSize: 13,
     fontWeight: active ? 700 : 500,
-    color: active ? "#111827" : "#475569",
-    background: active ? "#e5e7eb" : "transparent",
-    transition: "background 160ms ease, color 160ms ease",
+    color: active ? "#1e3a8a" : "#334155",
+    background: active ? "#dbeafe" : "transparent",
+    transition: "background 160ms ease, color 160ms ease, transform 160ms ease",
   } satisfies React.CSSProperties;
 }
 
@@ -41,20 +57,62 @@ function SidebarGroup({
   items,
   pathname,
 }: {
-  items: { href: string; label: string }[];
+  items: NavItem[];
   pathname: string;
 }) {
   return (
     <div style={{ display: "grid", gap: 4 }}>
       {items.map((item) => {
-        const active = pathname === item.href;
+        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link key={item.href} href={item.href} style={navItemStyle(active)}>
-            {item.label}
+            <span style={{ display: "grid", gap: 2 }}>
+              <span>{item.label}</span>
+              <span style={{ fontSize: 11, lineHeight: 1.3, color: active ? "#1d4ed8" : "#64748b", fontWeight: 500 }}>
+                {item.description}
+              </span>
+            </span>
           </Link>
         );
       })}
     </div>
+  );
+}
+
+function HamburgerButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label="Open navigation menu"
+      style={{
+        display: "grid",
+        placeItems: "center",
+        width: 42,
+        height: 42,
+        borderRadius: 12,
+        border: "1px solid #cbd5e1",
+        background: "#ffffff",
+        cursor: "pointer",
+        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.08)",
+      }}
+    >
+      <span style={{ display: "grid", gap: 4 }}>
+        {[0, 1, 2, 3].map((line) => (
+          <span
+            key={line}
+            style={{
+              display: "block",
+              width: line % 2 === 0 ? 18 : 14,
+              height: 2,
+              borderRadius: 999,
+              background: "#1e3a8a",
+              justifySelf: "start",
+            }}
+          />
+        ))}
+      </span>
+    </button>
   );
 }
 
@@ -65,6 +123,58 @@ export default function CompanyLayout({
 }) {
   const router = useRouter();
   const pathname = usePathname();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo>({
+    name: "Company",
+    tagline: "Focused workforce operations",
+    displayName: "Company Admin",
+    adminId: "",
+    designation: "Company Admin",
+  });
+
+  useEffect(() => {
+    try {
+      const rawCompany = localStorage.getItem("phv_company");
+      const rawSession = localStorage.getItem("phv_company_session");
+      const company = rawCompany ? JSON.parse(rawCompany) : {};
+      const session = rawSession ? JSON.parse(rawSession) : {};
+      const fallbackName =
+        typeof company.authorized_name === "string" && company.authorized_name.trim()
+          ? company.authorized_name.trim()
+          : typeof company.name === "string" && company.name.trim()
+            ? `${company.name.trim()} Admin`
+            : "Company Admin";
+      setCompanyInfo({
+        name: typeof company.name === "string" && company.name.trim() ? company.name.trim() : "Company",
+        tagline:
+          typeof company.company_tagline === "string" && company.company_tagline.trim()
+            ? company.company_tagline.trim()
+            : "Focused workforce operations",
+        displayName: fallbackName,
+        adminId:
+          typeof company.code === "string" && company.code.trim()
+            ? company.code.trim()
+            : typeof session.email === "string"
+              ? session.email.trim()
+              : "",
+        designation: "Company Admin",
+      });
+    } catch {
+    }
+  }, [pathname]);
+
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!drawerOpen) return;
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setDrawerOpen(false);
+    }
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, [drawerOpen]);
 
   useEffect(() => {
     let active = true;
@@ -130,49 +240,140 @@ export default function CompanyLayout({
   }
 
   return (
-    <div style={{ display: "flex", minHeight: "100vh", background: "#f8fafc" }}>
-      <aside
+    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      <header
         style={{
-          width: 220,
-          minWidth: 220,
-          maxWidth: 220,
-          flexShrink: 0,
-          background: "#f8fafc",
-          borderRight: "1px solid #e5e7eb",
-          padding: 12,
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 16,
+          padding: "14px 20px",
+          background: "#ffffff",
+          borderBottom: "1px solid #e5e7eb",
           position: "sticky",
           top: 0,
-          height: "100vh",
+          zIndex: 40,
+          boxShadow: "0 8px 30px rgba(15, 23, 42, 0.04)",
         }}
       >
-        <div style={{ padding: "8px 8px 14px" }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", lineHeight: 1.2 }}>Admin</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+          <HamburgerButton onClick={() => setDrawerOpen(true)} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a", lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {companyInfo.name}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {companyInfo.tagline}
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: "#1e3a8a", background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: 999, padding: "8px 12px" }}>
+          {companyInfo.designation}
+        </div>
+      </header>
+
+      {drawerOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation drawer"
+          onClick={() => setDrawerOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.44)",
+            border: "none",
+            padding: 0,
+            margin: 0,
+            zIndex: 50,
+            cursor: "pointer",
+          }}
+        />
+      )}
+
+      <aside
+        style={{
+          position: "fixed",
+          top: 0,
+          left: 0,
+          zIndex: 60,
+          width: 320,
+          maxWidth: "88vw",
+          height: "100vh",
+          background: "#ffffff",
+          borderRight: "1px solid #e5e7eb",
+          boxShadow: "0 24px 60px rgba(15, 23, 42, 0.18)",
+          transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
+          transition: "transform 220ms ease",
+          display: "flex",
+          flexDirection: "column",
+        }}
+      >
+        <div
+          style={{
+            padding: "28px 22px 24px",
+            background: "linear-gradient(180deg, #1d4ed8 0%, #1e3a8a 100%)",
+            color: "#ffffff",
+          }}
+        >
+          <div
+            style={{
+              width: 76,
+              height: 76,
+              borderRadius: "50%",
+              border: "2px solid rgba(255,255,255,0.7)",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 28,
+              fontWeight: 800,
+              background: "rgba(255,255,255,0.14)",
+              margin: "0 auto 16px",
+            }}
+          >
+            {companyInfo.displayName.trim().slice(0, 1).toUpperCase() || "A"}
+          </div>
+          <div style={{ textAlign: "center" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>{companyInfo.displayName}</div>
+            <div style={{ fontSize: 12, opacity: 0.88, marginTop: 6 }}>
+              {companyInfo.adminId ? `Admin ID: ${companyInfo.adminId}` : "Admin access enabled"}
+            </div>
+            <div style={{ fontSize: 13, opacity: 0.96, marginTop: 4 }}>{companyInfo.designation}</div>
+          </div>
         </div>
 
-        <div style={{ borderTop: "1px solid #e5e7eb", paddingTop: 10 }}>
-          <SidebarGroup items={primaryItems} pathname={pathname} />
+        <div style={{ padding: 16, overflowY: "auto", display: "grid", gap: 18 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
+              Main Menu
+            </div>
+            <SidebarGroup items={primaryItems} pathname={pathname} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
+              Workspace
+            </div>
+            <SidebarGroup items={supportItems} pathname={pathname} />
+          </div>
         </div>
 
-        <div style={{ marginTop: "auto", borderTop: "1px solid #e5e7eb", paddingTop: 10, display: "grid", gap: 4 }}>
-          <SidebarGroup items={secondaryItems} pathname={pathname} />
+        <div style={{ marginTop: "auto", padding: 16, borderTop: "1px solid #e5e7eb" }}>
           <button
             type="button"
             onClick={handleLogout}
             style={{
               display: "flex",
               alignItems: "center",
-              minHeight: 40,
+              justifyContent: "center",
+              minHeight: 46,
               padding: "0 12px",
-              borderRadius: 10,
-              border: "none",
-              background: "transparent",
-              color: "#475569",
-              fontSize: 13,
-              fontWeight: 500,
+              borderRadius: 14,
+              border: "1px solid #fecaca",
+              background: "#fff1f2",
+              color: "#be123c",
+              fontSize: 14,
+              fontWeight: 700,
               cursor: "pointer",
-              textAlign: "left",
+              width: "100%",
             }}
           >
             Logout
@@ -180,7 +381,7 @@ export default function CompanyLayout({
         </div>
       </aside>
 
-      <main style={{ flex: 1, padding: 20, minWidth: 0 }}>{children}</main>
+      <main style={{ padding: 20, minWidth: 0 }}>{children}</main>
     </div>
   );
 }

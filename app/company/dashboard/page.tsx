@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { loadCompanyEmployeesSupabase } from "@/lib/companyEmployees";
 import { todayISOInIndia } from "@/lib/dateTime";
@@ -17,8 +16,7 @@ type Kpi = {
 type QueueItem = {
   title: string;
   pending: number;
-  target: number;
-  href: string;
+  note: string;
   tone: Tone;
 };
 
@@ -195,22 +193,19 @@ export default function CompanyDashboardPage() {
       {
         title: "Attendance Corrections",
         pending: data.pendingCorrections,
-        target: data.pendingCorrections,
-        href: "/company/corrections",
+        note: "Requests waiting for action in the drawer menu",
         tone: "warning",
       },
       {
         title: "Leave Approvals",
         pending: data.pendingLeaves,
-        target: data.pendingLeaves,
-        href: "/company/leaves",
+        note: "Leave queue can be opened from the drawer",
         tone: "info",
       },
       {
         title: "Claims Approvals",
         pending: data.pendingClaims,
-        target: data.pendingClaims,
-        href: "/company/claims",
+        note: "Claim review remains available from the drawer",
         tone: "positive",
       },
     ],
@@ -232,17 +227,6 @@ export default function CompanyDashboardPage() {
               <Badge text="System Healthy" tone="positive" />
             </div>
           </div>
-          <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Link href="/company/employees" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-100">
-              Manage Employees {"->"}
-            </Link>
-            <Link href="/company/attendance" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-100">
-              Open Attendance {"->"}
-            </Link>
-            <Link href="/company/reports" className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-[13px] font-semibold text-slate-700 hover:bg-slate-100">
-              View Reports {"->"}
-            </Link>
-          </div>
         </div>
 
         <section className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -262,43 +246,47 @@ export default function CompanyDashboardPage() {
 
         <section className="mt-6 grid gap-4 lg:grid-cols-2">
           <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
-            <h2 className="text-[15px] font-semibold text-slate-900">Approval Queue</h2>
-            <p className="mt-1 text-[13px] text-slate-600">Prioritized pending requests for today.</p>
+            <h2 className="text-[15px] font-semibold text-slate-900">Pending Work Snapshot</h2>
+            <p className="mt-1 text-[13px] text-slate-600">Operational counts remain visible here while page navigation moves into the drawer.</p>
 
             <div className="mt-4 space-y-3">
               {queue.map((item) => {
+                const tone = toneStyles(item.tone);
                 return (
-                  <Link key={item.title} href={item.href} className="block min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100">
+                  <article key={item.title} className="min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <p className="text-[13px] font-semibold text-slate-900">{item.title}</p>
-                        <p className="mt-1 text-[12px] text-slate-500">Pending approvals requiring review</p>
+                        <p className="mt-1 text-[12px] text-slate-500">{item.note}</p>
                       </div>
                       <Badge text={`${item.pending} pending`} tone={item.tone} />
                     </div>
-                  </Link>
+                    <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-slate-200">
+                      <div className={["h-full rounded-full", tone.bar].join(" ")} style={{ width: `${Math.min(item.pending * 18, 100)}%` }} />
+                    </div>
+                  </article>
                 );
               })}
             </div>
           </div>
 
           <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
-            <h2 className="text-[15px] font-semibold text-slate-900">Reports and Exports</h2>
-            <p className="mt-1 text-[13px] text-slate-600">Quick access to monthly operational reports.</p>
+            <h2 className="text-[15px] font-semibold text-slate-900">Navigation Model</h2>
+            <p className="mt-1 text-[13px] text-slate-600">Primary workflow pages are now grouped inside the left drawer to keep the dashboard cleaner.</p>
 
             <div className="mt-4 space-y-3">
-              <Link href="/company/reports?tab=attendance" className="block min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100">
-                <p className="text-[13px] font-semibold text-slate-900">Attendance Report</p>
-                <p className="mt-1 text-[12px] text-slate-500">Download daily and monthly attendance summaries</p>
-              </Link>
-              <Link href="/company/reports?tab=leaves" className="block min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100">
-                <p className="text-[13px] font-semibold text-slate-900">Leave Report</p>
-                <p className="mt-1 text-[12px] text-slate-500">Track applied, approved, and rejected leaves</p>
-              </Link>
-              <Link href="/company/reports?tab=claims" className="block min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3 hover:bg-slate-100">
-                <p className="text-[13px] font-semibold text-slate-900">Claims Report</p>
-                <p className="mt-1 text-[12px] text-slate-500">Review reimbursements and claim approvals</p>
-              </Link>
+              <div className="min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[13px] font-semibold text-slate-900">Drawer Order</p>
+                <p className="mt-1 text-[12px] text-slate-500">Profile, Leave, Calendar, Claim, Correction, then Logout fixed at the bottom.</p>
+              </div>
+              <div className="min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[13px] font-semibold text-slate-900">Header Pattern</p>
+                <p className="mt-1 text-[12px] text-slate-500">Four-line menu icon, company name, and tagline now anchor the top navigation.</p>
+              </div>
+              <div className="min-h-[76px] rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[13px] font-semibold text-slate-900">Logic Safety</p>
+                <p className="mt-1 text-[12px] text-slate-500">Existing page components and API flows stay unchanged. Only navigation entry points were moved.</p>
+              </div>
             </div>
           </div>
         </section>
