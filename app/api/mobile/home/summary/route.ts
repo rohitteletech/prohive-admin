@@ -24,17 +24,6 @@ function currentDateInTimeZone(timeZone: string) {
   return isoDateInIndia(new Date().toISOString());
 }
 
-function buildQueryWindow(date: string) {
-  const start = new Date(`${date}T00:00:00.000Z`);
-  const end = new Date(`${date}T00:00:00.000Z`);
-  start.setUTCDate(start.getUTCDate() - 1);
-  end.setUTCDate(end.getUTCDate() + 2);
-  return {
-    fromIso: start.toISOString(),
-    toIso: end.toISOString(),
-  };
-}
-
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     employeeId?: string;
@@ -54,7 +43,6 @@ export async function POST(req: NextRequest) {
 
   const timeZone = normalizeTimeZone(body.timeZone || INDIA_TIME_ZONE);
   const today = currentDateInTimeZone(timeZone);
-  const { fromIso, toIso } = buildQueryWindow(today);
 
   const [employeeResult, companyResult, shiftResult, eventsResult] = await Promise.all([
     session.admin
@@ -79,9 +67,8 @@ export async function POST(req: NextRequest) {
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
       .neq("approval_status", "rejected")
-      .gte("server_received_at", fromIso)
-      .lt("server_received_at", toIso)
-      .order("server_received_at", { ascending: true }),
+      .order("server_received_at", { ascending: false })
+      .limit(20),
   ]);
 
   if (employeeResult.error) {
@@ -97,12 +84,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: eventsResult.error.message || "Unable to load today attendance." }, { status: 400 });
   }
 
-  const events = ((eventsResult.data || []) as Array<{
+  const recentEvents = (eventsResult.data || []) as Array<{
     punch_type: "in" | "out";
     effective_punch_at: string | null;
     server_received_at: string;
     approval_status: "auto_approved" | "pending_approval" | "approved" | "rejected";
-  }>).filter((row) => {
+  }>;
+
+  const events = [...recentEvents].reverse().filter((row) => {
     const punchAt = row.effective_punch_at || row.server_received_at;
     return punchAt ? isoDateInIndia(punchAt) === today : false;
   });

@@ -42,6 +42,43 @@ type PunchResponse =
       };
     };
 
+function buildLatestPunchState(lastEvent: {
+  punch_type: "in" | "out";
+  effective_punch_at: string | null;
+  server_received_at: string | null;
+} | null) {
+  if (!lastEvent) {
+    return {
+      status: "NOT_PUNCHED_IN" as const,
+      punchInAt: null,
+      punchOutAt: null,
+    };
+  }
+
+  const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
+  if (!lastPunchAt) {
+    return {
+      status: "NOT_PUNCHED_IN" as const,
+      punchInAt: null,
+      punchOutAt: null,
+    };
+  }
+
+  if (lastEvent.punch_type === "in") {
+    return {
+      status: "PUNCHED_IN" as const,
+      punchInAt: lastPunchAt,
+      punchOutAt: null,
+    };
+  }
+
+  return {
+    status: "COMPLETED" as const,
+    punchInAt: null,
+    punchOutAt: lastPunchAt,
+  };
+}
+
 function toIsoFromMs(value: number | null) {
   if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
   return new Date(value).toISOString();
@@ -269,12 +306,23 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const { data: duplicate } = await admin
     .from("attendance_punch_events")
-    .select("id,event_id")
+    .select("id,event_id,punch_type,effective_punch_at,server_received_at")
     .eq("event_id", payload.event_id)
     .maybeSingle();
 
   if (duplicate?.id) {
-    return { status: 409, body: { code: "DUPLICATE_EVENT", error: "Duplicate event already processed." } };
+    return {
+      status: 409,
+      body: {
+        code: "DUPLICATE_EVENT",
+        error: "Duplicate event already processed.",
+        latestState: buildLatestPunchState({
+          punch_type: duplicate.punch_type,
+          effective_punch_at: duplicate.effective_punch_at,
+          server_received_at: duplicate.server_received_at,
+        }),
+      },
+    };
   }
 
   const { data: employee, error: employeeError } = await admin
@@ -441,7 +489,14 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     .maybeSingle();
 
   if (!lastEvent && payload.punch_type === "out") {
-    return { status: 409, body: { code: "PUNCH_IN_REQUIRED", error: "Punch In is required before Punch Out." } };
+    return {
+      status: 409,
+      body: {
+        code: "PUNCH_IN_REQUIRED",
+        error: "Punch In is required before Punch Out.",
+        latestState: buildLatestPunchState(null),
+      },
+    };
   }
 
   if (lastEvent?.punch_type === payload.punch_type) {
@@ -453,7 +508,18 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
         isoDateInTimeZone(currentPunchIso, payload.device_time_zone);
 
     if (!isPreviousDayOpenPunch) {
-      return { status: 409, body: { code: "INVALID_PUNCH_SEQUENCE", error: "Punch sequence is invalid." } };
+      return {
+        status: 409,
+        body: {
+          code: "INVALID_PUNCH_SEQUENCE",
+          error: "Punch sequence is invalid.",
+          latestState: buildLatestPunchState({
+            punch_type: lastEvent.punch_type,
+            effective_punch_at: lastEvent.effective_punch_at,
+            server_received_at: lastEvent.server_received_at,
+          }),
+        },
+      };
     }
   }
 
