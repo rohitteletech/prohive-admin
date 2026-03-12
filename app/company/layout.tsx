@@ -20,6 +20,7 @@ const supportItems = [
   { href: "/company/reports", label: "Reports", description: "Export workforce reports" },
   { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
   { href: "/company/settings/shifts", label: "Shift Control", description: "Manage shifts and schedules" },
+  { href: "/company/settings/attendance-policy", label: "Attendance Policy", description: "Define present-day and attendance rules" },
   { href: "/company/settings/leaves", label: "Leave Settings", description: "Configure leave policy" },
 ];
 
