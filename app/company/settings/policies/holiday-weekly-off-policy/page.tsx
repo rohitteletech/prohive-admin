@@ -101,7 +101,7 @@ export default function HolidayWeeklyOffPolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft(initialState);
+    setDraft({ ...initialState });
     setShowForm(true);
     notify("New holiday policy form opened.");
   }
@@ -110,6 +110,7 @@ export default function HolidayWeeklyOffPolicyPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
+    const creating = !draft.policyId;
     setSaving(true);
     const response = await fetch("/api/company/policies/holiday-bridge", {
       method: "PUT",
@@ -119,12 +120,16 @@ export default function HolidayWeeklyOffPolicyPage() {
       },
       body: JSON.stringify(draft),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save holiday policy.");
     }
-    notify("Holiday policy saved and synced to legacy settings.");
+    setDraft((current) => ({
+      ...current,
+      policyId: result.policyId || current.policyId,
+    }));
+    notify(creating ? "New holiday policy created successfully." : "Holiday policy saved and synced to legacy settings.");
   }
 
   return (

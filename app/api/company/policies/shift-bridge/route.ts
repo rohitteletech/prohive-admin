@@ -115,22 +115,17 @@ export async function PUT(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as ShiftBridgePayload;
   const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-  const policy =
-    definitions.find((definition) => definition.id === body.policyId && definition.policyType === "shift") ||
-    definitions.find((definition) => definition.policyType === "shift" && definition.isDefault) ||
-    definitions.find((definition) => definition.policyType === "shift");
-
-  if (!policy) {
-    return NextResponse.json({ error: "Shift policy definition not found." }, { status: 404 });
-  }
+  const policy = body.policyId
+    ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "shift")
+    : null;
 
   const configJson = {
-    policyName: body.policyName || policy.policyName,
-    policyCode: body.policyCode || policy.policyCode,
-    effectiveFrom: body.effectiveFrom || policy.effectiveFrom,
-    nextReviewDate: body.nextReviewDate || policy.nextReviewDate,
+    policyName: body.policyName || policy?.policyName || "Standard Shift Policy",
+    policyCode: body.policyCode || policy?.policyCode || "SFT-001",
+    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
+    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
     status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy.isDefault ? "Yes" : "No"),
+    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     shiftName: body.shiftName || "General Shift",
     shiftType: body.shiftType || "General",
     shiftStructure: body.shiftStructure || "fixed",
@@ -143,22 +138,58 @@ export async function PUT(req: NextRequest) {
     legacyShiftId: body.legacyShiftId || "",
   };
 
-  const { error: policyError } = await context.admin
-    .from("company_policy_definitions")
-    .update({
-      policy_name: configJson.policyName,
-      policy_code: configJson.policyCode,
-      status: configJson.status,
-      is_default: configJson.defaultCompanyPolicy === "Yes",
-      effective_from: configJson.effectiveFrom,
-      next_review_date: configJson.nextReviewDate,
-      config_json: configJson,
-    })
-    .eq("company_id", context.companyId)
-    .eq("id", policy.id);
+  if (configJson.defaultCompanyPolicy === "Yes") {
+    const { error: clearDefaultError } = await context.admin
+      .from("company_policy_definitions")
+      .update({ is_default: false })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "shift");
+    if (clearDefaultError) {
+      return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default shift policy." }, { status: 400 });
+    }
+  }
 
-  if (policyError) {
-    return NextResponse.json({ error: policyError.message || "Unable to save shift policy definition." }, { status: 400 });
+  let policyId = policy?.id || "";
+  if (policy) {
+    const { error: policyError } = await context.admin
+      .from("company_policy_definitions")
+      .update({
+        policy_name: configJson.policyName,
+        policy_code: configJson.policyCode,
+        status: configJson.status,
+        is_default: configJson.defaultCompanyPolicy === "Yes",
+        effective_from: configJson.effectiveFrom,
+        next_review_date: configJson.nextReviewDate,
+        config_json: configJson,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", policy.id);
+
+    if (policyError) {
+      return NextResponse.json({ error: policyError.message || "Unable to save shift policy definition." }, { status: 400 });
+    }
+  } else {
+    const { data: insertedPolicy, error: insertPolicyError } = await context.admin
+      .from("company_policy_definitions")
+      .insert({
+        company_id: context.companyId,
+        policy_type: "shift",
+        policy_name: configJson.policyName,
+        policy_code: configJson.policyCode,
+        status: configJson.status,
+        is_default: configJson.defaultCompanyPolicy === "Yes",
+        effective_from: configJson.effectiveFrom,
+        next_review_date: configJson.nextReviewDate,
+        config_json: configJson,
+        created_by: context.adminEmail,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (insertPolicyError || !insertedPolicy?.id) {
+      return NextResponse.json({ error: insertPolicyError?.message || "Unable to create shift policy definition." }, { status: 400 });
+    }
+    policyId = insertedPolicy.id;
   }
 
   const legacyPayload = {
@@ -212,11 +243,11 @@ export async function PUT(req: NextRequest) {
       config_json: { ...configJson, legacyShiftId },
     })
     .eq("company_id", context.companyId)
-    .eq("id", policy.id);
+    .eq("id", policyId);
 
   if (patchConfigError) {
     return NextResponse.json({ error: patchConfigError.message || "Unable to finalize shift policy config." }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, legacyShiftId });
+  return NextResponse.json({ ok: true, policyId, legacyShiftId });
 }

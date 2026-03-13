@@ -122,7 +122,7 @@ export default function NewShiftPolicyPage() {
   }, []);
 
   function startNewPolicy() {
-    setDraft(initialState);
+    setDraft({ ...initialState });
     setShowForm(true);
     notify("New shift policy form opened.");
   }
@@ -131,6 +131,7 @@ export default function NewShiftPolicyPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
+    const creating = !draft.policyId;
     setSaving(true);
     const response = await fetch("/api/company/policies/shift-bridge", {
       method: "PUT",
@@ -140,15 +141,17 @@ export default function NewShiftPolicyPage() {
       },
       body: JSON.stringify(draft),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string };
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string; policyId?: string };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save shift policy.");
     }
-    if (result.legacyShiftId) {
-      setDraft((current) => ({ ...current, legacyShiftId: result.legacyShiftId || current.legacyShiftId }));
-    }
-    notify("Shift policy saved and synced to legacy settings.");
+    setDraft((current) => ({
+      ...current,
+      policyId: result.policyId || current.policyId,
+      legacyShiftId: result.legacyShiftId || current.legacyShiftId,
+    }));
+    notify(creating ? "New shift policy created successfully." : "Shift policy saved and synced to legacy settings.");
   }
 
   return (

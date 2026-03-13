@@ -138,22 +138,17 @@ export async function PUT(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as HolidayBridgePayload;
   const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-  const policy =
-    definitions.find((definition) => definition.id === body.policyId && definition.policyType === "holiday_weekoff") ||
-    definitions.find((definition) => definition.policyType === "holiday_weekoff" && definition.isDefault) ||
-    definitions.find((definition) => definition.policyType === "holiday_weekoff");
-
-  if (!policy) {
-    return NextResponse.json({ error: "Holiday policy definition not found." }, { status: 404 });
-  }
+  const policy = body.policyId
+    ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "holiday_weekoff")
+    : null;
 
   const configJson = {
-    policyName: body.policyName || policy.policyName,
-    policyCode: body.policyCode || policy.policyCode,
-    effectiveFrom: body.effectiveFrom || policy.effectiveFrom,
-    nextReviewDate: body.nextReviewDate || policy.nextReviewDate,
+    policyName: body.policyName || policy?.policyName || "Standard Holiday Policy",
+    policyCode: body.policyCode || policy?.policyCode || "HOL-001",
+    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
+    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
     status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy.isDefault ? "Yes" : "No"),
+    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     holidaySource: body.holidaySource || "Mixed",
     weeklyOffPattern: body.weeklyOffPattern || "Sunday Only",
     customWeeklyOffPattern: body.customWeeklyOffPattern || "",
@@ -165,22 +160,58 @@ export async function PUT(req: NextRequest) {
     compOffValidityDays: String(body.compOffValidityDays || "60"),
   };
 
-  const { error: policyError } = await context.admin
-    .from("company_policy_definitions")
-    .update({
-      policy_name: configJson.policyName,
-      policy_code: configJson.policyCode,
-      status: configJson.status,
-      is_default: configJson.defaultCompanyPolicy === "Yes",
-      effective_from: configJson.effectiveFrom,
-      next_review_date: configJson.nextReviewDate,
-      config_json: configJson,
-    })
-    .eq("company_id", context.companyId)
-    .eq("id", policy.id);
+  if (configJson.defaultCompanyPolicy === "Yes") {
+    const { error: clearDefaultError } = await context.admin
+      .from("company_policy_definitions")
+      .update({ is_default: false })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "holiday_weekoff");
+    if (clearDefaultError) {
+      return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default holiday policy." }, { status: 400 });
+    }
+  }
 
-  if (policyError) {
-    return NextResponse.json({ error: policyError.message || "Unable to save holiday policy definition." }, { status: 400 });
+  let policyId = policy?.id || "";
+  if (policy) {
+    const { error: policyError } = await context.admin
+      .from("company_policy_definitions")
+      .update({
+        policy_name: configJson.policyName,
+        policy_code: configJson.policyCode,
+        status: configJson.status,
+        is_default: configJson.defaultCompanyPolicy === "Yes",
+        effective_from: configJson.effectiveFrom,
+        next_review_date: configJson.nextReviewDate,
+        config_json: configJson,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", policy.id);
+
+    if (policyError) {
+      return NextResponse.json({ error: policyError.message || "Unable to save holiday policy definition." }, { status: 400 });
+    }
+  } else {
+    const { data: insertedPolicy, error: insertPolicyError } = await context.admin
+      .from("company_policy_definitions")
+      .insert({
+        company_id: context.companyId,
+        policy_type: "holiday_weekoff",
+        policy_name: configJson.policyName,
+        policy_code: configJson.policyCode,
+        status: configJson.status,
+        is_default: configJson.defaultCompanyPolicy === "Yes",
+        effective_from: configJson.effectiveFrom,
+        next_review_date: configJson.nextReviewDate,
+        config_json: configJson,
+        created_by: context.adminEmail,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (insertPolicyError || !insertedPolicy?.id) {
+      return NextResponse.json({ error: insertPolicyError?.message || "Unable to create holiday policy definition." }, { status: 400 });
+    }
+    policyId = insertedPolicy.id;
   }
 
   const { error: companyError } = await context.admin
@@ -196,5 +227,5 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: companyError.message || "Unable to sync legacy holiday settings." }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, policyId });
 }

@@ -206,8 +206,8 @@ export default function LeavePolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft(initialPolicyState);
-    setLeaveTypes(initialLeaveTypes);
+    setDraft({ ...initialPolicyState });
+    setLeaveTypes(initialLeaveTypes.map((leaveType) => ({ ...leaveType })));
     setShowForm(true);
     notify("New leave policy form opened.");
   }
@@ -216,6 +216,7 @@ export default function LeavePolicyPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
+    const creating = !draft.policyId;
     setSaving(true);
     const response = await fetch("/api/company/policies/leave-bridge", {
       method: "PUT",
@@ -228,12 +229,16 @@ export default function LeavePolicyPage() {
         leaveTypes,
       }),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save leave policy.");
     }
-    notify("Leave policy saved and synced to legacy settings.");
+    setDraft((current) => ({
+      ...current,
+      policyId: result.policyId || current.policyId,
+    }));
+    notify(creating ? "New leave policy created successfully." : "Leave policy saved and synced to legacy settings.");
   }
 
   return (

@@ -86,22 +86,17 @@ export async function PUT(req: NextRequest) {
 
   const body = (await req.json().catch(() => ({}))) as CorrectionBridgePayload;
   const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-  const policy =
-    definitions.find((definition) => definition.id === body.policyId && definition.policyType === "correction") ||
-    definitions.find((definition) => definition.policyType === "correction" && definition.isDefault) ||
-    definitions.find((definition) => definition.policyType === "correction");
-
-  if (!policy) {
-    return NextResponse.json({ error: "Correction policy definition not found." }, { status: 404 });
-  }
+  const policy = body.policyId
+    ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "correction")
+    : null;
 
   const configJson = {
-    policyName: body.policyName || policy.policyName,
-    policyCode: body.policyCode || policy.policyCode,
-    effectiveFrom: body.effectiveFrom || policy.effectiveFrom,
-    nextReviewDate: body.nextReviewDate || policy.nextReviewDate,
+    policyName: body.policyName || policy?.policyName || "Standard Correction Policy",
+    policyCode: body.policyCode || policy?.policyCode || "COR-001",
+    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
+    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
     status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy.isDefault ? "Yes" : "No"),
+    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     attendanceCorrectionEnabled: body.attendanceCorrectionEnabled || "Yes",
     missingPunchCorrectionAllowed: body.missingPunchCorrectionAllowed || "Yes",
     latePunchRegularizationAllowed: body.latePunchRegularizationAllowed || "Yes",
@@ -115,23 +110,59 @@ export async function PUT(req: NextRequest) {
     reasonMandatory: body.reasonMandatory || "Yes",
   };
 
-  const { error } = await context.admin
-    .from("company_policy_definitions")
-    .update({
-      policy_name: configJson.policyName,
-      policy_code: configJson.policyCode,
-      status: configJson.status,
-      is_default: configJson.defaultCompanyPolicy === "Yes",
-      effective_from: configJson.effectiveFrom,
-      next_review_date: configJson.nextReviewDate,
-      config_json: configJson,
-    })
-    .eq("company_id", context.companyId)
-    .eq("id", policy.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message || "Unable to save correction policy definition." }, { status: 400 });
+  if (configJson.defaultCompanyPolicy === "Yes") {
+    const { error: clearDefaultError } = await context.admin
+      .from("company_policy_definitions")
+      .update({ is_default: false })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "correction");
+    if (clearDefaultError) {
+      return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default correction policy." }, { status: 400 });
+    }
   }
 
-  return NextResponse.json({ ok: true });
+  let policyId = policy?.id || "";
+  if (policy) {
+    const { error } = await context.admin
+      .from("company_policy_definitions")
+      .update({
+        policy_name: configJson.policyName,
+        policy_code: configJson.policyCode,
+        status: configJson.status,
+        is_default: configJson.defaultCompanyPolicy === "Yes",
+        effective_from: configJson.effectiveFrom,
+        next_review_date: configJson.nextReviewDate,
+        config_json: configJson,
+      })
+      .eq("company_id", context.companyId)
+      .eq("id", policy.id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message || "Unable to save correction policy definition." }, { status: 400 });
+    }
+  } else {
+    const { data: insertedPolicy, error: insertPolicyError } = await context.admin
+      .from("company_policy_definitions")
+      .insert({
+        company_id: context.companyId,
+        policy_type: "correction",
+        policy_name: configJson.policyName,
+        policy_code: configJson.policyCode,
+        status: configJson.status,
+        is_default: configJson.defaultCompanyPolicy === "Yes",
+        effective_from: configJson.effectiveFrom,
+        next_review_date: configJson.nextReviewDate,
+        config_json: configJson,
+        created_by: context.adminEmail,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (insertPolicyError || !insertedPolicy?.id) {
+      return NextResponse.json({ error: insertPolicyError?.message || "Unable to create correction policy definition." }, { status: 400 });
+    }
+    policyId = insertedPolicy.id;
+  }
+
+  return NextResponse.json({ ok: true, policyId });
 }

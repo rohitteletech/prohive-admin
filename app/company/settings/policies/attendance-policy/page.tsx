@@ -115,7 +115,7 @@ export default function NewAttendancePolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft(initialState);
+    setDraft({ ...initialState });
     setShowForm(true);
     notify("New attendance policy form opened.");
   }
@@ -124,6 +124,7 @@ export default function NewAttendancePolicyPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
+    const creating = !draft.policyId;
     setSaving(true);
     const response = await fetch("/api/company/policies/attendance-bridge", {
       method: "PUT",
@@ -133,12 +134,16 @@ export default function NewAttendancePolicyPage() {
       },
       body: JSON.stringify(draft),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save attendance policy.");
     }
-    notify("Attendance policy saved and synced to legacy settings.");
+    setDraft((current) => ({
+      ...current,
+      policyId: result.policyId || current.policyId,
+    }));
+    notify(creating ? "New attendance policy created successfully." : "Attendance policy saved and synced to legacy settings.");
   }
 
   return (
