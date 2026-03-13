@@ -8,6 +8,7 @@ import {
   InfoTile,
   PolicyActions,
   PolicyPage,
+  PolicyRegisterSection,
   PolicySection,
   Select,
   SnapshotRow,
@@ -65,7 +66,22 @@ export default function NewLeavePolicyPage() {
       badge="Leave Policy"
       title="Leave Policy"
       description="Create a new standalone leave policy page for leave balances, half-day leave, carry forward, and approval flow."
-      actions={<PolicyActions onDraft={() => { setMode("draft"); notify("Leave policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Leave policy marked ready for backend wiring."); }} />}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(initialState);
+              setMode("draft");
+              notify("New leave policy draft started.");
+            }}
+            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100 xl:min-w-[150px]"
+          >
+            Create New Policy
+          </button>
+          <PolicyActions onDraft={() => { setMode("draft"); notify("Leave policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Leave policy marked ready for backend wiring."); }} />
+        </>
+      }
       aside={
         <>
           <AsideCard title="Policy Snapshot" description="High-level view of leave entitlements and approval flow.">
@@ -83,6 +99,25 @@ export default function NewLeavePolicyPage() {
       }
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+      <PolicyRegisterSection
+        description="Maintain leave policy records with enforcement dates, periodic review checkpoints, and company-wide default assignment."
+        onCreate={() => {
+          setDraft(initialState);
+          setMode("draft");
+          notify("New leave policy draft started.");
+        }}
+        onEdit={() => notify("Current leave policy opened for editing.")}
+        row={{
+          name: draft.policyName,
+          policyCode: "LEV-001",
+          effectiveFrom: draft.effectiveDate,
+          reviewDueOn: "2027-03-13",
+          status: mode === "published" ? "Active" : "Draft",
+          createdBy: "Company Admin",
+          createdOn: "2026-03-13 08:10 AM",
+          defaultPolicy: "Yes",
+        }}
+      />
       <div className="grid gap-3 md:grid-cols-4">
         <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
         <InfoTile label="Version" value={draft.version} />

@@ -8,6 +8,7 @@ import {
   InfoTile,
   PolicyActions,
   PolicyPage,
+  PolicyRegisterSection,
   PolicySection,
   Select,
   SnapshotRow,
@@ -64,7 +65,22 @@ export default function NewShiftPolicyPage() {
       badge="Shift Policy"
       title="Shift Policy"
       description="Create a standalone shift policy page for shift timing, punch window access, weekly off pattern, and operational day structure."
-      actions={<PolicyActions onDraft={() => { setMode("draft"); notify("Shift policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Shift policy marked ready for backend wiring."); }} />}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(initialState);
+              setMode("draft");
+              notify("New shift policy draft started.");
+            }}
+            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100 xl:min-w-[150px]"
+          >
+            Create New Policy
+          </button>
+          <PolicyActions onDraft={() => { setMode("draft"); notify("Shift policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Shift policy marked ready for backend wiring."); }} />
+        </>
+      }
       aside={
         <>
           <AsideCard title="Policy Snapshot" description="Quick view of the shift policy this page is setting up.">
@@ -82,6 +98,25 @@ export default function NewShiftPolicyPage() {
       }
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+      <PolicyRegisterSection
+        description="Maintain approved shift policy records with effective dates, review checkpoints, ownership, and default company applicability."
+        onCreate={() => {
+          setDraft(initialState);
+          setMode("draft");
+          notify("New shift policy draft started.");
+        }}
+        onEdit={() => notify("Current shift policy opened for editing.")}
+        row={{
+          name: draft.policyName,
+          policyCode: "SFT-001",
+          effectiveFrom: draft.effectiveDate,
+          reviewDueOn: "2027-03-13",
+          status: mode === "published" ? "Active" : "Draft",
+          createdBy: "Company Admin",
+          createdOn: "2026-03-13 08:00 AM",
+          defaultPolicy: "Yes",
+        }}
+      />
       <div className="grid gap-3 md:grid-cols-4">
         <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
         <InfoTile label="Version" value={draft.version} />

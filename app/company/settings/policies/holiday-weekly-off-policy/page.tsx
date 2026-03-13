@@ -8,6 +8,7 @@ import {
   InfoTile,
   PolicyActions,
   PolicyPage,
+  PolicyRegisterSection,
   PolicySection,
   Select,
   SnapshotRow,
@@ -63,7 +64,22 @@ export default function NewHolidayPolicyPage() {
       badge="Holiday Policy"
       title="Holiday / Weekly Off Policy"
       description="Create a new standalone page for holiday calendars, weekly off patterns, worked-on-holiday rules, and comp-off eligibility."
-      actions={<PolicyActions onDraft={() => { setMode("draft"); notify("Holiday policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Holiday policy marked ready for backend wiring."); }} />}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(initialState);
+              setMode("draft");
+              notify("New holiday policy draft started.");
+            }}
+            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100 xl:min-w-[150px]"
+          >
+            Create New Policy
+          </button>
+          <PolicyActions onDraft={() => { setMode("draft"); notify("Holiday policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Holiday policy marked ready for backend wiring."); }} />
+        </>
+      }
       aside={
         <>
           <AsideCard title="Policy Snapshot" description="Preview of non-working day rules and worked-day handling.">
@@ -81,6 +97,25 @@ export default function NewHolidayPolicyPage() {
       }
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+      <PolicyRegisterSection
+        description="Maintain holiday and weekly off policy records with review dates, ownership visibility, and default company assignment."
+        onCreate={() => {
+          setDraft(initialState);
+          setMode("draft");
+          notify("New holiday policy draft started.");
+        }}
+        onEdit={() => notify("Current holiday policy opened for editing.")}
+        row={{
+          name: draft.policyName,
+          policyCode: "HOL-001",
+          effectiveFrom: draft.effectiveDate,
+          reviewDueOn: "2027-03-13",
+          status: mode === "published" ? "Active" : "Draft",
+          createdBy: "Company Admin",
+          createdOn: "2026-03-13 08:15 AM",
+          defaultPolicy: "Yes",
+        }}
+      />
       <div className="grid gap-3 md:grid-cols-4">
         <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
         <InfoTile label="Version" value={draft.version} />

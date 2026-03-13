@@ -7,6 +7,7 @@ import {
   InfoTile,
   PolicyActions,
   PolicyPage,
+  PolicyRegisterSection,
   PolicySection,
   Select,
   SnapshotRow,
@@ -73,7 +74,22 @@ export default function NewCorrectionPolicyPage() {
       badge="Correction Policy"
       title="Correction / Regularization Policy"
       description="Create a new standalone page for missing punch correction, backdated regularization, approval flow, and attendance update rules."
-      actions={<PolicyActions onDraft={() => { setMode("draft"); notify("Correction policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Correction policy marked ready for backend wiring."); }} />}
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setDraft(initialState);
+              setMode("draft");
+              notify("New correction policy draft started.");
+            }}
+            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100 xl:min-w-[150px]"
+          >
+            Create New Policy
+          </button>
+          <PolicyActions onDraft={() => { setMode("draft"); notify("Correction policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Correction policy marked ready for backend wiring."); }} />
+        </>
+      }
       aside={
         <AsideCard title="Policy Snapshot" description="Preview of regularization limits and approval rules.">
           <SnapshotRow label="Window" value={`${draft.correctionWindowDays} days from attendance date`} />
@@ -84,6 +100,25 @@ export default function NewCorrectionPolicyPage() {
       }
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+      <PolicyRegisterSection
+        description="Maintain correction and regularization policy records with effective governance dates, ownership, and default workforce applicability."
+        onCreate={() => {
+          setDraft(initialState);
+          setMode("draft");
+          notify("New correction policy draft started.");
+        }}
+        onEdit={() => notify("Current correction policy opened for editing.")}
+        row={{
+          name: draft.policyName,
+          policyCode: "COR-001",
+          effectiveFrom: draft.effectiveDate,
+          reviewDueOn: "2027-03-13",
+          status: mode === "published" ? "Active" : "Draft",
+          createdBy: "Company Admin",
+          createdOn: "2026-03-13 08:20 AM",
+          defaultPolicy: "Yes",
+        }}
+      />
       <div className="grid gap-3 md:grid-cols-4">
         <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
         <InfoTile label="Version" value={draft.version} />

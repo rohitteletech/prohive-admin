@@ -170,3 +170,87 @@ export function PolicyLinkCard({
     </Link>
   );
 }
+
+export function PolicyRegisterSection({
+  title = "Policy Register",
+  description,
+  onCreate,
+  onEdit,
+  row,
+}: {
+  title?: string;
+  description: string;
+  onCreate: () => void;
+  onEdit: () => void;
+  row: {
+    name: string;
+    policyCode?: string;
+    effectiveFrom: string;
+    reviewDueOn: string;
+    status: string;
+    createdBy: string;
+    createdOn: string;
+    defaultPolicy: string;
+  };
+}) {
+  return (
+    <section className="rounded-[22px] border border-slate-200 bg-white p-4 sm:p-5">
+      <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-slate-600">{description}</p>
+        </div>
+        <button
+          type="button"
+          onClick={onCreate}
+          className="inline-flex rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100"
+        >
+          Create New Policy
+        </button>
+      </div>
+
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="min-w-full text-left text-sm">
+          <thead className="bg-slate-100 text-[11px] uppercase tracking-[0.14em] text-slate-600">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Policy Name</th>
+              <th className="px-4 py-3 font-semibold">Policy Code</th>
+              <th className="px-4 py-3 font-semibold">Effective From</th>
+              <th className="px-4 py-3 font-semibold">Next Review Date</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Created By</th>
+              <th className="px-4 py-3 font-semibold">Created On</th>
+              <th className="px-4 py-3 font-semibold">Default Company Policy</th>
+              <th className="px-4 py-3 font-semibold text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white text-slate-800">
+            <tr className="border-t border-slate-200">
+              <td className="px-4 py-3 font-semibold">{row.name}</td>
+              <td className="px-4 py-3">{row.policyCode || "-"}</td>
+              <td className="px-4 py-3">{row.effectiveFrom}</td>
+              <td className="px-4 py-3">{row.reviewDueOn}</td>
+              <td className="px-4 py-3">
+                <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                  {row.status}
+                </span>
+              </td>
+              <td className="px-4 py-3">{row.createdBy}</td>
+              <td className="px-4 py-3">{row.createdOn}</td>
+              <td className="px-4 py-3">{row.defaultPolicy}</td>
+              <td className="px-4 py-3 text-right">
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Edit
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
