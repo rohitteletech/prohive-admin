@@ -1,58 +1,71 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import {
-  AsideCard,
   Field,
-  InfoTile,
-  PolicyActions,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
   Select,
-  SnapshotRow,
-  TextArea,
   TextInput,
 } from "@/components/company/policy-ui";
 
-type Mode = "draft" | "published";
-type LeaveState = {
+type LeavePolicyState = {
   policyName: string;
-  version: string;
-  effectiveDate: string;
+  policyCode: string;
+  effectiveFrom: string;
+  nextReviewDate: string;
+  status: "Draft" | "Active" | "Archived";
+  defaultCompanyPolicy: "Yes" | "No";
   casualLeaveDays: string;
   sickLeaveDays: string;
   earnedLeaveDays: string;
-  carryForwardEnabled: "yes" | "no";
-  maxCarryForwardDays: string;
-  halfDayLeaveAllowed: "yes" | "no";
-  sandwichLeaveEnabled: "yes" | "no";
-  approvalFlow: "manager" | "manager_hr";
-  notes: string;
+  compLeaveEnabled: "Yes" | "No";
+  compLeaveValidityDays: string;
+  halfDayLeaveAllowed: "Yes" | "No";
+  minimumLeaveDays: string;
+  maximumLeaveDays: string;
+  approvalFlow: "manager" | "manager_hr" | "hr";
+  noticePeriodDays: string;
+  backdatedLeaveAllowed: "Yes" | "No";
+  leaveOverridesAttendance: "Yes" | "No";
+  sandwichLeave: "Enabled" | "Disabled";
+  carryForwardEnabled: "Yes" | "No";
+  maximumCarryForwardDays: string;
+  carryForwardExpiryDays: string;
 };
 
-const initialState: LeaveState = {
+const initialState: LeavePolicyState = {
   policyName: "Standard Leave Policy",
-  version: "v1.0",
-  effectiveDate: "2026-03-13",
+  policyCode: "LEV-001",
+  effectiveFrom: "2026-03-13",
+  nextReviewDate: "2027-03-13",
+  status: "Draft",
+  defaultCompanyPolicy: "Yes",
   casualLeaveDays: "12",
   sickLeaveDays: "12",
   earnedLeaveDays: "18",
-  carryForwardEnabled: "yes",
-  maxCarryForwardDays: "10",
-  halfDayLeaveAllowed: "yes",
-  sandwichLeaveEnabled: "no",
-  approvalFlow: "manager",
-  notes: "Approved leave should override absent days, and half-day leave should combine correctly with attendance policy.",
+  compLeaveEnabled: "Yes",
+  compLeaveValidityDays: "60",
+  halfDayLeaveAllowed: "Yes",
+  minimumLeaveDays: "0.5",
+  maximumLeaveDays: "30",
+  approvalFlow: "manager_hr",
+  noticePeriodDays: "1",
+  backdatedLeaveAllowed: "No",
+  leaveOverridesAttendance: "Yes",
+  sandwichLeave: "Disabled",
+  carryForwardEnabled: "Yes",
+  maximumCarryForwardDays: "10",
+  carryForwardExpiryDays: "90",
 };
 
-export default function NewLeavePolicyPage() {
-  const [mode, setMode] = useState<Mode>("draft");
+export default function LeavePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
+  const [showForm, setShowForm] = useState(false);
 
-  function update<K extends keyof LeaveState>(key: K, value: LeaveState[K]) {
+  function update<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
@@ -61,114 +74,210 @@ export default function NewLeavePolicyPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
+  function openNewForm() {
+    setDraft(initialState);
+    setShowForm(true);
+    notify("New leave policy form opened.");
+  }
+
   return (
     <PolicyPage
       badge="Leave Policy"
       title="Leave Policy"
-      description="Create a new standalone leave policy page for leave balances, half-day leave, carry forward, and approval flow."
-      actions={
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(initialState);
-              setMode("draft");
-              notify("New leave policy draft started.");
-            }}
-            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100 xl:min-w-[150px]"
-          >
-            Create New Policy
-          </button>
-          <PolicyActions onDraft={() => { setMode("draft"); notify("Leave policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Leave policy marked ready for backend wiring."); }} />
-        </>
-      }
-      aside={
-        <>
-          <AsideCard title="Policy Snapshot" description="High-level view of leave entitlements and approval flow.">
-            <SnapshotRow label="Casual Leave" value={`${draft.casualLeaveDays} days`} />
-            <SnapshotRow label="Sick Leave" value={`${draft.sickLeaveDays} days`} />
-            <SnapshotRow label="Earned Leave" value={`${draft.earnedLeaveDays} days`} />
-            <SnapshotRow label="Carry Forward" value={draft.carryForwardEnabled === "yes" ? `Enabled up to ${draft.maxCarryForwardDays} days` : "Disabled"} />
-          </AsideCard>
-          <AsideCard title="Next Policies" description="Leave rules must align with holiday and attendance override rules.">
-            <Link href="/company/settings/policies/holiday-weekly-off-policy" className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Open Holiday Policy
-            </Link>
-          </AsideCard>
-        </>
-      }
+      description="Maintain company leave policy records and define entitlements, approval rules, attendance override handling, and carry-forward governance."
     >
-      {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+      {toast ? (
+        <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">
+          {toast}
+        </div>
+      ) : null}
+
       <PolicyRegisterSection
-        description="Maintain leave policy records with enforcement dates, periodic review checkpoints, and company-wide default assignment."
-        onCreate={() => {
-          setDraft(initialState);
-          setMode("draft");
-          notify("New leave policy draft started.");
+        description="Maintain approved leave policies with effective governance dates, ownership, and default company applicability."
+        onCreate={openNewForm}
+        onEdit={() => {
+          setShowForm(true);
+          notify("Current leave policy opened for editing.");
         }}
-        onEdit={() => notify("Current leave policy opened for editing.")}
         row={{
           name: draft.policyName,
-          policyCode: "LEV-001",
-          effectiveFrom: draft.effectiveDate,
-          reviewDueOn: "2027-03-13",
-          status: mode === "published" ? "Active" : "Draft",
+          assignedWorkforce: "24 Employees",
+          policyCode: draft.policyCode,
+          effectiveFrom: draft.effectiveFrom,
+          reviewDueOn: draft.nextReviewDate,
+          status: draft.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:10 AM",
-          defaultPolicy: "Yes",
+          defaultPolicy: draft.defaultCompanyPolicy,
         }}
       />
-      <div className="grid gap-3 md:grid-cols-4">
-        <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
-        <InfoTile label="Version" value={draft.version} />
-        <InfoTile label="Effective Date" value={draft.effectiveDate} />
-        <InfoTile label="Approval" value={draft.approvalFlow === "manager" ? "Manager" : "Manager + HR"} tone="emerald" />
-      </div>
 
-      <PolicySection title="Leave Balances" description="Define annual leave allocation and carry-forward rules." tone="slate">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Policy Name"><TextInput value={draft.policyName} onChange={(e) => update("policyName", e.target.value)} /></Field>
-          <Field label="Effective Date"><TextInput type="date" value={draft.effectiveDate} onChange={(e) => update("effectiveDate", e.target.value)} /></Field>
-          <Field label="Casual Leave Days"><TextInput value={draft.casualLeaveDays} onChange={(e) => update("casualLeaveDays", e.target.value)} /></Field>
-          <Field label="Sick Leave Days"><TextInput value={draft.sickLeaveDays} onChange={(e) => update("sickLeaveDays", e.target.value)} /></Field>
-          <Field label="Earned Leave Days"><TextInput value={draft.earnedLeaveDays} onChange={(e) => update("earnedLeaveDays", e.target.value)} /></Field>
-          <Field label="Carry Forward Enabled">
-            <Select value={draft.carryForwardEnabled} onChange={(e) => update("carryForwardEnabled", e.target.value as LeaveState["carryForwardEnabled"])}>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </Select>
-          </Field>
-          <Field label="Maximum Carry Forward Days"><TextInput value={draft.maxCarryForwardDays} onChange={(e) => update("maxCarryForwardDays", e.target.value)} /></Field>
-          <Field label="Half Day Leave Allowed">
-            <Select value={draft.halfDayLeaveAllowed} onChange={(e) => update("halfDayLeaveAllowed", e.target.value as LeaveState["halfDayLeaveAllowed"])}>
-              <option value="yes">Yes</option>
-              <option value="no">No</option>
-            </Select>
-          </Field>
-        </div>
-      </PolicySection>
+      {showForm ? (
+        <>
+          <PolicySection
+            title="Policy Details"
+            description="Define the administrative identity, governance dates, and company-level applicability of this leave policy."
+            tone="slate"
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Policy Name">
+                <TextInput value={draft.policyName} onChange={(e) => update("policyName", e.target.value)} />
+              </Field>
+              <Field label="Policy Code">
+                <TextInput value={draft.policyCode} onChange={(e) => update("policyCode", e.target.value)} />
+              </Field>
+              <Field label="Effective From">
+                <TextInput type="date" value={draft.effectiveFrom} onChange={(e) => update("effectiveFrom", e.target.value)} />
+              </Field>
+              <Field label="Next Review Date">
+                <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => update("nextReviewDate", e.target.value)} />
+              </Field>
+              <Field label="Status">
+                <Select value={draft.status} onChange={(e) => update("status", e.target.value as LeavePolicyState["status"])}>
+                  <option value="Draft">Draft</option>
+                  <option value="Active">Active</option>
+                  <option value="Archived">Archived</option>
+                </Select>
+              </Field>
+              <Field label="Default Company Policy">
+                <Select
+                  value={draft.defaultCompanyPolicy}
+                  onChange={(e) => update("defaultCompanyPolicy", e.target.value as LeavePolicyState["defaultCompanyPolicy"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+            </div>
+          </PolicySection>
 
-      <PolicySection title="Override and Approval Rules" description="Define how leave interacts with attendance and who approves it.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Sandwich Leave Enabled">
-            <Select value={draft.sandwichLeaveEnabled} onChange={(e) => update("sandwichLeaveEnabled", e.target.value as LeaveState["sandwichLeaveEnabled"])}>
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </Select>
-          </Field>
-          <Field label="Approval Flow">
-            <Select value={draft.approvalFlow} onChange={(e) => update("approvalFlow", e.target.value as LeaveState["approvalFlow"])}>
-              <option value="manager">Manager Approval</option>
-              <option value="manager_hr">Manager + HR Approval</option>
-            </Select>
-          </Field>
-        </div>
-        <div className="mt-4">
-          <Field label="Policy Notes">
-            <TextArea rows={5} value={draft.notes} onChange={(e) => update("notes", e.target.value)} />
-          </Field>
-        </div>
-      </PolicySection>
+          <PolicySection
+            title="Leave Entitlements"
+            description="Define the annual leave allocation, comp leave availability, and day-level entitlement rules under this policy."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Casual Leave Days">
+                <TextInput value={draft.casualLeaveDays} onChange={(e) => update("casualLeaveDays", e.target.value)} />
+              </Field>
+              <Field label="Sick Leave Days">
+                <TextInput value={draft.sickLeaveDays} onChange={(e) => update("sickLeaveDays", e.target.value)} />
+              </Field>
+              <Field label="Earned Leave Days">
+                <TextInput value={draft.earnedLeaveDays} onChange={(e) => update("earnedLeaveDays", e.target.value)} />
+              </Field>
+              <Field label="Comp Leave Enabled">
+                <Select value={draft.compLeaveEnabled} onChange={(e) => update("compLeaveEnabled", e.target.value as LeavePolicyState["compLeaveEnabled"])}>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Comp Leave Validity (Days)">
+                <TextInput value={draft.compLeaveValidityDays} onChange={(e) => update("compLeaveValidityDays", e.target.value)} />
+              </Field>
+              <Field label="Half Day Leave Allowed">
+                <Select
+                  value={draft.halfDayLeaveAllowed}
+                  onChange={(e) => update("halfDayLeaveAllowed", e.target.value as LeavePolicyState["halfDayLeaveAllowed"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Minimum Leave Days">
+                <TextInput value={draft.minimumLeaveDays} onChange={(e) => update("minimumLeaveDays", e.target.value)} />
+              </Field>
+              <Field label="Maximum Leave Days">
+                <TextInput value={draft.maximumLeaveDays} onChange={(e) => update("maximumLeaveDays", e.target.value)} />
+              </Field>
+            </div>
+          </PolicySection>
+
+          <PolicySection
+            title="Approval & Override Rules"
+            description="Define the approval workflow and how approved leave should interact with attendance evaluation."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Approval Flow">
+                <Select value={draft.approvalFlow} onChange={(e) => update("approvalFlow", e.target.value as LeavePolicyState["approvalFlow"])}>
+                  <option value="manager">Manager Approval</option>
+                  <option value="manager_hr">Manager + HR Approval</option>
+                  <option value="hr">HR Approval</option>
+                </Select>
+              </Field>
+              <Field label="Notice Period (Days)">
+                <TextInput value={draft.noticePeriodDays} onChange={(e) => update("noticePeriodDays", e.target.value)} />
+              </Field>
+              <Field label="Backdated Leave Allowed">
+                <Select
+                  value={draft.backdatedLeaveAllowed}
+                  onChange={(e) => update("backdatedLeaveAllowed", e.target.value as LeavePolicyState["backdatedLeaveAllowed"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Leave Overrides Attendance">
+                <Select
+                  value={draft.leaveOverridesAttendance}
+                  onChange={(e) => update("leaveOverridesAttendance", e.target.value as LeavePolicyState["leaveOverridesAttendance"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Sandwich Leave">
+                <Select value={draft.sandwichLeave} onChange={(e) => update("sandwichLeave", e.target.value as LeavePolicyState["sandwichLeave"])}>
+                  <option value="Enabled">Enabled</option>
+                  <option value="Disabled">Disabled</option>
+                </Select>
+              </Field>
+            </div>
+          </PolicySection>
+
+          <PolicySection
+            title="Carry Forward Rules"
+            description="Define whether unused leave can move into the next period and how long the carried balance should remain valid."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Carry Forward Enabled">
+                <Select
+                  value={draft.carryForwardEnabled}
+                  onChange={(e) => update("carryForwardEnabled", e.target.value as LeavePolicyState["carryForwardEnabled"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Maximum Carry Forward Days">
+                <TextInput value={draft.maximumCarryForwardDays} onChange={(e) => update("maximumCarryForwardDays", e.target.value)} />
+              </Field>
+              <Field label="Carry Forward Expiry (Days)">
+                <TextInput value={draft.carryForwardExpiryDays} onChange={(e) => update("carryForwardExpiryDays", e.target.value)} />
+              </Field>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => notify("Leave policy saved locally.")}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Save Policy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  notify("Leave policy form closed.");
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </PolicySection>
+        </>
+      ) : null}
     </PolicyPage>
   );
 }

@@ -1,60 +1,71 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
-  AsideCard,
   Field,
-  InfoTile,
-  PolicyActions,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
   Select,
-  SnapshotRow,
-  TextArea,
   TextInput,
 } from "@/components/company/policy-ui";
 
-type Mode = "draft" | "published";
-type AttendanceState = {
+type AttendancePolicyState = {
   policyName: string;
-  version: string;
-  effectiveDate: string;
-  presentMarkRule: "punch_in" | "punch_in_out";
-  fullDayHours: string;
-  halfDayHours: string;
-  graceMinutes: string;
-  earlyGoMinutes: string;
-  extraHoursPolicy: "yes" | "no";
-  latePunchPenalty: "enabled" | "disabled";
-  halfDayFormula: "0.5" | "1.0";
-  presentFormula: "full_only" | "full_plus_half";
-  notes: string;
+  policyCode: string;
+  effectiveFrom: string;
+  nextReviewDate: string;
+  status: "Draft" | "Active" | "Archived";
+  defaultCompanyPolicy: "Yes" | "No";
+  presentTrigger: "punch_in" | "punch_in_out";
+  singlePunchHandling: "incomplete_punch" | "half_day" | "absent";
+  fullDayMinimumHours: string;
+  halfDayMinimumHours: string;
+  absentRule: "no_punch_or_below_minimum" | "below_half_day_threshold" | "manual_override";
+  extraHoursCountingRule: "count" | "ignore";
+  latePunchRule: "flag_only" | "affects_penalty";
+  earlyGoRule: "flag_only" | "affects_penalty";
+  presentDaysFormula: "full_plus_half" | "full_only";
+  halfDayValue: "0.5" | "1.0";
+  latePunchPenaltyEnabled: "Yes" | "No";
+  latePunchUpToMinutes: string;
+  repeatLateDaysInMonth: string;
+  penaltyForRepeatLate: string;
+  latePunchAboveMinutes: string;
+  penaltyForLateAboveLimit: string;
 };
 
-const initialState: AttendanceState = {
+const initialState: AttendancePolicyState = {
   policyName: "Standard Attendance Policy",
-  version: "v1.0",
-  effectiveDate: "2026-03-13",
-  presentMarkRule: "punch_in_out",
-  fullDayHours: "08:00",
-  halfDayHours: "04:00",
-  graceMinutes: "10",
-  earlyGoMinutes: "20",
-  extraHoursPolicy: "yes",
-  latePunchPenalty: "enabled",
-  halfDayFormula: "0.5",
-  presentFormula: "full_plus_half",
-  notes: "Present should be calculated from final daily status after shift, leave, and holiday context have been resolved.",
+  policyCode: "ATT-001",
+  effectiveFrom: "2026-03-13",
+  nextReviewDate: "2027-03-13",
+  status: "Draft",
+  defaultCompanyPolicy: "Yes",
+  presentTrigger: "punch_in_out",
+  singlePunchHandling: "incomplete_punch",
+  fullDayMinimumHours: "08:00",
+  halfDayMinimumHours: "04:00",
+  absentRule: "no_punch_or_below_minimum",
+  extraHoursCountingRule: "count",
+  latePunchRule: "affects_penalty",
+  earlyGoRule: "flag_only",
+  presentDaysFormula: "full_plus_half",
+  halfDayValue: "0.5",
+  latePunchPenaltyEnabled: "Yes",
+  latePunchUpToMinutes: "60",
+  repeatLateDaysInMonth: "3",
+  penaltyForRepeatLate: "1",
+  latePunchAboveMinutes: "60",
+  penaltyForLateAboveLimit: "0.5",
 };
 
 export default function NewAttendancePolicyPage() {
-  const [mode, setMode] = useState<Mode>("draft");
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
+  const [showForm, setShowForm] = useState(false);
 
-  function update<K extends keyof AttendanceState>(key: K, value: AttendanceState[K]) {
+  function update<K extends keyof AttendancePolicyState>(key: K, value: AttendancePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
   }
 
@@ -63,125 +74,216 @@ export default function NewAttendancePolicyPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
-  const formulaPreview = useMemo(() => {
-    if (draft.presentFormula === "full_only") return "Present Days = Full Present only";
-    return `Present Days = Full Present + (Half Day x ${draft.halfDayFormula})`;
-  }, [draft.presentFormula, draft.halfDayFormula]);
+  function openNewForm() {
+    setDraft(initialState);
+    setShowForm(true);
+    notify("New attendance policy form opened.");
+  }
 
   return (
     <PolicyPage
       badge="Attendance Policy"
       title="Attendance Policy"
-      description="Create a new standalone page for present-day logic, full day and half day rules, late and early flags, and monthly attendance formulas."
-      actions={
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              setDraft(initialState);
-              setMode("draft");
-              notify("New attendance policy draft started.");
-            }}
-            className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100 xl:min-w-[150px]"
-          >
-            Create New Policy
-          </button>
-          <PolicyActions onDraft={() => { setMode("draft"); notify("Attendance policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Attendance policy marked ready for backend wiring."); }} />
-        </>
-      }
-      aside={
-        <>
-          <AsideCard title="Policy Snapshot" description="Preview of the day-status logic this policy is defining.">
-            <SnapshotRow label="Present Trigger" value={draft.presentMarkRule === "punch_in" ? "Present starts on Punch In" : "Present starts after Punch In and Punch Out"} />
-            <SnapshotRow label="Full Day" value={`Worked hours at or above ${draft.fullDayHours}`} />
-            <SnapshotRow label="Half Day" value={`Worked hours at or above ${draft.halfDayHours}`} />
-            <SnapshotRow label="Present Formula" value={formulaPreview} />
-          </AsideCard>
-          <AsideCard title="Next Policies" description="Attendance policy should stay aligned with shift, leave, and holiday rules.">
-            <Link href="/company/settings/policies/leave-policy" className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Open Leave Policy
-            </Link>
-          </AsideCard>
-        </>
-      }
+      description="Maintain company attendance policy records and create structured attendance policies for daily status, monthly formula, and penalty governance."
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+
       <PolicyRegisterSection
-        description="Maintain approved attendance policies with governance dates, default applicability, and administrative ownership."
-        onCreate={() => {
-          setDraft(initialState);
-          setMode("draft");
-          notify("New attendance policy draft started.");
+        description="Maintain approved attendance policies with effective governance dates, administrative ownership, and default company applicability."
+        onCreate={openNewForm}
+        onEdit={() => {
+          setShowForm(true);
+          notify("Current attendance policy opened for editing.");
         }}
-        onEdit={() => notify("Current attendance policy opened for editing.")}
         row={{
           name: draft.policyName,
-          policyCode: "ATT-001",
-          effectiveFrom: draft.effectiveDate,
-          reviewDueOn: "2027-03-13",
-          status: mode === "published" ? "Active" : "Draft",
+          assignedWorkforce: "24 Employees",
+          policyCode: draft.policyCode,
+          effectiveFrom: draft.effectiveFrom,
+          reviewDueOn: draft.nextReviewDate,
+          status: draft.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:05 AM",
-          defaultPolicy: "Yes",
+          defaultPolicy: draft.defaultCompanyPolicy,
         }}
       />
-      <div className="grid gap-3 md:grid-cols-4">
-        <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
-        <InfoTile label="Version" value={draft.version} />
-        <InfoTile label="Effective Date" value={draft.effectiveDate} />
-        <InfoTile label="Formula" value={draft.presentFormula === "full_only" ? "Full Only" : "Full + Half"} tone="emerald" />
-      </div>
 
-      <PolicySection title="Daily Status Rules" description="Define how the system should evaluate presence for each working day." tone="slate">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Policy Name"><TextInput value={draft.policyName} onChange={(e) => update("policyName", e.target.value)} /></Field>
-          <Field label="Effective Date"><TextInput type="date" value={draft.effectiveDate} onChange={(e) => update("effectiveDate", e.target.value)} /></Field>
-          <Field label="Present Trigger">
-            <Select value={draft.presentMarkRule} onChange={(e) => update("presentMarkRule", e.target.value as AttendanceState["presentMarkRule"])}>
-              <option value="punch_in">Punch In</option>
-              <option value="punch_in_out">Punch In + Punch Out</option>
-            </Select>
-          </Field>
-          <Field label="Full Day Working Hours"><TextInput value={draft.fullDayHours} onChange={(e) => update("fullDayHours", e.target.value)} /></Field>
-          <Field label="Half Day Minimum Hours"><TextInput value={draft.halfDayHours} onChange={(e) => update("halfDayHours", e.target.value)} /></Field>
-          <Field label="Grace Period (mins)"><TextInput value={draft.graceMinutes} onChange={(e) => update("graceMinutes", e.target.value)} /></Field>
-          <Field label="Early Go Buffer (mins)"><TextInput value={draft.earlyGoMinutes} onChange={(e) => update("earlyGoMinutes", e.target.value)} /></Field>
-          <Field label="Extra Hr Policy">
-            <Select value={draft.extraHoursPolicy} onChange={(e) => update("extraHoursPolicy", e.target.value as AttendanceState["extraHoursPolicy"])}>
-              <option value="yes">Enabled</option>
-              <option value="no">Disabled</option>
-            </Select>
-          </Field>
-        </div>
-      </PolicySection>
+      {showForm ? (
+        <>
+          <PolicySection
+            title="Policy Details"
+            description="Define the administrative identity, governance dates, and company-level applicability of this attendance policy."
+            tone="slate"
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Policy Name">
+                <TextInput value={draft.policyName} onChange={(e) => update("policyName", e.target.value)} />
+              </Field>
+              <Field label="Policy Code">
+                <TextInput value={draft.policyCode} onChange={(e) => update("policyCode", e.target.value)} />
+              </Field>
+              <Field label="Effective From">
+                <TextInput type="date" value={draft.effectiveFrom} onChange={(e) => update("effectiveFrom", e.target.value)} />
+              </Field>
+              <Field label="Next Review Date">
+                <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => update("nextReviewDate", e.target.value)} />
+              </Field>
+              <Field label="Status">
+                <Select value={draft.status} onChange={(e) => update("status", e.target.value as AttendancePolicyState["status"])}>
+                  <option value="Draft">Draft</option>
+                  <option value="Active">Active</option>
+                  <option value="Archived">Archived</option>
+                </Select>
+              </Field>
+              <Field label="Default Company Policy">
+                <Select
+                  value={draft.defaultCompanyPolicy}
+                  onChange={(e) => update("defaultCompanyPolicy", e.target.value as AttendancePolicyState["defaultCompanyPolicy"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+            </div>
+          </PolicySection>
 
-      <PolicySection title="Monthly Formula" description="Define how day status rolls up into monthly present counts.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Present Days Calculation">
-            <Select value={draft.presentFormula} onChange={(e) => update("presentFormula", e.target.value as AttendanceState["presentFormula"])}>
-              <option value="full_plus_half">Full Present + Half Day Value</option>
-              <option value="full_only">Only Full Present</option>
-            </Select>
-          </Field>
-          <Field label="Half Day Value">
-            <Select value={draft.halfDayFormula} onChange={(e) => update("halfDayFormula", e.target.value as AttendanceState["halfDayFormula"])}>
-              <option value="0.5">0.5 Day</option>
-              <option value="1.0">1.0 Day</option>
-            </Select>
-          </Field>
-          <Field label="Late Punch Penalty">
-            <Select value={draft.latePunchPenalty} onChange={(e) => update("latePunchPenalty", e.target.value as AttendanceState["latePunchPenalty"])}>
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </Select>
-          </Field>
-        </div>
-        <div className="mt-4">
-          <Field label="Policy Notes">
-            <TextArea rows={5} value={draft.notes} onChange={(e) => update("notes", e.target.value)} />
-          </Field>
-        </div>
-      </PolicySection>
+          <PolicySection
+            title="Attendance Status Rules"
+            description="Define how daily attendance status should be evaluated based on punches and worked hours."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Present Trigger">
+                <Select
+                  value={draft.presentTrigger}
+                  onChange={(e) => update("presentTrigger", e.target.value as AttendancePolicyState["presentTrigger"])}
+                >
+                  <option value="punch_in">Punch In</option>
+                  <option value="punch_in_out">Punch In + Punch Out</option>
+                </Select>
+              </Field>
+              <Field label="Single Punch Handling">
+                <Select
+                  value={draft.singlePunchHandling}
+                  onChange={(e) => update("singlePunchHandling", e.target.value as AttendancePolicyState["singlePunchHandling"])}
+                >
+                  <option value="incomplete_punch">Incomplete Punch</option>
+                  <option value="half_day">Half Day</option>
+                  <option value="absent">Absent</option>
+                </Select>
+              </Field>
+              <Field label="Full Day Minimum Hours">
+                <TextInput value={draft.fullDayMinimumHours} onChange={(e) => update("fullDayMinimumHours", e.target.value)} />
+              </Field>
+              <Field label="Half Day Minimum Hours">
+                <TextInput value={draft.halfDayMinimumHours} onChange={(e) => update("halfDayMinimumHours", e.target.value)} />
+              </Field>
+              <Field label="Absent Rule">
+                <Select value={draft.absentRule} onChange={(e) => update("absentRule", e.target.value as AttendancePolicyState["absentRule"])}>
+                  <option value="no_punch_or_below_minimum">No Punch Or Worked Hours Below Minimum</option>
+                  <option value="below_half_day_threshold">Worked Hours Below Half Day Threshold</option>
+                  <option value="manual_override">Manual Override</option>
+                </Select>
+              </Field>
+              <Field label="Extra Hours Counting Rule">
+                <Select
+                  value={draft.extraHoursCountingRule}
+                  onChange={(e) => update("extraHoursCountingRule", e.target.value as AttendancePolicyState["extraHoursCountingRule"])}
+                >
+                  <option value="count">Count</option>
+                  <option value="ignore">Ignore</option>
+                </Select>
+              </Field>
+              <Field label="Late Punch Rule">
+                <Select value={draft.latePunchRule} onChange={(e) => update("latePunchRule", e.target.value as AttendancePolicyState["latePunchRule"])}>
+                  <option value="flag_only">Flag Only</option>
+                  <option value="affects_penalty">Affects Penalty</option>
+                </Select>
+              </Field>
+              <Field label="Early Go Rule">
+                <Select value={draft.earlyGoRule} onChange={(e) => update("earlyGoRule", e.target.value as AttendancePolicyState["earlyGoRule"])}>
+                  <option value="flag_only">Flag Only</option>
+                  <option value="affects_penalty">Affects Penalty</option>
+                </Select>
+              </Field>
+            </div>
+          </PolicySection>
+
+          <PolicySection
+            title="Monthly Calculation Rules"
+            description="Define how daily attendance status should roll up into monthly present-day calculations."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Present Days Formula">
+                <Select
+                  value={draft.presentDaysFormula}
+                  onChange={(e) => update("presentDaysFormula", e.target.value as AttendancePolicyState["presentDaysFormula"])}
+                >
+                  <option value="full_plus_half">Full Present + Half Day Value</option>
+                  <option value="full_only">Only Full Present</option>
+                </Select>
+              </Field>
+              <Field label="Half Day Value">
+                <Select value={draft.halfDayValue} onChange={(e) => update("halfDayValue", e.target.value as AttendancePolicyState["halfDayValue"])}>
+                  <option value="0.5">0.5 Day</option>
+                  <option value="1.0">1.0 Day</option>
+                </Select>
+              </Field>
+            </div>
+          </PolicySection>
+
+          <PolicySection
+            title="Penalty Rules"
+            description="Define the late-punch penalty structure and monthly deduction thresholds applicable to this attendance policy."
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Late Punch Penalty Enabled">
+                <Select
+                  value={draft.latePunchPenaltyEnabled}
+                  onChange={(e) => update("latePunchPenaltyEnabled", e.target.value as AttendancePolicyState["latePunchPenaltyEnabled"])}
+                >
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Late Punch Up To Minutes">
+                <TextInput value={draft.latePunchUpToMinutes} onChange={(e) => update("latePunchUpToMinutes", e.target.value)} />
+              </Field>
+              <Field label="Repeat Late Days In Month">
+                <TextInput value={draft.repeatLateDaysInMonth} onChange={(e) => update("repeatLateDaysInMonth", e.target.value)} />
+              </Field>
+              <Field label="Penalty For Repeat Late">
+                <TextInput value={draft.penaltyForRepeatLate} onChange={(e) => update("penaltyForRepeatLate", e.target.value)} />
+              </Field>
+              <Field label="Late Punch Above Minutes">
+                <TextInput value={draft.latePunchAboveMinutes} onChange={(e) => update("latePunchAboveMinutes", e.target.value)} />
+              </Field>
+              <Field label="Penalty For Late Above Limit">
+                <TextInput value={draft.penaltyForLateAboveLimit} onChange={(e) => update("penaltyForLateAboveLimit", e.target.value)} />
+              </Field>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => notify("Attendance policy saved locally.")}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Save Policy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  notify("Attendance policy form closed.");
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </PolicySection>
+        </>
+      ) : null}
     </PolicyPage>
   );
 }
