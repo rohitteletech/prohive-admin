@@ -76,6 +76,7 @@ function createNewPolicyDraft(): AttendancePolicyState {
 export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
+  const [savedPolicy, setSavedPolicy] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -113,10 +114,9 @@ export default function NewAttendancePolicyPage() {
       return;
     }
 
-    setDraft((current) => ({
-      ...current,
-      ...result,
-    }));
+    const nextPolicy = { ...initialState, ...result };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -151,10 +151,12 @@ export default function NewAttendancePolicyPage() {
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save attendance policy.");
     }
-    setDraft((current) => ({
-      ...current,
-      policyId: result.policyId || current.policyId,
-    }));
+    const nextPolicy = {
+      ...draft,
+      policyId: result.policyId || draft.policyId,
+    };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     notify(creating ? "New attendance policy created successfully." : "Attendance policy saved and synced to legacy settings.");
   }
@@ -171,20 +173,21 @@ export default function NewAttendancePolicyPage() {
         description="Maintain approved attendance policies with effective governance dates, administrative ownership, and default company applicability."
         onCreate={openNewForm}
         onEdit={() => {
+          setDraft(savedPolicy);
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current attendance policy opened for editing.");
         }}
         row={{
-          name: draft.policyName,
+          name: savedPolicy.policyName,
           assignedWorkforce: "24 Employees",
-          policyCode: draft.policyCode,
-          effectiveFrom: draft.effectiveFrom,
-          reviewDueOn: draft.nextReviewDate,
-          status: draft.status,
+          policyCode: savedPolicy.policyCode,
+          effectiveFrom: savedPolicy.effectiveFrom,
+          reviewDueOn: savedPolicy.nextReviewDate,
+          status: savedPolicy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:05 AM",
-          defaultPolicy: draft.defaultCompanyPolicy,
+          defaultPolicy: savedPolicy.defaultCompanyPolicy,
         }}
       />
 

@@ -66,6 +66,7 @@ function createNewPolicyDraft(): CorrectionPolicyState {
 export default function CorrectionRegularizationPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
+  const [savedPolicy, setSavedPolicy] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -103,10 +104,9 @@ export default function CorrectionRegularizationPolicyPage() {
       return;
     }
 
-    setDraft((current) => ({
-      ...current,
-      ...result,
-    }));
+    const nextPolicy = { ...initialState, ...result };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -141,10 +141,12 @@ export default function CorrectionRegularizationPolicyPage() {
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save correction policy.");
     }
-    setDraft((current) => ({
-      ...current,
-      policyId: result.policyId || current.policyId,
-    }));
+    const nextPolicy = {
+      ...draft,
+      policyId: result.policyId || draft.policyId,
+    };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     notify(creating ? "New correction policy created successfully." : "Correction policy saved to policy engine.");
   }
@@ -165,20 +167,21 @@ export default function CorrectionRegularizationPolicyPage() {
         description="Maintain approved correction and regularization policies with effective governance dates, ownership, and default company applicability."
         onCreate={openNewForm}
         onEdit={() => {
+          setDraft(savedPolicy);
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current correction policy opened for editing.");
         }}
         row={{
-          name: draft.policyName,
+          name: savedPolicy.policyName,
           assignedWorkforce: "24 Employees",
-          policyCode: draft.policyCode,
-          effectiveFrom: draft.effectiveFrom,
-          reviewDueOn: draft.nextReviewDate,
-          status: draft.status,
+          policyCode: savedPolicy.policyCode,
+          effectiveFrom: savedPolicy.effectiveFrom,
+          reviewDueOn: savedPolicy.nextReviewDate,
+          status: savedPolicy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:20 AM",
-          defaultPolicy: draft.defaultCompanyPolicy,
+          defaultPolicy: savedPolicy.defaultCompanyPolicy,
         }}
       />
 

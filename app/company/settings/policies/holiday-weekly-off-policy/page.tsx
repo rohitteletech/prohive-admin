@@ -62,6 +62,7 @@ function createNewPolicyDraft(): HolidayPolicyState {
 export default function HolidayWeeklyOffPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
+  const [savedPolicy, setSavedPolicy] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,10 +100,9 @@ export default function HolidayWeeklyOffPolicyPage() {
       return;
     }
 
-    setDraft((current) => ({
-      ...current,
-      ...result,
-    }));
+    const nextPolicy = { ...initialState, ...result };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -137,10 +137,12 @@ export default function HolidayWeeklyOffPolicyPage() {
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save holiday policy.");
     }
-    setDraft((current) => ({
-      ...current,
-      policyId: result.policyId || current.policyId,
-    }));
+    const nextPolicy = {
+      ...draft,
+      policyId: result.policyId || draft.policyId,
+    };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     notify(creating ? "New holiday policy created successfully." : "Holiday policy saved and synced to legacy settings.");
   }
@@ -161,20 +163,21 @@ export default function HolidayWeeklyOffPolicyPage() {
         description="Maintain approved holiday and weekly off policies with effective governance dates, ownership, and default company applicability."
         onCreate={openNewForm}
         onEdit={() => {
+          setDraft(savedPolicy);
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current holiday policy opened for editing.");
         }}
         row={{
-          name: draft.policyName,
+          name: savedPolicy.policyName,
           assignedWorkforce: "24 Employees",
-          policyCode: draft.policyCode,
-          effectiveFrom: draft.effectiveFrom,
-          reviewDueOn: draft.nextReviewDate,
-          status: draft.status,
+          policyCode: savedPolicy.policyCode,
+          effectiveFrom: savedPolicy.effectiveFrom,
+          reviewDueOn: savedPolicy.nextReviewDate,
+          status: savedPolicy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:15 AM",
-          defaultPolicy: draft.defaultCompanyPolicy,
+          defaultPolicy: savedPolicy.defaultCompanyPolicy,
         }}
       />
 

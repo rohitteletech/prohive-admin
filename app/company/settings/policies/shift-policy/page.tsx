@@ -77,6 +77,7 @@ function formatShiftDuration(start: string, end: string) {
 export default function NewShiftPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
+  const [savedPolicy, setSavedPolicy] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -120,10 +121,9 @@ export default function NewShiftPolicyPage() {
       return;
     }
 
-    setDraft((current) => ({
-      ...current,
-      ...result,
-    }));
+    const nextPolicy = { ...initialState, ...result };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -158,11 +158,13 @@ export default function NewShiftPolicyPage() {
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save shift policy.");
     }
-    setDraft((current) => ({
-      ...current,
-      policyId: result.policyId || current.policyId,
-      legacyShiftId: result.legacyShiftId || current.legacyShiftId,
-    }));
+    const nextPolicy = {
+      ...draft,
+      policyId: result.policyId || draft.policyId,
+      legacyShiftId: result.legacyShiftId || draft.legacyShiftId,
+    };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     setIsCreatingNew(false);
     notify(creating ? "New shift policy created successfully." : "Shift policy saved and synced to legacy settings.");
   }
@@ -179,6 +181,7 @@ export default function NewShiftPolicyPage() {
         description="Maintain approved shift policy records with effective dates, review checkpoints, ownership, and default company applicability."
         onCreate={startNewPolicy}
         onEdit={() => {
+          setDraft(savedPolicy);
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current shift policy opened for editing.");
@@ -191,15 +194,15 @@ export default function NewShiftPolicyPage() {
           notify("Shift policy can now be deleted.");
         }}
         row={{
-          name: draft.policyName,
+          name: savedPolicy.policyName,
           assignedWorkforce: `${assignedWorkforceCount} Employees`,
-          policyCode: draft.policyCode,
-          effectiveFrom: draft.effectiveFrom,
-          reviewDueOn: draft.nextReviewDate,
-          status: draft.status,
+          policyCode: savedPolicy.policyCode,
+          effectiveFrom: savedPolicy.effectiveFrom,
+          reviewDueOn: savedPolicy.nextReviewDate,
+          status: savedPolicy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:00 AM",
-          defaultPolicy: draft.defaultCompanyPolicy,
+          defaultPolicy: savedPolicy.defaultCompanyPolicy,
         }}
       />
 

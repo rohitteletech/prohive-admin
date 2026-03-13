@@ -139,7 +139,9 @@ function createBlankLeaveType(): LeaveType {
 export default function LeavePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialPolicyState);
+  const [savedPolicy, setSavedPolicy] = useState(initialPolicyState);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
+  const [savedLeaveTypes, setSavedLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -201,12 +203,12 @@ export default function LeavePolicyPage() {
     }
 
     const { leaveTypes: nextLeaveTypes, ...policy } = result;
-    setDraft((current) => ({
-      ...current,
-      ...policy,
-    }));
+    const nextPolicy = { ...initialPolicyState, ...policy };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
     if (Array.isArray(nextLeaveTypes) && nextLeaveTypes.length > 0) {
       setLeaveTypes(nextLeaveTypes);
+      setSavedLeaveTypes(nextLeaveTypes);
     }
     setIsCreatingNew(false);
     setLoading(false);
@@ -246,10 +248,13 @@ export default function LeavePolicyPage() {
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save leave policy.");
     }
-    setDraft((current) => ({
-      ...current,
-      policyId: result.policyId || current.policyId,
-    }));
+    const nextPolicy = {
+      ...draft,
+      policyId: result.policyId || draft.policyId,
+    };
+    setDraft(nextPolicy);
+    setSavedPolicy(nextPolicy);
+    setSavedLeaveTypes(leaveTypes.map((leaveType) => ({ ...leaveType })));
     setIsCreatingNew(false);
     notify(creating ? "New leave policy created successfully." : "Leave policy saved and synced to legacy settings.");
   }
@@ -270,20 +275,22 @@ export default function LeavePolicyPage() {
         description="Maintain approved leave policies with effective governance dates, ownership, and default company applicability."
         onCreate={openNewForm}
         onEdit={() => {
+          setDraft(savedPolicy);
+          setLeaveTypes(savedLeaveTypes.map((leaveType) => ({ ...leaveType })));
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current leave policy opened for editing.");
         }}
         row={{
-          name: draft.policyName,
+          name: savedPolicy.policyName,
           assignedWorkforce: "24 Employees",
-          policyCode: draft.policyCode,
-          effectiveFrom: draft.effectiveFrom,
-          reviewDueOn: draft.nextReviewDate,
-          status: draft.status,
+          policyCode: savedPolicy.policyCode,
+          effectiveFrom: savedPolicy.effectiveFrom,
+          reviewDueOn: savedPolicy.nextReviewDate,
+          status: savedPolicy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:10 AM",
-          defaultPolicy: draft.defaultCompanyPolicy,
+          defaultPolicy: savedPolicy.defaultCompanyPolicy,
         }}
       />
 
