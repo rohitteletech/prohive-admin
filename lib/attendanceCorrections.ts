@@ -63,6 +63,35 @@ export function validateCorrectionWindow(correctionDateIso: string) {
   return "";
 }
 
+export function validateCorrectionWindowWithPolicy(params: {
+  correctionDateIso: string;
+  requestWindowDays: number;
+  backdatedAllowed: boolean;
+  maximumBackdatedDays: number;
+}) {
+  const todayIso = todayISOInIndia();
+  if (params.correctionDateIso > todayIso) return "Correction date cannot be in the future.";
+  if (!params.backdatedAllowed && params.correctionDateIso < todayIso) {
+    return "Backdated correction is not allowed by policy.";
+  }
+
+  const allowedDays = Math.max(
+    0,
+    Math.min(
+      31,
+      params.backdatedAllowed
+        ? Math.min(params.requestWindowDays || 0, params.maximumBackdatedDays || 0)
+        : 0,
+    ),
+  );
+  const minIso = shiftIsoDate(todayIso, -allowedDays);
+  if (!minIso) return "Correction window validation failed.";
+  if (params.correctionDateIso < minIso) {
+    return `Correction is allowed only for today and previous ${allowedDays} days.`;
+  }
+  return "";
+}
+
 export function dateRangeForIndiaIsoDate(isoDate: string) {
   const start = new Date(`${isoDate}T00:00:00+05:30`);
   const end = new Date(`${isoDate}T23:59:59.999+05:30`);
@@ -83,6 +112,118 @@ export function correctionTimeToIso(correctionDate: string, value: string | null
 
 export function isSameIndiaDate(iso: string, correctionDateIso: string) {
   return isoDateInIndia(iso) === correctionDateIso;
+}
+
+export async function upsertPunchEventFromCorrection(args: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  correctionDate: string;
+  requestedTime: string | null;
+  punchType: "in" | "out";
+  performedBy: string;
+  correctionId: string;
+}) {
+  const { admin, companyId, employeeId, correctionDate, requestedTime, punchType, performedBy, correctionId } = args;
+  if (!requestedTime) return "";
+
+  const requestedIso = correctionTimeToIso(correctionDate, requestedTime);
+  if (!requestedIso) return `Invalid ${punchType === "in" ? "punch in" : "punch out"} time.`;
+
+  const { fromIso, toIso } = dateRangeForIndiaIsoDate(correctionDate);
+  const { data: events, error: eventsError } = await admin
+    .from("attendance_punch_events")
+    .select("id,event_id,punch_type,effective_punch_at,server_received_at,approval_status")
+    .eq("company_id", companyId)
+    .eq("employee_id", employeeId)
+    .order("server_received_at", { ascending: true })
+    .gte("server_received_at", fromIso)
+    .lte("server_received_at", toIso);
+  if (eventsError) return eventsError.message || "Unable to apply correction to attendance events.";
+
+  const dayEvents = (events || [])
+    .filter((event: any) => event.approval_status !== "rejected")
+    .filter((event: any) => {
+      const sourceIso = event.effective_punch_at || event.server_received_at || "";
+      return sourceIso ? isSameIndiaDate(sourceIso, correctionDate) : false;
+    })
+    .filter((event: any) => event.punch_type === punchType);
+
+  const existing = punchType === "in" ? dayEvents[0] : dayEvents[dayEvents.length - 1];
+  if (existing?.id) {
+    const { error: updateError } = await admin
+      .from("attendance_punch_events")
+      .update({
+        effective_punch_at: requestedIso,
+        requires_approval: false,
+        approval_status: "approved",
+        approval_reason_codes: ["ADMIN_CORRECTION_APPROVED"],
+      })
+      .eq("id", existing.id)
+      .eq("company_id", companyId)
+      .eq("employee_id", employeeId);
+    return updateError ? String(updateError.message || "Unable to update attendance punch event.") : "";
+  }
+
+  const [employeeResult, companyResult] = await Promise.all([
+    admin
+      .from("employees")
+      .select("attendance_mode")
+      .eq("id", employeeId)
+      .eq("company_id", companyId)
+      .maybeSingle(),
+    admin
+      .from("companies")
+      .select("office_lat,office_lon,office_radius_m")
+      .eq("id", companyId)
+      .maybeSingle(),
+  ]);
+
+  if (employeeResult.error || !employeeResult.data) {
+    return employeeResult.error?.message || "Employee snapshot missing for correction apply.";
+  }
+  if (companyResult.error || !companyResult.data) {
+    return companyResult.error?.message || "Company snapshot missing for correction apply.";
+  }
+
+  const ms = new Date(requestedIso).getTime();
+  const { error: insertError } = await admin.from("attendance_punch_events").insert({
+    company_id: companyId,
+    employee_id: employeeId,
+    event_id: crypto.randomUUID(),
+    source: "mobile",
+    punch_type: punchType,
+    attendance_mode_snapshot: employeeResult.data.attendance_mode === "office_only" ? "office_only" : "field_staff",
+    office_lat_snapshot: companyResult.data.office_lat,
+    office_lon_snapshot: companyResult.data.office_lon,
+    office_radius_m_snapshot: companyResult.data.office_radius_m,
+    lat: 0,
+    lon: 0,
+    address_text: "Attendance correction",
+    accuracy_m: 0,
+    distance_from_office_m: null,
+    is_offline: false,
+    device_time_ms: Number.isFinite(ms) ? ms : 0,
+    device_time_at: requestedIso,
+    estimated_time_ms: null,
+    estimated_time_at: null,
+    trusted_anchor_time_ms: null,
+    trusted_anchor_time_at: null,
+    trusted_anchor_elapsed_ms: 0,
+    elapsed_ms: 0,
+    clock_drift_ms: null,
+    server_received_at: new Date().toISOString(),
+    effective_punch_at: requestedIso,
+    requires_approval: false,
+    approval_status: "approved",
+    approval_reason_codes: ["ADMIN_CORRECTION_APPROVED"],
+    raw_payload: {
+      source: "attendance_correction",
+      correction_id: correctionId,
+      applied_by: performedBy,
+    },
+  });
+  return insertError ? String(insertError.message || "Unable to create corrected attendance punch event.") : "";
 }
 
 export async function expirePendingCorrections(admin: any, companyId?: string) {

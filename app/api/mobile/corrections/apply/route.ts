@@ -1,10 +1,13 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { resolveCorrectionPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { normalizeDateInputToIso } from "@/lib/dateTime";
 import {
   expirePendingCorrections,
   monthRangeForIsoDate,
+  upsertPunchEventFromCorrection,
   validateCorrectionReason,
-  validateCorrectionWindow,
+  validateCorrectionWindowWithPolicy,
 } from "@/lib/attendanceCorrections";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
@@ -51,16 +54,70 @@ export async function POST(req: NextRequest) {
 
   if (!correctionDateRaw) return NextResponse.json({ error: "Correction date is required." }, { status: 400 });
   if (!correctionDate) return NextResponse.json({ error: "Correction date is invalid. Use DD MMM YYYY." }, { status: 400 });
-  const windowError = validateCorrectionWindow(correctionDate);
+
+  const policyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    correctionDate,
+    ["correction"],
+  );
+  const correctionPolicy = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
+
+  if (!correctionPolicy.attendanceCorrectionEnabled) {
+    return NextResponse.json({ error: "Attendance correction is disabled for your assigned policy." }, { status: 403 });
+  }
+
+  const windowError = validateCorrectionWindowWithPolicy({
+    correctionDateIso: correctionDate,
+    requestWindowDays: correctionPolicy.correctionRequestWindow,
+    backdatedAllowed: correctionPolicy.backdatedCorrectionAllowed,
+    maximumBackdatedDays: correctionPolicy.maximumBackdatedDays,
+  });
   if (windowError) return NextResponse.json({ error: windowError }, { status: 400 });
+
   if (!requestedCheckIn && !requestedCheckOut) {
     return NextResponse.json({ error: "Requested check-in or check-out is required." }, { status: 400 });
   }
   if (requestedCheckIn && requestedCheckOut && requestedCheckOut <= requestedCheckIn) {
     return NextResponse.json({ error: "Punch out time must be later than punch in time." }, { status: 400 });
   }
-  const reasonError = validateCorrectionReason(reason);
-  if (reasonError) return NextResponse.json({ error: reasonError }, { status: 400 });
+  if (correctionPolicy.reasonMandatory) {
+    const reasonError = validateCorrectionReason(reason);
+    if (reasonError) return NextResponse.json({ error: reasonError }, { status: 400 });
+  }
+
+  const { data: dayEvents, error: dayEventsError } = await session.admin
+    .from("attendance_punch_events")
+    .select("punch_type,effective_punch_at,server_received_at,approval_status")
+    .eq("company_id", session.employee.company_id)
+    .eq("employee_id", session.employee.id)
+    .gte("server_received_at", `${correctionDate}T00:00:00.000+05:30`)
+    .lte("server_received_at", `${correctionDate}T23:59:59.999+05:30`)
+    .order("server_received_at", { ascending: true });
+
+  if (dayEventsError) {
+    return NextResponse.json({ error: dayEventsError.message || "Unable to inspect correction day punches." }, { status: 400 });
+  }
+
+  const effectiveDayEvents = Array.isArray(dayEvents) ? dayEvents.filter((row) => row.approval_status !== "rejected") : [];
+  const existingCheckIn = effectiveDayEvents.find((row) => row.punch_type === "in");
+  const existingCheckOut = [...effectiveDayEvents].reverse().find((row) => row.punch_type === "out");
+  const existingCheckInTime = String(existingCheckIn?.effective_punch_at || existingCheckIn?.server_received_at || "").slice(11, 16);
+  const existingCheckOutTime = String(existingCheckOut?.effective_punch_at || existingCheckOut?.server_received_at || "").slice(11, 16);
+  const isMissingPunchRequest =
+    (requestedCheckIn && !requestedCheckOut && !existingCheckIn) ||
+    (!requestedCheckIn && requestedCheckOut && !existingCheckOut);
+
+  if (isMissingPunchRequest && !correctionPolicy.missingPunchCorrectionAllowed) {
+    return NextResponse.json({ error: "Missing punch correction is not allowed by your assigned policy." }, { status: 403 });
+  }
+  if (requestedCheckIn && existingCheckInTime && requestedCheckIn < existingCheckInTime && !correctionPolicy.latePunchRegularizationAllowed) {
+    return NextResponse.json({ error: "Late punch regularization is not allowed by your assigned policy." }, { status: 403 });
+  }
+  if (requestedCheckOut && existingCheckOutTime && requestedCheckOut > existingCheckOutTime && !correctionPolicy.earlyGoRegularizationAllowed) {
+    return NextResponse.json({ error: "Early go regularization is not allowed by your assigned policy." }, { status: 403 });
+  }
 
   const { data: pendingDuplicate, error: duplicateError } = await session.admin
     .from("employee_attendance_corrections")
@@ -88,7 +145,8 @@ export async function POST(req: NextRequest) {
   if (countError) {
     return NextResponse.json({ error: countError.message || "Unable to validate monthly limit." }, { status: 400 });
   }
-  if (Number(count || 0) >= 5) {
+  if (Number(count || 0) >= correctionPolicy.maximumRequestsPerMonth) {
+    const nowIso = new Date().toISOString();
     await session.admin.from("employee_attendance_correction_audit_logs").insert({
       correction_id: null,
       company_id: session.employee.company_id,
@@ -103,11 +161,15 @@ export async function POST(req: NextRequest) {
       reason_snapshot: reason,
       performed_by: session.employee.id,
       performed_role: "employee",
-      remark: "Monthly limit exceeded (5).",
-      created_at: new Date().toISOString(),
+      remark: `Monthly limit exceeded (${correctionPolicy.maximumRequestsPerMonth}).`,
+      created_at: nowIso,
     });
-    return NextResponse.json({ error: "Monthly correction limit reached (5). Contact company admin." }, { status: 429 });
+    return NextResponse.json({ error: `Monthly correction limit reached (${correctionPolicy.maximumRequestsPerMonth}). Contact company admin.` }, { status: 429 });
   }
+
+  const nowIso = new Date().toISOString();
+  const nextStatus = correctionPolicy.approvalRequired ? "pending" : "approved";
+  const autoRemark = correctionPolicy.approvalRequired ? null : "Auto-approved as per assigned correction policy.";
 
   const { data, error } = await session.admin
     .from("employee_attendance_corrections")
@@ -118,9 +180,12 @@ export async function POST(req: NextRequest) {
       requested_check_in: requestedCheckIn || null,
       requested_check_out: requestedCheckOut || null,
       reason,
-      status: "pending",
-      submitted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      status: nextStatus,
+      admin_remark: autoRemark,
+      reviewed_at: correctionPolicy.approvalRequired ? null : nowIso,
+      reviewed_by: correctionPolicy.approvalRequired ? null : "policy_auto",
+      submitted_at: nowIso,
+      updated_at: nowIso,
     })
     .select("id,correction_date,requested_check_in,requested_check_out,reason,status,admin_remark,submitted_at")
     .single();
@@ -129,13 +194,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message || "Unable to submit correction request." }, { status: 400 });
   }
 
+  if (!correctionPolicy.approvalRequired) {
+    const checkInApplyError = await upsertPunchEventFromCorrection({
+      admin: session.admin,
+      companyId: session.employee.company_id,
+      employeeId: session.employee.id,
+      correctionDate,
+      requestedTime: requestedCheckIn || null,
+      punchType: "in",
+      performedBy: session.employee.id,
+      correctionId: data.id,
+    });
+    if (checkInApplyError) return NextResponse.json({ error: checkInApplyError }, { status: 400 });
+
+    const checkOutApplyError = await upsertPunchEventFromCorrection({
+      admin: session.admin,
+      companyId: session.employee.company_id,
+      employeeId: session.employee.id,
+      correctionDate,
+      requestedTime: requestedCheckOut || null,
+      punchType: "out",
+      performedBy: session.employee.id,
+      correctionId: data.id,
+    });
+    if (checkOutApplyError) return NextResponse.json({ error: checkOutApplyError }, { status: 400 });
+  }
+
   await session.admin.from("employee_attendance_correction_audit_logs").insert({
     correction_id: data.id,
     company_id: session.employee.company_id,
     employee_id: session.employee.id,
     action: "submitted",
     old_status: null,
-    new_status: "pending",
+    new_status: nextStatus,
     old_requested_check_in: null,
     new_requested_check_in: requestedCheckIn || null,
     old_requested_check_out: null,
@@ -143,8 +234,8 @@ export async function POST(req: NextRequest) {
     reason_snapshot: reason,
     performed_by: session.employee.id,
     performed_role: "employee",
-    remark: null,
-    created_at: new Date().toISOString(),
+    remark: autoRemark,
+    created_at: nowIso,
   });
 
   return NextResponse.json({
@@ -161,5 +252,3 @@ export async function POST(req: NextRequest) {
     },
   });
 }
-
-
