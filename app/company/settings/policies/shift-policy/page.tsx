@@ -7,6 +7,7 @@ import {
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
+  PolicySuccessOverlay,
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
@@ -82,6 +83,7 @@ export default function NewShiftPolicyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const assignedWorkforceCount = 24;
 
   const shiftDuration = useMemo(
@@ -96,6 +98,11 @@ export default function NewShiftPolicyPage() {
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
+  }
+
+  function showSuccess(message: string) {
+    setSuccessMessage(message);
+    window.setTimeout(() => setSuccessMessage(null), 1800);
   }
 
   async function accessToken() {
@@ -202,7 +209,8 @@ export default function NewShiftPolicyPage() {
       return [nextPolicy, ...next];
     });
     setIsCreatingNew(false);
-    notify(creating ? "New shift policy created successfully." : "Shift policy saved and synced to legacy settings.");
+    setShowForm(false);
+    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
   }
 
   return (
@@ -211,6 +219,7 @@ export default function NewShiftPolicyPage() {
       title="Shift Policy"
       description="Maintain company shift policy records and create structured shift policies with effective governance dates and default applicability."
     >
+      <PolicySuccessOverlay message={successMessage} />
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
 
       <PolicyRegisterSection
@@ -355,7 +364,7 @@ export default function NewShiftPolicyPage() {
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Saving..." : "Save Policy"}
+                {saving ? "Submitting..." : "Submit"}
               </button>
               <button
                 type="button"

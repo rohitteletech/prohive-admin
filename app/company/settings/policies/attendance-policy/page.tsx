@@ -7,6 +7,7 @@ import {
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
+  PolicySuccessOverlay,
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
@@ -81,6 +82,7 @@ export default function NewAttendancePolicyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function update<K extends keyof AttendancePolicyState>(key: K, value: AttendancePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -89,6 +91,11 @@ export default function NewAttendancePolicyPage() {
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
+  }
+
+  function showSuccess(message: string) {
+    setSuccessMessage(message);
+    window.setTimeout(() => setSuccessMessage(null), 1800);
   }
 
   async function accessToken() {
@@ -184,7 +191,8 @@ export default function NewAttendancePolicyPage() {
       return [nextPolicy, ...next];
     });
     setIsCreatingNew(false);
-    notify(creating ? "New attendance policy created successfully." : "Attendance policy saved and synced to legacy settings.");
+    setShowForm(false);
+    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
   }
 
   return (
@@ -193,6 +201,7 @@ export default function NewAttendancePolicyPage() {
       title="Attendance Policy"
       description="Maintain company attendance policy records and create structured attendance policies for daily status, monthly formula, and penalty governance."
     >
+      <PolicySuccessOverlay message={successMessage} />
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
 
       <PolicyRegisterSection
@@ -388,7 +397,7 @@ export default function NewAttendancePolicyPage() {
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Saving..." : "Save Policy"}
+                {saving ? "Submitting..." : "Submit"}
               </button>
               <button
                 type="button"

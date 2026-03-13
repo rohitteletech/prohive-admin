@@ -7,6 +7,7 @@ import {
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
+  PolicySuccessOverlay,
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
@@ -67,6 +68,7 @@ export default function HolidayWeeklyOffPolicyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function update<K extends keyof HolidayPolicyState>(key: K, value: HolidayPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -75,6 +77,11 @@ export default function HolidayWeeklyOffPolicyPage() {
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
+  }
+
+  function showSuccess(message: string) {
+    setSuccessMessage(message);
+    window.setTimeout(() => setSuccessMessage(null), 1800);
   }
 
   async function accessToken() {
@@ -170,7 +177,8 @@ export default function HolidayWeeklyOffPolicyPage() {
       return [nextPolicy, ...next];
     });
     setIsCreatingNew(false);
-    notify(creating ? "New holiday policy created successfully." : "Holiday policy saved and synced to legacy settings.");
+    setShowForm(false);
+    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
   }
 
   return (
@@ -179,6 +187,7 @@ export default function HolidayWeeklyOffPolicyPage() {
       title="Holiday / Weekly Off Policy"
       description="Maintain company holiday and weekly off policy records and define non-working day rules, punch handling, worked-day treatment, and comp off governance."
     >
+      <PolicySuccessOverlay message={successMessage} />
       {toast ? (
         <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">
           {toast}
@@ -360,7 +369,7 @@ export default function HolidayWeeklyOffPolicyPage() {
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Saving..." : "Save Policy"}
+                {saving ? "Submitting..." : "Submit"}
               </button>
               <button
                 type="button"

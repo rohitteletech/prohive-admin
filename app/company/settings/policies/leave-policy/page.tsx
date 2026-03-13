@@ -7,6 +7,7 @@ import {
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
+  PolicySuccessOverlay,
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
@@ -147,6 +148,7 @@ export default function LeavePolicyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function updatePolicy<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -175,6 +177,11 @@ export default function LeavePolicyPage() {
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
+  }
+
+  function showSuccess(message: string) {
+    setSuccessMessage(message);
+    window.setTimeout(() => setSuccessMessage(null), 1800);
   }
 
   async function accessToken() {
@@ -295,7 +302,8 @@ export default function LeavePolicyPage() {
       [nextPolicy.policyId]: leaveTypes.map((leaveType) => ({ ...leaveType })),
     }));
     setIsCreatingNew(false);
-    notify(creating ? "New leave policy created successfully." : "Leave policy saved and synced to legacy settings.");
+    setShowForm(false);
+    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
   }
 
   return (
@@ -304,6 +312,7 @@ export default function LeavePolicyPage() {
       title="Leave Policy"
       description="Maintain company leave policy records and define leave types, approval rules, attendance override handling, and carry-forward governance."
     >
+      <PolicySuccessOverlay message={successMessage} />
       {toast ? (
         <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">
           {toast}
@@ -535,7 +544,7 @@ export default function LeavePolicyPage() {
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Saving..." : "Save Policy"}
+                {saving ? "Submitting..." : "Submit"}
               </button>
               <button
                 type="button"
