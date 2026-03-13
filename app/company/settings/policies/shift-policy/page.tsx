@@ -2,15 +2,9 @@
 
 import { useState } from "react";
 import {
-  AsideCard,
-  Field,
   PolicyActions,
   PolicyPage,
   PolicyRegisterSection,
-  PolicySection,
-  Select,
-  SnapshotRow,
-  TextInput,
 } from "@/components/company/policy-ui";
 
 type Mode = "draft" | "published";
@@ -79,14 +73,6 @@ export default function NewShiftPolicyPage() {
           <PolicyActions onDraft={() => { setMode("draft"); notify("Shift policy draft saved locally."); }} onPublish={() => { setMode("published"); notify("Shift policy marked ready for backend wiring."); }} />
         </>
       }
-      aside={
-        <AsideCard title="Policy Snapshot" description="Quick view of the shift policy this page is setting up.">
-          <SnapshotRow label="Default Shift" value={`${draft.defaultShiftName}: ${draft.shiftStart} to ${draft.shiftEnd}`} />
-          <SnapshotRow label="Login Access" value={draft.loginAccessRule === "any_time" ? "Punch allowed any time" : "Punch allowed only during shift time"} />
-          <SnapshotRow label="Grace Rule" value={`${draft.graceMinutes} minutes after shift start`} />
-          <SnapshotRow label="Weekly Off" value={draft.weeklyOffPattern === "sunday_only" ? "Sunday only" : draft.weeklyOffPattern === "saturday_sunday" ? "Saturday and Sunday" : "Alternate Saturday + Sunday"} />
-        </AsideCard>
-      }
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
       <PolicyRegisterSection
@@ -108,43 +94,6 @@ export default function NewShiftPolicyPage() {
           defaultPolicy: "Yes",
         }}
       />
-
-      <PolicySection title="Core Shift Rules" description="Define default shift timings and base punch windows." tone="slate">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Policy Name"><TextInput value={draft.policyName} onChange={(e) => update("policyName", e.target.value)} /></Field>
-          <Field label="Effective Date"><TextInput type="date" value={draft.effectiveDate} onChange={(e) => update("effectiveDate", e.target.value)} /></Field>
-          <Field label="Default Shift Name"><TextInput value={draft.defaultShiftName} onChange={(e) => update("defaultShiftName", e.target.value)} /></Field>
-          <Field label="Login Access Rule">
-            <Select value={draft.loginAccessRule} onChange={(e) => update("loginAccessRule", e.target.value as ShiftPolicyState["loginAccessRule"])}>
-              <option value="any_time">Allow Login Any Time</option>
-              <option value="shift_time_only">Allow Login Only During Shift Time</option>
-            </Select>
-          </Field>
-          <Field label="Shift Start"><TextInput type="time" value={draft.shiftStart} onChange={(e) => update("shiftStart", e.target.value)} /></Field>
-          <Field label="Shift End"><TextInput type="time" value={draft.shiftEnd} onChange={(e) => update("shiftEnd", e.target.value)} /></Field>
-          <Field label="Grace Period (mins)"><TextInput value={draft.graceMinutes} onChange={(e) => update("graceMinutes", e.target.value)} /></Field>
-          <Field label="Early In Allowed (mins)"><TextInput value={draft.earlyInMinutes} onChange={(e) => update("earlyInMinutes", e.target.value)} /></Field>
-          <Field label="Minimum Work Before Punch Out (mins)"><TextInput value={draft.minWorkBeforeOutMinutes} onChange={(e) => update("minWorkBeforeOutMinutes", e.target.value)} /></Field>
-          <Field label="Shift Rotation">
-            <Select value={draft.shiftRotation} onChange={(e) => update("shiftRotation", e.target.value as ShiftPolicyState["shiftRotation"])}>
-              <option value="fixed">Fixed Shift</option>
-              <option value="rotational">Rotational Shift</option>
-            </Select>
-          </Field>
-        </div>
-      </PolicySection>
-
-      <PolicySection title="Weekly Off Mapping" description="Define the default non-working pattern used by attendance and holiday pages.">
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Weekly Off Pattern">
-            <Select value={draft.weeklyOffPattern} onChange={(e) => update("weeklyOffPattern", e.target.value as ShiftPolicyState["weeklyOffPattern"])}>
-              <option value="sunday_only">Sunday Only</option>
-              <option value="saturday_sunday">Saturday + Sunday</option>
-              <option value="alternate_saturday">Alternate Saturday + Sunday</option>
-            </Select>
-          </Field>
-        </div>
-      </PolicySection>
     </PolicyPage>
   );
 }
