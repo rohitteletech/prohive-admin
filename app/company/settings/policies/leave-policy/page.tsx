@@ -139,9 +139,10 @@ function createBlankLeaveType(): LeaveType {
 export default function LeavePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialPolicyState);
-  const [savedPolicy, setSavedPolicy] = useState(initialPolicyState);
+  const [savedPolicies, setSavedPolicies] = useState<LeavePolicyState[]>([]);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
   const [savedLeaveTypes, setSavedLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
+  const [savedLeaveTypesByPolicy, setSavedLeaveTypesByPolicy] = useState<Record<string, LeaveType[]>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -205,11 +206,42 @@ export default function LeavePolicyPage() {
     const { leaveTypes: nextLeaveTypes, ...policy } = result;
     const nextPolicy = { ...initialPolicyState, ...policy };
     setDraft(nextPolicy);
-    setSavedPolicy(nextPolicy);
     if (Array.isArray(nextLeaveTypes) && nextLeaveTypes.length > 0) {
       setLeaveTypes(nextLeaveTypes);
       setSavedLeaveTypes(nextLeaveTypes);
     }
+    const policiesResponse = await fetch("/api/company/policies?policy_type=leave", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
+      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+    };
+    const loadedPolicies =
+      Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
+        ? policiesResult.policies.map((policyRow) => {
+            const config = (policyRow.configJson || {}) as Partial<LeavePolicyState> & { leaveTypes?: LeaveType[] };
+            return {
+              ...initialPolicyState,
+              ...config,
+              policyId: policyRow.id,
+              policyName: String(config.policyName || policyRow.policyName || ""),
+              policyCode: String(config.policyCode || policyRow.policyCode || ""),
+              effectiveFrom: String(config.effectiveFrom || policyRow.effectiveFrom || initialPolicyState.effectiveFrom),
+              nextReviewDate: String(config.nextReviewDate || policyRow.nextReviewDate || initialPolicyState.nextReviewDate),
+              status: policyRow.status === "active" ? "Active" : policyRow.status === "archived" ? "Archived" : "Draft",
+              defaultCompanyPolicy: policyRow.isDefault ? "Yes" : "No",
+            } satisfies LeavePolicyState;
+          })
+        : [nextPolicy];
+    setSavedPolicies(loadedPolicies);
+    setSavedLeaveTypesByPolicy(
+      Object.fromEntries(
+        (Array.isArray(policiesResult.policies) ? policiesResult.policies : []).map((policyRow) => {
+          const config = (policyRow.configJson || {}) as { leaveTypes?: LeaveType[] };
+          return [policyRow.id, Array.isArray(config.leaveTypes) && config.leaveTypes.length > 0 ? config.leaveTypes : []];
+        }),
+      ),
+    );
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -253,8 +285,15 @@ export default function LeavePolicyPage() {
       policyId: result.policyId || draft.policyId,
     };
     setDraft(nextPolicy);
-    setSavedPolicy(nextPolicy);
+    setSavedPolicies((current) => {
+      const next = current.filter((policy) => policy.policyId !== nextPolicy.policyId);
+      return [nextPolicy, ...next];
+    });
     setSavedLeaveTypes(leaveTypes.map((leaveType) => ({ ...leaveType })));
+    setSavedLeaveTypesByPolicy((current) => ({
+      ...current,
+      [nextPolicy.policyId]: leaveTypes.map((leaveType) => ({ ...leaveType })),
+    }));
     setIsCreatingNew(false);
     notify(creating ? "New leave policy created successfully." : "Leave policy saved and synced to legacy settings.");
   }
@@ -274,24 +313,27 @@ export default function LeavePolicyPage() {
       <PolicyRegisterSection
         description="Maintain approved leave policies with effective governance dates, ownership, and default company applicability."
         onCreate={openNewForm}
-        onEdit={() => {
-          setDraft(savedPolicy);
-          setLeaveTypes(savedLeaveTypes.map((leaveType) => ({ ...leaveType })));
+        onEdit={(rowId) => {
+          const selected = savedPolicies.find((policy) => policy.policyId === rowId);
+          if (!selected) return notify("Selected leave policy was not found.");
+          setDraft(selected);
+          setLeaveTypes((savedLeaveTypesByPolicy[rowId] || savedLeaveTypes).map((leaveType) => ({ ...leaveType })));
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current leave policy opened for editing.");
         }}
-        row={{
-          name: savedPolicy.policyName,
+        rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
+          id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
+          name: policy.policyName,
           assignedWorkforce: "24 Employees",
-          policyCode: savedPolicy.policyCode,
-          effectiveFrom: savedPolicy.effectiveFrom,
-          reviewDueOn: savedPolicy.nextReviewDate,
-          status: savedPolicy.status,
+          policyCode: policy.policyCode,
+          effectiveFrom: policy.effectiveFrom,
+          reviewDueOn: policy.nextReviewDate,
+          status: policy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:10 AM",
-          defaultPolicy: savedPolicy.defaultCompanyPolicy,
-        }}
+          defaultPolicy: policy.defaultCompanyPolicy,
+        }))}
       />
 
       {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading leave policy...</div> : null}

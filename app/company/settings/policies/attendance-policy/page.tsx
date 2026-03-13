@@ -76,7 +76,7 @@ function createNewPolicyDraft(): AttendancePolicyState {
 export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
-  const [savedPolicy, setSavedPolicy] = useState(initialState);
+  const [savedPolicies, setSavedPolicies] = useState<AttendancePolicyState[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,7 +116,30 @@ export default function NewAttendancePolicyPage() {
 
     const nextPolicy = { ...initialState, ...result };
     setDraft(nextPolicy);
-    setSavedPolicy(nextPolicy);
+    const policiesResponse = await fetch("/api/company/policies?policy_type=attendance", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
+      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+    };
+    const loadedPolicies =
+      Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
+        ? policiesResult.policies.map((policy) => {
+            const config = (policy.configJson || {}) as Partial<AttendancePolicyState>;
+            return {
+              ...initialState,
+              ...config,
+              policyId: policy.id,
+              policyName: String(config.policyName || policy.policyName || ""),
+              policyCode: String(config.policyCode || policy.policyCode || ""),
+              effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
+              nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
+              status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
+              defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+            } satisfies AttendancePolicyState;
+          })
+        : [nextPolicy];
+    setSavedPolicies(loadedPolicies);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -156,7 +179,10 @@ export default function NewAttendancePolicyPage() {
       policyId: result.policyId || draft.policyId,
     };
     setDraft(nextPolicy);
-    setSavedPolicy(nextPolicy);
+    setSavedPolicies((current) => {
+      const next = current.filter((policy) => policy.policyId !== nextPolicy.policyId);
+      return [nextPolicy, ...next];
+    });
     setIsCreatingNew(false);
     notify(creating ? "New attendance policy created successfully." : "Attendance policy saved and synced to legacy settings.");
   }
@@ -172,23 +198,26 @@ export default function NewAttendancePolicyPage() {
       <PolicyRegisterSection
         description="Maintain approved attendance policies with effective governance dates, administrative ownership, and default company applicability."
         onCreate={openNewForm}
-        onEdit={() => {
-          setDraft(savedPolicy);
+        onEdit={(rowId) => {
+          const selected = savedPolicies.find((policy) => policy.policyId === rowId);
+          if (!selected) return notify("Selected attendance policy was not found.");
+          setDraft(selected);
           setShowForm(true);
           setIsCreatingNew(false);
           notify("Current attendance policy opened for editing.");
         }}
-        row={{
-          name: savedPolicy.policyName,
+        rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
+          id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
+          name: policy.policyName,
           assignedWorkforce: "24 Employees",
-          policyCode: savedPolicy.policyCode,
-          effectiveFrom: savedPolicy.effectiveFrom,
-          reviewDueOn: savedPolicy.nextReviewDate,
-          status: savedPolicy.status,
+          policyCode: policy.policyCode,
+          effectiveFrom: policy.effectiveFrom,
+          reviewDueOn: policy.nextReviewDate,
+          status: policy.status,
           createdBy: "Company Admin",
           createdOn: "2026-03-13 08:05 AM",
-          defaultPolicy: savedPolicy.defaultCompanyPolicy,
-        }}
+          defaultPolicy: policy.defaultCompanyPolicy,
+        }))}
       />
 
       {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading attendance policy...</div> : null}

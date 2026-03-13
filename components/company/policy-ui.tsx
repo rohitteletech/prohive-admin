@@ -178,14 +178,15 @@ export function PolicyRegisterSection({
   onCreate,
   onEdit,
   onDelete,
-  row,
+  rows,
 }: {
   title?: string;
   description: string;
   onCreate: () => void;
-  onEdit: () => void;
-  onDelete?: () => void;
-  row: {
+  onEdit: (rowId: string) => void;
+  onDelete?: (rowId: string) => void;
+  rows: Array<{
+    id: string;
     name: string;
     assignedWorkforce?: string;
     policyCode?: string;
@@ -195,7 +196,7 @@ export function PolicyRegisterSection({
     createdBy: string;
     createdOn: string;
     defaultPolicy: string;
-  };
+  }>;
 }) {
   return (
     <section className="rounded-[22px] border border-slate-200 bg-white p-4 sm:p-5">
@@ -230,41 +231,43 @@ export function PolicyRegisterSection({
             </tr>
           </thead>
           <tbody className="bg-white text-slate-800">
-            <tr className="border-t border-slate-200">
-              <td className="px-4 py-3 font-semibold">{row.name}</td>
-              <td className="px-4 py-3">{row.assignedWorkforce || "0 Employees"}</td>
-              <td className="px-4 py-3">{row.policyCode || "-"}</td>
-              <td className="px-4 py-3">{row.effectiveFrom}</td>
-              <td className="px-4 py-3">{row.reviewDueOn}</td>
-              <td className="px-4 py-3">
-                <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                  {row.status}
-                </span>
-              </td>
-              <td className="px-4 py-3">{row.createdBy}</td>
-              <td className="px-4 py-3">{row.createdOn}</td>
-              <td className="px-4 py-3">{row.defaultPolicy}</td>
-              <td className="px-4 py-3 text-right">
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={onEdit}
-                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    Edit
-                  </button>
-                  {onDelete ? (
+            {rows.map((row) => (
+              <tr key={row.id} className="border-t border-slate-200">
+                <td className="px-4 py-3 font-semibold">{row.name}</td>
+                <td className="px-4 py-3">{row.assignedWorkforce || "0 Employees"}</td>
+                <td className="px-4 py-3">{row.policyCode || "-"}</td>
+                <td className="px-4 py-3">{row.effectiveFrom}</td>
+                <td className="px-4 py-3">{row.reviewDueOn}</td>
+                <td className="px-4 py-3">
+                  <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                    {row.status}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{row.createdBy}</td>
+                <td className="px-4 py-3">{row.createdOn}</td>
+                <td className="px-4 py-3">{row.defaultPolicy}</td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex justify-end gap-2">
                     <button
                       type="button"
-                      onClick={onDelete}
-                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                      onClick={() => onEdit(row.id)}
+                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                     >
-                      Delete
+                      Edit
                     </button>
-                  ) : null}
-                </div>
-              </td>
-            </tr>
+                    {onDelete ? (
+                      <button
+                        type="button"
+                        onClick={() => onDelete(row.id)}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                      >
+                        Delete
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </div>
