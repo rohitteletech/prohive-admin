@@ -17,9 +17,10 @@ export function PolicyPage({
   children: React.ReactNode;
   aside?: React.ReactNode;
 }) {
+  const hasAside = Boolean(aside);
   return (
     <div className="mx-auto max-w-6xl px-3 pb-6 pt-0 sm:px-4 lg:px-5">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start">
+      <div className={hasAside ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start" : "grid gap-4"}>
         <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
@@ -33,7 +34,7 @@ export function PolicyPage({
           </div>
           <div className="mt-6 space-y-5">{children}</div>
         </section>
-        <aside className="space-y-4 xl:sticky xl:top-24">{aside}</aside>
+        {hasAside ? <aside className="space-y-4 xl:sticky xl:top-24">{aside}</aside> : null}
       </div>
     </div>
   );
