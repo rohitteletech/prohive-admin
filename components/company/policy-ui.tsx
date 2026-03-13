@@ -177,14 +177,17 @@ export function PolicyRegisterSection({
   description,
   onCreate,
   onEdit,
+  onDelete,
   row,
 }: {
   title?: string;
   description: string;
   onCreate: () => void;
   onEdit: () => void;
+  onDelete?: () => void;
   row: {
     name: string;
+    assignedWorkforce?: string;
     policyCode?: string;
     effectiveFrom: string;
     reviewDueOn: string;
@@ -215,6 +218,7 @@ export function PolicyRegisterSection({
           <thead className="bg-slate-100 text-[11px] uppercase tracking-[0.14em] text-slate-600">
             <tr>
               <th className="px-4 py-3 font-semibold">Policy Name</th>
+              <th className="px-4 py-3 font-semibold">Assigned Workforce</th>
               <th className="px-4 py-3 font-semibold">Policy Code</th>
               <th className="px-4 py-3 font-semibold">Effective From</th>
               <th className="px-4 py-3 font-semibold">Next Review Date</th>
@@ -228,6 +232,7 @@ export function PolicyRegisterSection({
           <tbody className="bg-white text-slate-800">
             <tr className="border-t border-slate-200">
               <td className="px-4 py-3 font-semibold">{row.name}</td>
+              <td className="px-4 py-3">{row.assignedWorkforce || "0 Employees"}</td>
               <td className="px-4 py-3">{row.policyCode || "-"}</td>
               <td className="px-4 py-3">{row.effectiveFrom}</td>
               <td className="px-4 py-3">{row.reviewDueOn}</td>
@@ -240,13 +245,24 @@ export function PolicyRegisterSection({
               <td className="px-4 py-3">{row.createdOn}</td>
               <td className="px-4 py-3">{row.defaultPolicy}</td>
               <td className="px-4 py-3 text-right">
-                <button
-                  type="button"
-                  onClick={onEdit}
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                >
-                  Edit
-                </button>
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={onEdit}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  >
+                    Edit
+                  </button>
+                  {onDelete ? (
+                    <button
+                      type="button"
+                      onClick={onDelete}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
               </td>
             </tr>
           </tbody>

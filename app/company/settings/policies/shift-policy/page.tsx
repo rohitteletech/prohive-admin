@@ -63,6 +63,7 @@ export default function NewShiftPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
+  const assignedWorkforceCount = 24;
 
   const shiftDuration = useMemo(
     () => formatShiftDuration(draft.shiftStartTime, draft.shiftEndTime),
@@ -99,8 +100,16 @@ export default function NewShiftPolicyPage() {
           setShowForm(true);
           notify("Current shift policy opened for editing.");
         }}
+        onDelete={() => {
+          if (assignedWorkforceCount > 0) {
+            notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
+            return;
+          }
+          notify("Shift policy can now be deleted.");
+        }}
         row={{
           name: draft.policyName,
+          assignedWorkforce: `${assignedWorkforceCount} Employees`,
           policyCode: draft.policyCode,
           effectiveFrom: draft.effectiveFrom,
           reviewDueOn: draft.nextReviewDate,
