@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveCorrectionPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { ensureCompanyPolicyDefinitions, listCompanyPolicyAssignments } from "@/lib/companyPoliciesServer";
 import {
   expirePendingCorrections,
   upsertPunchEventFromCorrection,
 } from "@/lib/attendanceCorrections";
+import { resolvePolicyForEmployee } from "@/lib/companyPolicies";
 
 type Body = {
   status?: "approved" | "rejected";
@@ -18,7 +21,7 @@ type CorrectionRecord = {
   requested_check_in: string | null;
   requested_check_out: string | null;
   reason: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
   admin_remark: string | null;
 };
 
@@ -59,11 +62,35 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   if (existingError || !row?.id) {
     return NextResponse.json({ error: existingError?.message || "Correction request not found." }, { status: 404 });
   }
-  if (row.status !== "pending") {
+  if (row.status !== "pending" && row.status !== "pending_manager" && row.status !== "pending_hr") {
     return NextResponse.json({ error: "Only pending requests can be updated." }, { status: 409 });
   }
 
-  if (body.status === "approved") {
+  const employeeRowResult = await context.admin
+    .from("employees")
+    .select("department")
+    .eq("company_id", context.companyId)
+    .eq("id", row.employee_id)
+    .maybeSingle();
+  if (employeeRowResult.error) {
+    return NextResponse.json({ error: employeeRowResult.error.message || "Unable to resolve correction policy." }, { status: 400 });
+  }
+  const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+  const assignments = await listCompanyPolicyAssignments(context.admin, context.companyId);
+  const resolvedPolicy = resolvePolicyForEmployee({
+    policyType: "correction",
+    employeeId: row.employee_id,
+    department: String(employeeRowResult.data?.department || ""),
+    onDate: row.correction_date,
+    assignments,
+    definitions,
+  });
+  const correctionPolicy = resolveCorrectionPolicyRuntime(resolvedPolicy);
+  const requiresTwoStage = correctionPolicy.approvalRequired && correctionPolicy.approvalFlow === "Manager + HR Approval";
+  const currentStage = row.status === "pending_hr" ? "hr" : "manager";
+  const nextApprovedStatus = requiresTwoStage && currentStage === "manager" ? "pending_hr" : "approved";
+
+  if (body.status === "approved" && nextApprovedStatus === "approved") {
     const inApplyError = await upsertPunchEventFromCorrection({
       admin: context.admin,
       companyId: context.companyId,
@@ -93,8 +120,11 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const { data, error } = await context.admin
     .from("employee_attendance_corrections")
     .update({
-      status: body.status,
-      admin_remark: adminRemark,
+      status: body.status === "approved" ? nextApprovedStatus : body.status,
+      admin_remark:
+        body.status === "approved" && nextApprovedStatus === "pending_hr"
+          ? `${adminRemark} (Manager stage approved)`
+          : adminRemark,
       reviewed_at: reviewedAt,
       reviewed_by: context.adminEmail,
       updated_at: reviewedAt,
@@ -102,6 +132,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     .eq("company_id", context.companyId)
     .eq("id", id)
     .eq("status", "pending")
+    .in("status", ["pending", "pending_manager", "pending_hr"])
     .select("id,status")
     .maybeSingle();
 
@@ -115,7 +146,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     employee_id: row.employee_id,
     action: "reviewed",
     old_status: row.status,
-    new_status: body.status,
+    new_status: body.status === "approved" ? nextApprovedStatus : body.status,
     old_requested_check_in: row.requested_check_in,
     new_requested_check_in: row.requested_check_in,
     old_requested_check_out: row.requested_check_out,
@@ -123,7 +154,10 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     reason_snapshot: row.reason,
     performed_by: context.adminEmail,
     performed_role: "company_admin",
-    remark: adminRemark,
+    remark:
+      body.status === "approved" && nextApprovedStatus === "pending_hr"
+        ? `${adminRemark} (Advanced to HR stage)`
+        : adminRemark,
     created_at: reviewedAt,
   });
 

@@ -231,7 +231,7 @@ export async function expirePendingCorrections(admin: any, companyId?: string) {
   let query = admin
     .from("employee_attendance_corrections")
     .select("id,company_id,employee_id,status,requested_check_in,requested_check_out,reason")
-    .eq("status", "pending")
+    .in("status", ["pending", "pending_manager", "pending_hr"])
     .lte("submitted_at", threshold);
   if (companyId) {
     query = query.eq("company_id", companyId);
@@ -250,7 +250,7 @@ export async function expirePendingCorrections(admin: any, companyId?: string) {
   let updateQuery = admin
     .from("employee_attendance_corrections")
     .update(payload)
-    .eq("status", "pending")
+    .in("status", ["pending", "pending_manager", "pending_hr"])
     .lte("submitted_at", threshold);
   if (companyId) {
     updateQuery = updateQuery.eq("company_id", companyId);

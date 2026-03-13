@@ -50,7 +50,12 @@ export async function POST(req: NextRequest) {
       requestedCheckIn: displayTime(row.requested_check_in),
       requestedCheckOut: displayTime(row.requested_check_out),
       reason: row.reason,
-      status: row.status,
+      status:
+        row.status === "pending_manager"
+          ? "pending_manager"
+          : row.status === "pending_hr"
+            ? "pending_hr"
+            : row.status,
       adminRemark: row.admin_remark,
       submittedAt: formatDisplayDateTime(row.submitted_at),
     })),

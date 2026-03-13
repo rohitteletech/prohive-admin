@@ -63,6 +63,12 @@ export async function POST(req: NextRequest) {
     ["correction"],
   );
   const correctionPolicy = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
+  const initialStatus =
+    !correctionPolicy.approvalRequired
+      ? "approved"
+      : correctionPolicy.approvalFlow === "HR Approval"
+        ? "pending_hr"
+        : "pending_manager";
 
   if (!correctionPolicy.attendanceCorrectionEnabled) {
     return NextResponse.json({ error: "Attendance correction is disabled for your assigned policy." }, { status: 403 });
@@ -125,7 +131,7 @@ export async function POST(req: NextRequest) {
     .eq("company_id", session.employee.company_id)
     .eq("employee_id", session.employee.id)
     .eq("correction_date", correctionDate)
-    .eq("status", "pending")
+    .in("status", ["pending", "pending_manager", "pending_hr"])
     .maybeSingle();
   if (duplicateError) {
     return NextResponse.json({ error: duplicateError.message || "Unable to validate duplicate request." }, { status: 400 });
@@ -168,7 +174,7 @@ export async function POST(req: NextRequest) {
   }
 
   const nowIso = new Date().toISOString();
-  const nextStatus = correctionPolicy.approvalRequired ? "pending" : "approved";
+  const nextStatus = initialStatus;
   const autoRemark = correctionPolicy.approvalRequired ? null : "Auto-approved as per assigned correction policy.";
 
   const { data, error } = await session.admin
@@ -182,8 +188,8 @@ export async function POST(req: NextRequest) {
       reason,
       status: nextStatus,
       admin_remark: autoRemark,
-      reviewed_at: correctionPolicy.approvalRequired ? null : nowIso,
-      reviewed_by: correctionPolicy.approvalRequired ? null : "policy_auto",
+      reviewed_at: nextStatus === "approved" ? nowIso : null,
+      reviewed_by: nextStatus === "approved" ? "policy_auto" : null,
       submitted_at: nowIso,
       updated_at: nowIso,
     })
@@ -234,7 +240,13 @@ export async function POST(req: NextRequest) {
     reason_snapshot: reason,
     performed_by: session.employee.id,
     performed_role: "employee",
-    remark: autoRemark,
+    remark:
+      autoRemark ||
+      (nextStatus === "pending_manager"
+        ? "Submitted for manager approval as per assigned correction policy."
+        : nextStatus === "pending_hr"
+          ? "Submitted for HR approval as per assigned correction policy."
+          : null),
     created_at: nowIso,
   });
 

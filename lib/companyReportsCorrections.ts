@@ -18,7 +18,7 @@ export type CorrectionReportRow = {
   submittedAt: string;
   submittedDate: string;
   submittedTime: string;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
   adminRemark?: string;
 };
 
@@ -69,7 +69,12 @@ export async function getCorrectionsReportData(params: {
     const matchesEmployee = employeeQuery
       ? `${row.employee} ${row.employeeCode} ${row.reason} ${row.requestedIn} ${row.requestedOut}`.toLowerCase().includes(employeeQuery)
       : true;
-    const matchesStatus = statusFilter === "all" ? true : row.status === statusFilter;
+    const matchesStatus =
+      statusFilter === "all"
+        ? true
+        : statusFilter === "pending"
+          ? row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr"
+          : row.status === statusFilter;
     return matchesEmployee && matchesStatus;
   });
 
@@ -79,7 +84,7 @@ export async function getCorrectionsReportData(params: {
     rows: filteredRows,
     summary: {
       total: filteredRows.length,
-      pending: filteredRows.filter((row) => row.status === "pending").length,
+      pending: filteredRows.filter((row) => row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr").length,
       approved: filteredRows.filter((row) => row.status === "approved").length,
       rejected: filteredRows.filter((row) => row.status === "rejected").length,
     },
