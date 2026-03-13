@@ -1,4 +1,6 @@
 import { SupabaseClient } from "@supabase/supabase-js";
+import { resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { findMatchingShiftRule, isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
@@ -365,6 +367,15 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const currentPunchIso = toIsoFromMs(payload.device_time_ms) || new Date().toISOString();
   const punchDate = isoDateInTimeZone(currentPunchIso, payload.device_time_zone);
+  const policyContext = await resolvePoliciesForEmployee(admin, payload.company_id, payload.employee_id, punchDate, [
+    "shift",
+    "holiday_weekoff",
+  ]);
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
+    weeklyOffPolicy: company.weekly_off_policy,
+    allowPunchOnHoliday: company.allow_punch_on_holiday !== false,
+    allowPunchOnWeeklyOff: company.allow_punch_on_weekly_off !== false,
+  });
 
   const { data: leaveOnDate } = await admin
     .from("employee_leave_requests")
@@ -395,12 +406,12 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     .limit(1)
     .maybeSingle();
 
-  const weeklyOff = isWeeklyOffDate(punchDate, company.weekly_off_policy);
+  const weeklyOff = isWeeklyOffDate(punchDate, resolvedHoliday.weeklyOffPolicy);
   const isHoliday = Boolean(holidayOnDate?.id);
   const dayType = isHoliday ? "holiday" : weeklyOff ? "weekly_off" : "working_day";
   const isExtraWork = dayType !== "working_day";
 
-  if (isHoliday && company.allow_punch_on_holiday === false) {
+  if (isHoliday && !resolvedHoliday.allowPunchOnHoliday) {
     return {
       status: 403,
       body: {
@@ -410,7 +421,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     };
   }
 
-  if (weeklyOff && company.allow_punch_on_weekly_off === false) {
+  if (weeklyOff && !resolvedHoliday.allowPunchOnWeeklyOff) {
     return {
       status: 403,
       body: {
@@ -420,43 +431,60 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     };
   }
 
-  if (payload.punch_type === "in" && normalizeLoginAccessRule(company.login_access_rule) === "shift_time_only") {
-    const { data: shiftRows, error: shiftError } = await admin
-      .from("company_shift_definitions")
-      .select("name,type,start_time,end_time,early_window_mins,active")
-      .eq("company_id", payload.company_id)
-      .eq("active", true)
-      .order("created_at", { ascending: true });
+  const { data: shiftRows, error: shiftError } = await admin
+    .from("company_shift_definitions")
+    .select("name,type,start_time,end_time,early_window_mins,min_work_before_out_mins,active")
+    .eq("company_id", payload.company_id)
+    .eq("active", true)
+    .order("created_at", { ascending: true });
 
-    if (shiftError) {
-      return { status: 500, body: { error: shiftError.message || "Unable to load shift window policy." } };
-    }
+  if (shiftError) {
+    return { status: 500, body: { error: shiftError.message || "Unable to load shift policy." } };
+  }
 
-    const effectiveShiftRows =
-      ((shiftRows || []) as Array<{
-        name: string;
-        type: string;
-        start_time: string;
-        end_time: string;
-        early_window_mins: number;
-      }>).map((row) => ({
-        name: row.name,
-        type: row.type,
-        startTime: row.start_time,
-        endTime: row.end_time,
-        earlyWindowMins: Number(row.early_window_mins || 0),
-      })) ||
-      [];
-
-    const fallbackShiftRows = DEFAULT_COMPANY_SHIFTS.map((row) => ({
+  const effectiveShiftRows =
+    ((shiftRows || []) as Array<{
+      name: string;
+      type: string;
+      start_time: string;
+      end_time: string;
+      early_window_mins: number;
+      min_work_before_out_mins: number;
+    }>).map((row) => ({
       name: row.name,
       type: row.type,
-      startTime: row.start,
-      endTime: row.end,
-      earlyWindowMins: row.earlyWindowMins,
-    }));
+      startTime: row.start_time,
+      endTime: row.end_time,
+      earlyWindowMins: Number(row.early_window_mins || 0),
+      minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
+    })) || [];
 
-    const matchedShift = findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+  const fallbackShiftRows = DEFAULT_COMPANY_SHIFTS.map((row) => ({
+    name: row.name,
+    type: row.type,
+    startTime: row.start,
+    endTime: row.end,
+    earlyWindowMins: row.earlyWindowMins,
+    minWorkBeforeOutMins: row.minWorkBeforeOutMins,
+  }));
+
+  const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
+    shiftName: String(employee.shift_name || "General"),
+    shiftType: String(employee.shift_name || "General"),
+    loginAccessRule: company.login_access_rule,
+  });
+  const matchedShift = policyContext.resolved.shift
+    ? {
+        name: resolvedShift.shiftName,
+        type: resolvedShift.shiftType,
+        startTime: resolvedShift.shiftStartTime,
+        endTime: resolvedShift.shiftEndTime,
+        earlyWindowMins: resolvedShift.earlyInAllowed,
+        minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
+      }
+    : findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+
+  if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.loginAccessRule) === "shift_time_only") {
 
     if (
       matchedShift &&
@@ -524,47 +552,6 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   }
 
   if (payload.punch_type === "out" && lastEvent?.punch_type === "in") {
-    const { data: shiftRows, error: shiftError } = await admin
-      .from("company_shift_definitions")
-      .select("name,type,start_time,end_time,early_window_mins,min_work_before_out_mins,active")
-      .eq("company_id", payload.company_id)
-      .eq("active", true)
-      .order("created_at", { ascending: true });
-
-    if (shiftError) {
-      return { status: 500, body: { error: shiftError.message || "Unable to load shift work-out policy." } };
-    }
-
-    const effectiveShiftRows =
-      ((shiftRows || []) as Array<{
-        name: string;
-        type: string;
-        start_time: string;
-        end_time: string;
-        early_window_mins: number;
-        min_work_before_out_mins: number;
-      }>).map((row) => ({
-        name: row.name,
-        type: row.type,
-        startTime: row.start_time,
-        endTime: row.end_time,
-        earlyWindowMins: Number(row.early_window_mins || 0),
-        minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
-      })) || [];
-
-    const fallbackShiftRows = DEFAULT_COMPANY_SHIFTS.map((row) => ({
-      name: row.name,
-      type: row.type,
-      startTime: row.start,
-      endTime: row.end,
-      earlyWindowMins: row.earlyWindowMins,
-      minWorkBeforeOutMins: row.minWorkBeforeOutMins,
-    }));
-
-    const matchedShift = findMatchingShiftRule(
-      String(employee.shift_name || "General"),
-      effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows
-    );
     const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
     const workedMinutes = rawWorkedMinutes(lastPunchAt, currentPunchIso);
     const minWorkBeforeOut = Math.max(0, Math.floor(Number(matchedShift?.minWorkBeforeOutMins || 0)));

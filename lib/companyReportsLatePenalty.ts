@@ -1,4 +1,6 @@
 import { parseAttendanceScope } from "@/lib/companyReportsAttendance";
+import { resolveAttendancePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { buildDailyAttendanceDecision } from "@/lib/attendancePolicy";
 import { shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
@@ -167,6 +169,18 @@ export async function getLatePenaltyReportData(params: {
     }
   }
 
+  const resolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
+    params.admin as never,
+    params.companyId,
+    Array.from(employeesById.values()).map((row) => ({
+      id: row.id,
+      department: row.department,
+      shiftName: row.shift_name,
+    })),
+    scope.startDate,
+    ["shift", "attendance"],
+  );
+
   const shiftRows =
     ((shiftResult.data || []) as Array<{ name: string; type: string; start_time: string; end_time: string; grace_mins: number; active: boolean }>)
       .filter((row) => row.active !== false)
@@ -210,11 +224,13 @@ export async function getLatePenaltyReportData(params: {
   };
 
   const employeeLateMap = new Map<string, { upTo: number; above: number }>();
+  const employeeShiftLabelMap = new Map<string, string>();
 
   for (const [key, bucket] of groupedByDay.entries()) {
     const employeeId = key.split(":")[0];
     const employee = employeesById.get(employeeId);
     if (!employee) continue;
+    const resolvedPolicies = resolvedPoliciesByEmployee.get(employeeId);
     const ordered = [...bucket].sort((a, b) => {
       const left = new Date(a.effective_punch_at || a.server_received_at).getTime();
       const right = new Date(b.effective_punch_at || b.server_received_at).getTime();
@@ -226,7 +242,19 @@ export async function getLatePenaltyReportData(params: {
     const checkInIso = firstIn.effective_punch_at || firstIn.server_received_at || null;
     const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
     const shift = employee.shift_name?.trim() || "General";
-    const shiftConfig = findShiftConfig(shift, effectiveShiftRows);
+    const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, { shiftName: shift });
+    const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
+      halfDayMinimumHours: "04:00",
+    });
+    const shiftConfig = resolvedPolicies?.resolved?.shift
+      ? {
+          name: resolvedShift.shiftName,
+          type: resolvedShift.shiftType,
+          start: resolvedShift.shiftStartTime,
+          end: resolvedShift.shiftEndTime,
+          graceMins: resolvedShift.gracePeriod,
+        }
+      : findShiftConfig(shift, effectiveShiftRows);
     const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
     const decision = buildDailyAttendanceDecision({
       checkInIso,
@@ -234,11 +262,12 @@ export async function getLatePenaltyReportData(params: {
       timeZone,
       shiftStart: shiftConfig?.start || null,
       scheduledMinutes,
-      graceMins: shiftConfig?.graceMins || 10,
-      halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
+      graceMins: shiftConfig?.graceMins || resolvedShift.gracePeriod || 10,
+      halfDayMinWorkMins: resolvedAttendance.halfDayMinWorkMins || Number(companyResult.data?.half_day_min_work_mins || 240),
     });
 
     if (decision.lateMinutes <= 0) continue;
+    employeeShiftLabelMap.set(employeeId, shiftConfig?.name || resolvedShift.shiftName || shift);
     const current = employeeLateMap.get(employeeId) || { upTo: 0, above: 0 };
     if (decision.lateMinutes <= latePolicy.upToMins) current.upTo += 1;
     if (decision.lateMinutes > latePolicy.aboveMins) current.above += 1;
@@ -259,7 +288,7 @@ export async function getLatePenaltyReportData(params: {
       employee: employee?.full_name?.trim() || "Unknown",
       employeeCode: employee?.employee_code?.trim() || "",
       department: employee?.department?.trim() || "-",
-      shift: employee?.shift_name?.trim() || "General",
+      shift: employeeShiftLabelMap.get(employeeId) || employee?.shift_name?.trim() || "General",
       lateCount: totalLateCount,
       lateUpToCount: late.upTo,
       lateAboveCount: late.above,

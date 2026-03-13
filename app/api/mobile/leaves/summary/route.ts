@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
+import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import { computeLeaveEntitlement, fetchLeaveOverrideDays, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 
@@ -29,6 +31,15 @@ export async function POST(req: NextRequest) {
   const currentYear = Number(todayISOInIndia().slice(0, 4));
   const today = todayISOInIndia();
   const range = yearRange(currentYear);
+  const policyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    today,
+    ["leave"],
+  );
+  const resolvedLeaveConfig = (policyContext.resolved.leave?.configJson || {}) as Record<string, unknown>;
+  const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
 
   const [policyResult, requestResult, holidayResult] = await Promise.all([
     session.admin
@@ -80,7 +91,7 @@ export async function POST(req: NextRequest) {
     submitted_at: string;
   }>;
 
-  const policyRows = (policyResult.data || []) as Array<{
+  const legacyPolicyRows = (policyResult.data || []) as Array<{
     id: string;
     name: string;
     code: string;
@@ -90,6 +101,21 @@ export async function POST(req: NextRequest) {
     encashable: boolean;
     active: boolean;
   }>;
+  const policyRows = resolvedLeaveTypes.length > 0
+    ? resolvedLeaveTypes.map((leaveType) => ({
+        id: leaveType.id,
+        name: leaveType.name,
+        code: leaveType.code,
+        annual_quota: leaveType.annualQuota,
+        carry_forward:
+          leaveType.carryForwardAllowed && String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
+            ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
+            : 0,
+        accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
+        encashable: false,
+        active: true,
+      }))
+    : legacyPolicyRows;
 
   const usageByCode = new Map<string, { approvedUsed: number; pendingUsed: number }>();
   requests.forEach((row) => {

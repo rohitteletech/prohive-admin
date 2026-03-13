@@ -9,6 +9,7 @@ import {
   PolicyAssignment,
   PolicyDefinition,
   PolicyType,
+  resolvePolicyForEmployee,
 } from "@/lib/companyPolicies";
 
 export async function ensureCompanyPolicyDefinitions(admin: SupabaseClient, companyId: string, createdBy: string) {
@@ -130,4 +131,89 @@ export function validatePolicyType(value: unknown): PolicyType | null {
 
 export function validateAssignmentLevel(value: unknown): AssignmentLevel | null {
   return value === "company" || value === "department" || value === "employee" ? value : null;
+}
+
+export async function resolvePoliciesForEmployee(
+  admin: SupabaseClient,
+  companyId: string,
+  employeeId: string,
+  onDate: string,
+  policyTypes: PolicyType[],
+) {
+  const { data: employeeData, error: employeeError } = await admin
+    .from("employees")
+    .select("id,department,shift_name")
+    .eq("company_id", companyId)
+    .eq("id", employeeId)
+    .maybeSingle();
+
+  if (employeeError || !employeeData?.id) {
+    throw new Error(employeeError?.message || "Unable to load employee policy context.");
+  }
+
+  const definitions = await ensureCompanyPolicyDefinitions(admin, companyId, "system@policy.local");
+  const assignments = await listCompanyPolicyAssignments(admin, companyId);
+  const resolved = Object.fromEntries(
+    policyTypes.map((policyType) => [
+      policyType,
+      resolvePolicyForEmployee({
+        policyType,
+        employeeId,
+        department: typeof employeeData.department === "string" ? employeeData.department : null,
+        onDate,
+        assignments,
+        definitions,
+      }),
+    ]),
+  ) as Record<PolicyType, PolicyDefinition | null>;
+
+  return {
+    employee: {
+      id: String(employeeData.id),
+      department: typeof employeeData.department === "string" ? employeeData.department : "",
+      shiftName: typeof employeeData.shift_name === "string" ? employeeData.shift_name : "",
+    },
+    resolved,
+  };
+}
+
+export async function resolvePoliciesForEmployees(
+  admin: SupabaseClient,
+  companyId: string,
+  employees: Array<{ id: string; department?: string | null; shiftName?: string | null }>,
+  onDate: string,
+  policyTypes: PolicyType[],
+) {
+  const definitions = await ensureCompanyPolicyDefinitions(admin, companyId, "system@policy.local");
+  const assignments = await listCompanyPolicyAssignments(admin, companyId);
+  const resolvedByEmployee = new Map<
+    string,
+    {
+      department: string;
+      shiftName: string;
+      resolved: Record<PolicyType, PolicyDefinition | null>;
+    }
+  >();
+
+  for (const employee of employees) {
+    if (!employee?.id) continue;
+    const department = typeof employee.department === "string" ? employee.department : "";
+    const shiftName = typeof employee.shiftName === "string" ? employee.shiftName : "";
+    const resolved = Object.fromEntries(
+      policyTypes.map((policyType) => [
+        policyType,
+        resolvePolicyForEmployee({
+          policyType,
+          employeeId: employee.id,
+          department,
+          onDate,
+          assignments,
+          definitions,
+        }),
+      ]),
+    ) as Record<PolicyType, PolicyDefinition | null>;
+    resolvedByEmployee.set(employee.id, { department, shiftName, resolved });
+  }
+
+  return resolvedByEmployee;
 }

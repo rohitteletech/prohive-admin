@@ -1,4 +1,6 @@
 import { todayISOInIndia } from "@/lib/dateTime";
+import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
   fetchLeaveOverrideDays,
@@ -114,13 +116,46 @@ export async function getLeaveReportData(params: {
   }
 
   const policies = Array.isArray(policyResult.data) ? policyResult.data : [];
+  const employeeSeedRows: Array<{ id: string; department: string }> = Array.isArray(requestResult.data)
+    ? Array.from(
+        new Map<string, { id: string; department: string }>(
+          requestResult.data.map((row: any) => [
+            String(row.employee_id || ""),
+            {
+              id: String(row.employee_id || ""),
+              department: String(((row.employees || {}) as Record<string, unknown>).department || ""),
+            },
+          ]),
+        ).values(),
+      ).filter((row) => Boolean(row.id))
+    : [];
+  const resolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
+    params.admin as never,
+    params.companyId,
+    employeeSeedRows,
+    scope.startDate,
+    ["leave"],
+  );
   const balanceCache = new Map<string, number>();
 
   async function getAvailableBalance(employeeId: string, leavePolicyCode: string) {
     const cacheKey = `${employeeId}:${leavePolicyCode}:${year}`;
     if (balanceCache.has(cacheKey)) return balanceCache.get(cacheKey) || 0;
 
-    const policy = policies.find((row: { code?: string | null }) => String(row.code || "") === leavePolicyCode);
+    const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null);
+    const resolvedLeaveConfig = ((resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave?.configJson || {}) as Record<string, unknown>);
+    const resolvedPolicy = resolvedLeaveTypes.find((row) => row.code === leavePolicyCode);
+    const policy =
+      resolvedPolicy
+        ? {
+            annual_quota: resolvedPolicy.annualQuota,
+            carry_forward:
+              resolvedPolicy.carryForwardAllowed && String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
+                ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
+                : 0,
+            accrual_mode: resolvedPolicy.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
+          }
+        : policies.find((row: { code?: string | null }) => String(row.code || "") === leavePolicyCode);
     if (!policy) {
       balanceCache.set(cacheKey, 0);
       return 0;

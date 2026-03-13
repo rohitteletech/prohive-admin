@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
   buildDailyAttendanceDecision,
@@ -43,6 +45,13 @@ export async function POST(req: NextRequest) {
 
   const timeZone = normalizeTimeZone(body.timeZone || INDIA_TIME_ZONE);
   const today = currentDateInTimeZone(timeZone);
+  const policyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    today,
+    ["shift", "attendance", "holiday_weekoff"],
+  );
 
   const [employeeResult, companyResult, shiftResult, eventsResult] = await Promise.all([
     session.admin
@@ -136,11 +145,37 @@ export async function POST(req: NextRequest) {
   }));
 
   const shiftPool = availableShifts.length ? availableShifts : defaultShifts;
-  const matchedShift = findMatchingShiftRule(employeeShiftName, shiftPool);
+  const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
+    shiftName: employeeShiftName,
+    shiftType: employeeShiftName,
+    loginAccessRule: companyResult.data?.login_access_rule,
+  });
+  const matchedShift =
+    policyContext.resolved.shift
+      ? {
+          name: resolvedShift.shiftName,
+          type: resolvedShift.shiftType,
+          startTime: resolvedShift.shiftStartTime,
+          endTime: resolvedShift.shiftEndTime,
+          graceMins: resolvedShift.gracePeriod,
+          earlyWindowMins: resolvedShift.earlyInAllowed,
+          minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
+        }
+      : findMatchingShiftRule(employeeShiftName, shiftPool);
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
-  const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
-  const loginAccessRule = normalizeLoginAccessRule(companyResult.data?.login_access_rule);
+  const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance, {
+    fullDayMinimumHours: matchedShift && effectiveScheduledWorkMin ? `${String(Math.floor(effectiveScheduledWorkMin / 60)).padStart(2, "0")}:${String(effectiveScheduledWorkMin % 60).padStart(2, "0")}` : "08:00",
+    halfDayMinimumHours: "04:00",
+    extraHoursCountingRule: companyResult.data?.extra_hours_policy,
+  });
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
+    weeklyOffPolicy: companyResult.data?.weekly_off_policy,
+    allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
+    allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
+  });
+  const extraHoursPolicy = normalizeExtraHoursPolicy(resolvedAttendance.extraHoursPolicy);
+  const loginAccessRule = normalizeLoginAccessRule(resolvedShift.loginAccessRule);
   const actualWorkedMinutes = rawWorkedMinutes(checkInAt, checkOutAt);
   const workingMinutes = applyExtraHoursPolicy(actualWorkedMinutes, effectiveScheduledWorkMin, extraHoursPolicy);
   const attendanceDecision = buildDailyAttendanceDecision({
@@ -149,8 +184,8 @@ export async function POST(req: NextRequest) {
     timeZone,
     shiftStart: matchedShift?.startTime || null,
     scheduledMinutes: effectiveScheduledWorkMin,
-    graceMins: matchedShift?.graceMins || 10,
-    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(companyResult.data?.half_day_min_work_mins),
+    graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
+    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedAttendance.halfDayMinWorkMins),
   });
 
   return NextResponse.json({
@@ -159,7 +194,7 @@ export async function POST(req: NextRequest) {
       employeeCode: employeeResult.data?.employee_code || session.employee.employee_code,
       fullName: employeeResult.data?.full_name || session.employee.full_name,
       designation: employeeResult.data?.designation || "",
-      shiftName: employeeShiftName,
+      shiftName: matchedShift?.name || resolvedShift.shiftName || employeeShiftName,
       companyName: companyResult.data?.name || "",
       companyTagline: companyResult.data?.company_tagline || "",
       company_tagline: companyResult.data?.company_tagline || "",
@@ -173,18 +208,18 @@ export async function POST(req: NextRequest) {
       workingMinutes,
     },
     config: {
-      shiftName: employeeShiftName,
+      shiftName: matchedShift?.name || resolvedShift.shiftName || employeeShiftName,
       shiftStartMin,
-      graceMins: matchedShift?.graceMins || 10,
-      earlyWindowMin: matchedShift?.earlyWindowMins || 15,
-      minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || 60,
+      graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
+      earlyWindowMin: matchedShift?.earlyWindowMins || resolvedShift.earlyInAllowed || 15,
+      minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || resolvedShift.minimumWorkBeforePunchOut || 60,
       scheduledWorkMin: effectiveScheduledWorkMin || 0,
       extraHoursPolicy,
-      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(companyResult.data?.half_day_min_work_mins),
+      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedAttendance.halfDayMinWorkMins),
       loginAccessRule,
-      weeklyOffPolicy: companyResult.data?.weekly_off_policy || "sunday_only",
-      allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
-      allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
+      weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
+      allowPunchOnHoliday: resolvedHoliday.allowPunchOnHoliday,
+      allowPunchOnWeeklyOff: resolvedHoliday.allowPunchOnWeeklyOff,
     },
   });
 }

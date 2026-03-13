@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { resolveAttendancePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
@@ -132,7 +134,8 @@ function aggregateRows(
   timeZone: string,
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
   extraHoursPolicy: string,
-  halfDayMinWorkMins: number
+  halfDayMinWorkMins: number,
+  resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>
 ) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -158,14 +161,28 @@ function aggregateRows(
       });
       const employee = employeesById.get(ordered[0]?.employee_id || "");
       const shift = employee?.shift_name?.trim() || "General";
+      const resolvedPolicies = employee ? resolvedPoliciesByEmployee.get(employee.id) : null;
       const firstIn = ordered.find((event) => event.punch_type === "in") || null;
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
       const checkInIso = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
       const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
-      const shiftConfig = findShiftConfig(shift, shiftRows);
+      const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, { shiftName: shift });
+      const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
+        halfDayMinimumHours: "04:00",
+        extraHoursCountingRule: extraHoursPolicy,
+      });
+      const shiftConfig = resolvedPolicies?.resolved?.shift
+        ? {
+            name: resolvedShift.shiftName,
+            type: resolvedShift.shiftType,
+            start: resolvedShift.shiftStartTime,
+            end: resolvedShift.shiftEndTime,
+            graceMins: resolvedShift.gracePeriod,
+          }
+        : findShiftConfig(shift, shiftRows);
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
       const rawMinutes = rawWorkedMinutes(checkInIso, checkOutIso);
-      const effectiveMinutes = applyExtraHoursPolicy(rawMinutes, scheduledMinutes, extraHoursPolicy);
+      const effectiveMinutes = applyExtraHoursPolicy(rawMinutes, scheduledMinutes, resolvedAttendance.extraHoursPolicy);
       const decision = buildDailyAttendanceDecision({
         checkInIso,
         checkOutIso,
@@ -173,14 +190,14 @@ function aggregateRows(
         shiftStart: shiftConfig?.start || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
-        halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedAttendance.halfDayMinWorkMins || halfDayMinWorkMins,
       });
 
       return {
         id: key,
         employee: employee?.full_name?.trim() || employee?.employee_code?.trim() || "Unknown Employee",
         department: employee?.department?.trim() || "-",
-        shift,
+        shift: shiftConfig?.name || resolvedShift.shiftName || shift,
         date: displayDateInTimeZone(checkInIso || checkOutIso || ordered[0].server_received_at, timeZone),
         checkIn: checkInIso ? displayTimeInTimeZone(checkInIso, timeZone) : "-",
         checkInAddress: firstIn?.address_text?.trim() || "-",
@@ -282,6 +299,18 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const resolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
+      context.admin,
+      context.companyId,
+      Array.from(employeesById.values()).map((row) => ({
+        id: row.id,
+        department: row.department,
+        shiftName: row.shift_name,
+      })),
+      date,
+      ["shift", "attendance"],
+    );
+
     const rows = aggregateRows(
       events,
       employeesById,
@@ -289,7 +318,8 @@ export async function GET(req: NextRequest) {
       timeZone,
       effectiveShiftRows,
       extraHoursPolicy,
-      halfDayMinWorkMins
+      halfDayMinWorkMins,
+      resolvedPoliciesByEmployee
     );
     return NextResponse.json({ rows });
   } catch (error) {

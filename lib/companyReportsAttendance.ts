@@ -1,4 +1,6 @@
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
+import { resolveAttendancePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
   applyExtraHoursPolicy,
@@ -184,6 +186,7 @@ function aggregateRows(params: {
     aboveMins: number;
     aboveDays: number;
   };
+  resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>;
 }) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -208,16 +211,30 @@ function aggregateRows(params: {
       });
       const employee = params.employeesById.get(ordered[0]?.employee_id || "");
       const shift = employee?.shift_name?.trim() || "General";
+      const resolvedPolicies = employee ? params.resolvedPoliciesByEmployee.get(employee.id) : null;
       const firstIn = ordered.find((event) => event.punch_type === "in") || null;
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
       const checkInIso = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
       const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
-      const shiftConfig = findShiftConfig(shift, params.shiftRows);
+      const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, { shiftName: shift });
+      const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
+        halfDayMinimumHours: "04:00",
+        extraHoursCountingRule: params.extraHoursPolicy,
+      });
+      const shiftConfig = resolvedPolicies?.resolved?.shift
+        ? {
+            name: resolvedShift.shiftName,
+            type: resolvedShift.shiftType,
+            start: resolvedShift.shiftStartTime,
+            end: resolvedShift.shiftEndTime,
+            graceMins: resolvedShift.gracePeriod,
+          }
+        : findShiftConfig(shift, params.shiftRows);
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
       const effectiveMinutes = applyExtraHoursPolicy(
         rawWorkedMinutes(checkInIso, checkOutIso),
         scheduledMinutes,
-        params.extraHoursPolicy
+        resolvedAttendance.extraHoursPolicy
       );
       const decision = buildDailyAttendanceDecision({
         checkInIso,
@@ -226,14 +243,14 @@ function aggregateRows(params: {
         shiftStart: shiftConfig?.start || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
-        halfDayMinWorkMins: params.halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedAttendance.halfDayMinWorkMins || params.halfDayMinWorkMins,
       });
 
       return {
         id: key,
         employee: employee?.full_name?.trim() || employee?.employee_code?.trim() || "Unknown Employee",
         department: employee?.department?.trim() || "-",
-        shift,
+        shift: shiftConfig?.name || resolvedShift.shiftName || shift,
         date: displayDateInTimeZone(checkInIso || checkOutIso || ordered[0].server_received_at, params.timeZone),
         checkIn: checkInIso ? displayTimeInTimeZone(checkInIso, params.timeZone) : "-",
         checkOut: checkOutIso ? displayTimeInTimeZone(checkOutIso, params.timeZone) : "-",
@@ -348,6 +365,18 @@ export async function getAttendanceReportData(params: {
     }
   }
 
+  const resolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
+    params.admin as never,
+    params.companyId,
+    Array.from(employeesById.values()).map((row) => ({
+      id: row.id,
+      department: row.department,
+      shiftName: row.shift_name,
+    })),
+    scope.startDate,
+    ["shift", "attendance"],
+  );
+
   const aggregation = aggregateRows({
     events,
     employeesById,
@@ -363,6 +392,7 @@ export async function getAttendanceReportData(params: {
       aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
       aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
     },
+    resolvedPoliciesByEmployee,
   });
   const filteredRows = aggregation.rows.filter((row) => {
     const matchesEmployee = employeeQuery

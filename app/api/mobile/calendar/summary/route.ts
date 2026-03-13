@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
 import { isWeeklyOffDate, normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
@@ -60,6 +62,13 @@ export async function POST(req: NextRequest) {
   const monthEnd = addDaysToIso(nextStart, -1);
   const attendanceQueryStart = addDaysToIso(start, -1);
   const attendanceQueryNextStart = addDaysToIso(nextStart, 1);
+  const policyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    start,
+    ["holiday_weekoff"],
+  );
 
   const yearStart = `${year}-01-01`;
   const yearNextStart = `${year + 1}-01-01`;
@@ -135,7 +144,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const weeklyOffPolicy = normalizeWeeklyOffPolicy(companyResult.data?.weekly_off_policy);
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
+    weeklyOffPolicy: companyResult.data?.weekly_off_policy,
+  });
+  const weeklyOffPolicy = normalizeWeeklyOffPolicy(resolvedHoliday.weeklyOffPolicy);
 
   const holidayRows = (monthHolidayResult.data || []) as Array<{
     id: string;

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { todayISOInIndia } from "@/lib/dateTime";
+import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
@@ -99,6 +101,16 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
+  const policyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    fromDate,
+    ["leave"],
+  );
+  const resolvedLeaveConfig = (policyContext.resolved.leave?.configJson || {}) as Record<string, unknown>;
+  const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
+
   const { data: policyRows, error: policyError } = await session.admin
     .from("company_leave_policies")
     .select("id,name,code,annual_quota,carry_forward,accrual_mode,active")
@@ -109,7 +121,20 @@ export async function POST(req: NextRequest) {
   if (policyError) {
     return NextResponse.json({ error: policyError.message || "Unable to load leave policies." }, { status: 400 });
   }
-  const policies = Array.isArray(policyRows) ? policyRows : [];
+  const policies = resolvedLeaveTypes.length > 0
+    ? resolvedLeaveTypes.map((leaveType) => ({
+        id: leaveType.id,
+        name: leaveType.name,
+        code: leaveType.code,
+        annual_quota: leaveType.annualQuota,
+        carry_forward:
+          leaveType.carryForwardAllowed && String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
+            ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
+            : 0,
+        accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
+        active: true,
+      }))
+    : Array.isArray(policyRows) ? policyRows : [];
   if (policies.length === 0) {
     return NextResponse.json({ error: "No active leave policy configured. Contact admin." }, { status: 400 });
   }
