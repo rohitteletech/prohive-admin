@@ -10,6 +10,19 @@ import {
   TextInput,
 } from "@/components/company/policy-ui";
 
+type LeaveType = {
+  id: string;
+  name: string;
+  code: string;
+  paymentMode: "Paid" | "Unpaid";
+  annualQuota: string;
+  halfDayAllowed: "Yes" | "No";
+  minimumDays: string;
+  maximumDays: string;
+  accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
+  carryForwardAllowed: "Yes" | "No";
+};
+
 type LeavePolicyState = {
   policyName: string;
   policyCode: string;
@@ -17,14 +30,6 @@ type LeavePolicyState = {
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy: "Yes" | "No";
-  casualLeaveDays: string;
-  sickLeaveDays: string;
-  earnedLeaveDays: string;
-  compLeaveEnabled: "Yes" | "No";
-  compLeaveValidityDays: string;
-  halfDayLeaveAllowed: "Yes" | "No";
-  minimumLeaveDays: string;
-  maximumLeaveDays: string;
   approvalFlow: "manager" | "manager_hr" | "hr";
   noticePeriodDays: string;
   backdatedLeaveAllowed: "Yes" | "No";
@@ -35,21 +40,13 @@ type LeavePolicyState = {
   carryForwardExpiryDays: string;
 };
 
-const initialState: LeavePolicyState = {
+const initialPolicyState: LeavePolicyState = {
   policyName: "Standard Leave Policy",
   policyCode: "LEV-001",
   effectiveFrom: "2026-03-13",
   nextReviewDate: "2027-03-13",
   status: "Draft",
   defaultCompanyPolicy: "Yes",
-  casualLeaveDays: "12",
-  sickLeaveDays: "12",
-  earnedLeaveDays: "18",
-  compLeaveEnabled: "Yes",
-  compLeaveValidityDays: "60",
-  halfDayLeaveAllowed: "Yes",
-  minimumLeaveDays: "0.5",
-  maximumLeaveDays: "30",
   approvalFlow: "manager_hr",
   noticePeriodDays: "1",
   backdatedLeaveAllowed: "No",
@@ -60,13 +57,96 @@ const initialState: LeavePolicyState = {
   carryForwardExpiryDays: "90",
 };
 
+const initialLeaveTypes: LeaveType[] = [
+  {
+    id: "casual",
+    name: "Casual Leave",
+    code: "CL",
+    paymentMode: "Paid",
+    annualQuota: "12",
+    halfDayAllowed: "Yes",
+    minimumDays: "0.5",
+    maximumDays: "6",
+    accrualRule: "Yearly Upfront",
+    carryForwardAllowed: "No",
+  },
+  {
+    id: "sick",
+    name: "Sick Leave",
+    code: "SL",
+    paymentMode: "Paid",
+    annualQuota: "12",
+    halfDayAllowed: "Yes",
+    minimumDays: "0.5",
+    maximumDays: "12",
+    accrualRule: "Yearly Upfront",
+    carryForwardAllowed: "No",
+  },
+  {
+    id: "earned",
+    name: "Earned Leave",
+    code: "EL",
+    paymentMode: "Paid",
+    annualQuota: "18",
+    halfDayAllowed: "Yes",
+    minimumDays: "1",
+    maximumDays: "30",
+    accrualRule: "Monthly Accrual",
+    carryForwardAllowed: "Yes",
+  },
+  {
+    id: "comp",
+    name: "Comp Leave",
+    code: "COMP",
+    paymentMode: "Paid",
+    annualQuota: "0",
+    halfDayAllowed: "No",
+    minimumDays: "1",
+    maximumDays: "5",
+    accrualRule: "Manual Credit Only",
+    carryForwardAllowed: "No",
+  },
+];
+
+function createBlankLeaveType(): LeaveType {
+  return {
+    id: `leave-${Date.now()}`,
+    name: "",
+    code: "",
+    paymentMode: "Paid",
+    annualQuota: "",
+    halfDayAllowed: "No",
+    minimumDays: "1",
+    maximumDays: "",
+    accrualRule: "Yearly Upfront",
+    carryForwardAllowed: "No",
+  };
+}
+
 export default function LeavePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
-  const [draft, setDraft] = useState(initialState);
+  const [draft, setDraft] = useState(initialPolicyState);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
   const [showForm, setShowForm] = useState(false);
 
-  function update<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
+  function updatePolicy<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateLeaveType(id: string, key: keyof LeaveType, value: string) {
+    setLeaveTypes((current) =>
+      current.map((leaveType) => (leaveType.id === id ? { ...leaveType, [key]: value } : leaveType)),
+    );
+  }
+
+  function addLeaveType() {
+    setLeaveTypes((current) => [...current, createBlankLeaveType()]);
+    notify("New leave type row added.");
+  }
+
+  function removeLeaveType(id: string) {
+    setLeaveTypes((current) => current.filter((leaveType) => leaveType.id !== id));
+    notify("Leave type removed from draft.");
   }
 
   function notify(message: string) {
@@ -75,7 +155,8 @@ export default function LeavePolicyPage() {
   }
 
   function openNewForm() {
-    setDraft(initialState);
+    setDraft(initialPolicyState);
+    setLeaveTypes(initialLeaveTypes);
     setShowForm(true);
     notify("New leave policy form opened.");
   }
@@ -84,7 +165,7 @@ export default function LeavePolicyPage() {
     <PolicyPage
       badge="Leave Policy"
       title="Leave Policy"
-      description="Maintain company leave policy records and define entitlements, approval rules, attendance override handling, and carry-forward governance."
+      description="Maintain company leave policy records and define leave types, approval rules, attendance override handling, and carry-forward governance."
     >
       {toast ? (
         <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">
@@ -121,19 +202,19 @@ export default function LeavePolicyPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Policy Name">
-                <TextInput value={draft.policyName} onChange={(e) => update("policyName", e.target.value)} />
+                <TextInput value={draft.policyName} onChange={(e) => updatePolicy("policyName", e.target.value)} />
               </Field>
               <Field label="Policy Code">
-                <TextInput value={draft.policyCode} onChange={(e) => update("policyCode", e.target.value)} />
+                <TextInput value={draft.policyCode} onChange={(e) => updatePolicy("policyCode", e.target.value)} />
               </Field>
               <Field label="Effective From">
-                <TextInput type="date" value={draft.effectiveFrom} onChange={(e) => update("effectiveFrom", e.target.value)} />
+                <TextInput type="date" value={draft.effectiveFrom} onChange={(e) => updatePolicy("effectiveFrom", e.target.value)} />
               </Field>
               <Field label="Next Review Date">
-                <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => update("nextReviewDate", e.target.value)} />
+                <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => updatePolicy("nextReviewDate", e.target.value)} />
               </Field>
               <Field label="Status">
-                <Select value={draft.status} onChange={(e) => update("status", e.target.value as LeavePolicyState["status"])}>
+                <Select value={draft.status} onChange={(e) => updatePolicy("status", e.target.value as LeavePolicyState["status"])}>
                   <option value="Draft">Draft</option>
                   <option value="Active">Active</option>
                   <option value="Archived">Archived</option>
@@ -142,7 +223,7 @@ export default function LeavePolicyPage() {
               <Field label="Default Company Policy">
                 <Select
                   value={draft.defaultCompanyPolicy}
-                  onChange={(e) => update("defaultCompanyPolicy", e.target.value as LeavePolicyState["defaultCompanyPolicy"])}
+                  onChange={(e) => updatePolicy("defaultCompanyPolicy", e.target.value as LeavePolicyState["defaultCompanyPolicy"])}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -152,43 +233,84 @@ export default function LeavePolicyPage() {
           </PolicySection>
 
           <PolicySection
-            title="Leave Entitlements"
-            description="Define the annual leave allocation, comp leave availability, and day-level entitlement rules under this policy."
+            title="Leave Type Register"
+            description="Define each leave type under this policy, including quota, payment mode, accrual rule, and day-level usage conditions."
           >
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Casual Leave Days">
-                <TextInput value={draft.casualLeaveDays} onChange={(e) => update("casualLeaveDays", e.target.value)} />
-              </Field>
-              <Field label="Sick Leave Days">
-                <TextInput value={draft.sickLeaveDays} onChange={(e) => update("sickLeaveDays", e.target.value)} />
-              </Field>
-              <Field label="Earned Leave Days">
-                <TextInput value={draft.earnedLeaveDays} onChange={(e) => update("earnedLeaveDays", e.target.value)} />
-              </Field>
-              <Field label="Comp Leave Enabled">
-                <Select value={draft.compLeaveEnabled} onChange={(e) => update("compLeaveEnabled", e.target.value as LeavePolicyState["compLeaveEnabled"])}>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
-              <Field label="Comp Leave Validity (Days)">
-                <TextInput value={draft.compLeaveValidityDays} onChange={(e) => update("compLeaveValidityDays", e.target.value)} />
-              </Field>
-              <Field label="Half Day Leave Allowed">
-                <Select
-                  value={draft.halfDayLeaveAllowed}
-                  onChange={(e) => update("halfDayLeaveAllowed", e.target.value as LeavePolicyState["halfDayLeaveAllowed"])}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
-              <Field label="Minimum Leave Days">
-                <TextInput value={draft.minimumLeaveDays} onChange={(e) => update("minimumLeaveDays", e.target.value)} />
-              </Field>
-              <Field label="Maximum Leave Days">
-                <TextInput value={draft.maximumLeaveDays} onChange={(e) => update("maximumLeaveDays", e.target.value)} />
-              </Field>
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                onClick={addLeaveType}
+                className="rounded-xl border border-sky-300 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-800 hover:bg-sky-100"
+              >
+                Add Leave Type
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {leaveTypes.map((leaveType, index) => (
+                <div key={leaveType.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Leave Type {index + 1}</div>
+                      <div className="text-xs text-slate-500">Configure leave entitlement, accrual, and usage controls.</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeLeaveType(leaveType.id)}
+                      className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="Leave Type Name">
+                      <TextInput value={leaveType.name} onChange={(e) => updateLeaveType(leaveType.id, "name", e.target.value)} />
+                    </Field>
+                    <Field label="Leave Code">
+                      <TextInput value={leaveType.code} onChange={(e) => updateLeaveType(leaveType.id, "code", e.target.value)} />
+                    </Field>
+                    <Field label="Paid / Unpaid">
+                      <Select value={leaveType.paymentMode} onChange={(e) => updateLeaveType(leaveType.id, "paymentMode", e.target.value)}>
+                        <option value="Paid">Paid</option>
+                        <option value="Unpaid">Unpaid</option>
+                      </Select>
+                    </Field>
+                    <Field label="Annual Quota">
+                      <TextInput value={leaveType.annualQuota} onChange={(e) => updateLeaveType(leaveType.id, "annualQuota", e.target.value)} />
+                    </Field>
+                    <Field label="Half Day Allowed">
+                      <Select value={leaveType.halfDayAllowed} onChange={(e) => updateLeaveType(leaveType.id, "halfDayAllowed", e.target.value)}>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </Select>
+                    </Field>
+                    <Field label="Minimum Days">
+                      <TextInput value={leaveType.minimumDays} onChange={(e) => updateLeaveType(leaveType.id, "minimumDays", e.target.value)} />
+                    </Field>
+                    <Field label="Maximum Days">
+                      <TextInput value={leaveType.maximumDays} onChange={(e) => updateLeaveType(leaveType.id, "maximumDays", e.target.value)} />
+                    </Field>
+                    <Field label="Accrual Rule">
+                      <Select value={leaveType.accrualRule} onChange={(e) => updateLeaveType(leaveType.id, "accrualRule", e.target.value)}>
+                        <option value="Yearly Upfront">Yearly Upfront</option>
+                        <option value="Monthly Accrual">Monthly Accrual</option>
+                        <option value="Quarterly Accrual">Quarterly Accrual</option>
+                        <option value="Manual Credit Only">Manual Credit Only</option>
+                      </Select>
+                    </Field>
+                    <Field label="Carry Forward Allowed">
+                      <Select
+                        value={leaveType.carryForwardAllowed}
+                        onChange={(e) => updateLeaveType(leaveType.id, "carryForwardAllowed", e.target.value)}
+                      >
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </Select>
+                    </Field>
+                  </div>
+                </div>
+              ))}
             </div>
           </PolicySection>
 
@@ -198,19 +320,19 @@ export default function LeavePolicyPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Approval Flow">
-                <Select value={draft.approvalFlow} onChange={(e) => update("approvalFlow", e.target.value as LeavePolicyState["approvalFlow"])}>
+                <Select value={draft.approvalFlow} onChange={(e) => updatePolicy("approvalFlow", e.target.value as LeavePolicyState["approvalFlow"])}>
                   <option value="manager">Manager Approval</option>
                   <option value="manager_hr">Manager + HR Approval</option>
                   <option value="hr">HR Approval</option>
                 </Select>
               </Field>
               <Field label="Notice Period (Days)">
-                <TextInput value={draft.noticePeriodDays} onChange={(e) => update("noticePeriodDays", e.target.value)} />
+                <TextInput value={draft.noticePeriodDays} onChange={(e) => updatePolicy("noticePeriodDays", e.target.value)} />
               </Field>
               <Field label="Backdated Leave Allowed">
                 <Select
                   value={draft.backdatedLeaveAllowed}
-                  onChange={(e) => update("backdatedLeaveAllowed", e.target.value as LeavePolicyState["backdatedLeaveAllowed"])}
+                  onChange={(e) => updatePolicy("backdatedLeaveAllowed", e.target.value as LeavePolicyState["backdatedLeaveAllowed"])}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -219,14 +341,14 @@ export default function LeavePolicyPage() {
               <Field label="Leave Overrides Attendance">
                 <Select
                   value={draft.leaveOverridesAttendance}
-                  onChange={(e) => update("leaveOverridesAttendance", e.target.value as LeavePolicyState["leaveOverridesAttendance"])}
+                  onChange={(e) => updatePolicy("leaveOverridesAttendance", e.target.value as LeavePolicyState["leaveOverridesAttendance"])}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </Select>
               </Field>
               <Field label="Sandwich Leave">
-                <Select value={draft.sandwichLeave} onChange={(e) => update("sandwichLeave", e.target.value as LeavePolicyState["sandwichLeave"])}>
+                <Select value={draft.sandwichLeave} onChange={(e) => updatePolicy("sandwichLeave", e.target.value as LeavePolicyState["sandwichLeave"])}>
                   <option value="Enabled">Enabled</option>
                   <option value="Disabled">Disabled</option>
                 </Select>
@@ -242,17 +364,17 @@ export default function LeavePolicyPage() {
               <Field label="Carry Forward Enabled">
                 <Select
                   value={draft.carryForwardEnabled}
-                  onChange={(e) => update("carryForwardEnabled", e.target.value as LeavePolicyState["carryForwardEnabled"])}
+                  onChange={(e) => updatePolicy("carryForwardEnabled", e.target.value as LeavePolicyState["carryForwardEnabled"])}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </Select>
               </Field>
               <Field label="Maximum Carry Forward Days">
-                <TextInput value={draft.maximumCarryForwardDays} onChange={(e) => update("maximumCarryForwardDays", e.target.value)} />
+                <TextInput value={draft.maximumCarryForwardDays} onChange={(e) => updatePolicy("maximumCarryForwardDays", e.target.value)} />
               </Field>
               <Field label="Carry Forward Expiry (Days)">
-                <TextInput value={draft.carryForwardExpiryDays} onChange={(e) => update("carryForwardExpiryDays", e.target.value)} />
+                <TextInput value={draft.carryForwardExpiryDays} onChange={(e) => updatePolicy("carryForwardExpiryDays", e.target.value)} />
               </Field>
             </div>
 
