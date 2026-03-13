@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect } from "react";
 import {
   Field,
   PolicyPage,
@@ -9,6 +10,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type LeaveType = {
   id: string;
@@ -24,6 +26,7 @@ type LeaveType = {
 };
 
 type LeavePolicyState = {
+  policyId: string;
   policyName: string;
   policyCode: string;
   effectiveFrom: string;
@@ -41,6 +44,7 @@ type LeavePolicyState = {
 };
 
 const initialPolicyState: LeavePolicyState = {
+  policyId: "",
   policyName: "Standard Leave Policy",
   policyCode: "LEV-001",
   effectiveFrom: "2026-03-13",
@@ -128,6 +132,8 @@ export default function LeavePolicyPage() {
   const [draft, setDraft] = useState(initialPolicyState);
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
   const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   function updatePolicy<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -145,6 +151,10 @@ export default function LeavePolicyPage() {
   }
 
   function removeLeaveType(id: string) {
+    if (leaveTypes.length <= 1) {
+      notify("At least one leave type is required in the policy.");
+      return;
+    }
     setLeaveTypes((current) => current.filter((leaveType) => leaveType.id !== id));
     notify("Leave type removed from draft.");
   }
@@ -154,11 +164,76 @@ export default function LeavePolicyPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
+  async function accessToken() {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    return sessionResult?.data.session?.access_token || "";
+  }
+
+  async function loadLeaveBridge() {
+    const token = await accessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/company/policies/leave-bridge", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as Partial<LeavePolicyState> & {
+      leaveTypes?: LeaveType[];
+      error?: string;
+    };
+    if (!response.ok) {
+      notify(result.error || "Unable to load leave policy.");
+      setLoading(false);
+      return;
+    }
+
+    const { leaveTypes: nextLeaveTypes, ...policy } = result;
+    setDraft((current) => ({
+      ...current,
+      ...policy,
+    }));
+    if (Array.isArray(nextLeaveTypes) && nextLeaveTypes.length > 0) {
+      setLeaveTypes(nextLeaveTypes);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadLeaveBridge();
+  }, []);
+
   function openNewForm() {
     setDraft(initialPolicyState);
     setLeaveTypes(initialLeaveTypes);
     setShowForm(true);
     notify("New leave policy form opened.");
+  }
+
+  async function saveLeavePolicy() {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+
+    setSaving(true);
+    const response = await fetch("/api/company/policies/leave-bridge", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        ...draft,
+        leaveTypes,
+      }),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setSaving(false);
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to save leave policy.");
+    }
+    notify("Leave policy saved and synced to legacy settings.");
   }
 
   return (
@@ -193,7 +268,9 @@ export default function LeavePolicyPage() {
         }}
       />
 
-      {showForm ? (
+      {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading leave policy...</div> : null}
+
+      {!loading && showForm ? (
         <>
           <PolicySection
             title="Policy Details"
@@ -381,10 +458,11 @@ export default function LeavePolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => notify("Leave policy saved locally.")}
-                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => void saveLeavePolicy()}
+                disabled={saving}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                Save Policy
+                {saving ? "Saving..." : "Save Policy"}
               </button>
               <button
                 type="button"

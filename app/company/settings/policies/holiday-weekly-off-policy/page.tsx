@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect } from "react";
 import {
   Field,
   PolicyPage,
@@ -9,8 +10,10 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type HolidayPolicyState = {
+  policyId: string;
   policyName: string;
   policyCode: string;
   effectiveFrom: string;
@@ -19,6 +22,7 @@ type HolidayPolicyState = {
   defaultCompanyPolicy: "Yes" | "No";
   holidaySource: "Company" | "Government" | "Mixed";
   weeklyOffPattern: "Sunday Only" | "Saturday + Sunday" | "Alternate Saturday + Sunday" | "Custom";
+  customWeeklyOffPattern: string;
   holidayPunchAllowed: "Yes" | "No";
   weeklyOffPunchAllowed: "Yes" | "No";
   holidayWorkedStatus: "Holiday Worked" | "Present" | "OT Only";
@@ -28,6 +32,7 @@ type HolidayPolicyState = {
 };
 
 const initialState: HolidayPolicyState = {
+  policyId: "",
   policyName: "Standard Holiday Policy",
   policyCode: "HOL-001",
   effectiveFrom: "2026-03-13",
@@ -36,6 +41,7 @@ const initialState: HolidayPolicyState = {
   defaultCompanyPolicy: "Yes",
   holidaySource: "Mixed",
   weeklyOffPattern: "Sunday Only",
+  customWeeklyOffPattern: "",
   holidayPunchAllowed: "Yes",
   weeklyOffPunchAllowed: "Yes",
   holidayWorkedStatus: "Holiday Worked",
@@ -48,6 +54,8 @@ export default function HolidayWeeklyOffPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   function update<K extends keyof HolidayPolicyState>(key: K, value: HolidayPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -58,10 +66,65 @@ export default function HolidayWeeklyOffPolicyPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
+  async function accessToken() {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    return sessionResult?.data.session?.access_token || "";
+  }
+
+  async function loadHolidayBridge() {
+    const token = await accessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/company/policies/holiday-bridge", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as Partial<HolidayPolicyState> & { error?: string };
+    if (!response.ok) {
+      notify(result.error || "Unable to load holiday policy.");
+      setLoading(false);
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      ...result,
+    }));
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadHolidayBridge();
+  }, []);
+
   function openNewForm() {
     setDraft(initialState);
     setShowForm(true);
     notify("New holiday policy form opened.");
+  }
+
+  async function saveHolidayPolicy() {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+
+    setSaving(true);
+    const response = await fetch("/api/company/policies/holiday-bridge", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(draft),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setSaving(false);
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to save holiday policy.");
+    }
+    notify("Holiday policy saved and synced to legacy settings.");
   }
 
   return (
@@ -96,7 +159,9 @@ export default function HolidayWeeklyOffPolicyPage() {
         }}
       />
 
-      {showForm ? (
+      {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading holiday policy...</div> : null}
+
+      {!loading && showForm ? (
         <>
           <PolicySection
             title="Policy Details"
@@ -158,6 +223,15 @@ export default function HolidayWeeklyOffPolicyPage() {
                   <option value="Custom">Custom</option>
                 </Select>
               </Field>
+              {draft.weeklyOffPattern === "Custom" ? (
+                <Field label="Custom Weekly Off Pattern">
+                  <TextInput
+                    value={draft.customWeeklyOffPattern}
+                    onChange={(e) => update("customWeeklyOffPattern", e.target.value)}
+                    placeholder="Example: 2nd and 4th Saturday, Sunday"
+                  />
+                </Field>
+              ) : null}
             </div>
           </PolicySection>
 
@@ -226,10 +300,11 @@ export default function HolidayWeeklyOffPolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => notify("Holiday policy saved locally.")}
-                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => void saveHolidayPolicy()}
+                disabled={saving}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                Save Policy
+                {saving ? "Saving..." : "Save Policy"}
               </button>
               <button
                 type="button"

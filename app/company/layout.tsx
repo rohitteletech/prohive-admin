@@ -22,6 +22,7 @@ const operationsItems = [
 
 const policyItems = [
   { href: "/company/settings/policies", label: "Policy Hub", description: "Open the new standalone company policy pages" },
+  { href: "/company/settings/policies/assignments", label: "Policy Assignments", description: "Assign policies by company, department, or employee" },
   { href: "/company/settings/policies/shift-policy", label: "Shift Policy", description: "Define shifts, schedules, and timing rules" },
   { href: "/company/settings/policies/attendance-policy", label: "Attendance Policy", description: "Define present-day and attendance rules" },
   { href: "/company/settings/policies/leave-policy", label: "Leave Policy", description: "Configure leave rules and balances" },

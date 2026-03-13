@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useEffect } from "react";
 import {
   Field,
   PolicyPage,
@@ -9,8 +10,10 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ShiftPolicyState = {
+  policyId: string;
   policyName: string;
   policyCode: string;
   effectiveFrom: string;
@@ -26,9 +29,11 @@ type ShiftPolicyState = {
   earlyInAllowed: string;
   gracePeriod: string;
   minimumWorkBeforePunchOut: string;
+  legacyShiftId: string;
 };
 
 const initialState: ShiftPolicyState = {
+  policyId: "",
   policyName: "Standard Shift Policy",
   policyCode: "SFT-001",
   effectiveFrom: "2026-03-13",
@@ -44,6 +49,7 @@ const initialState: ShiftPolicyState = {
   earlyInAllowed: "15",
   gracePeriod: "10",
   minimumWorkBeforePunchOut: "60",
+  legacyShiftId: "",
 };
 
 function formatShiftDuration(start: string, end: string) {
@@ -63,6 +69,8 @@ export default function NewShiftPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const assignedWorkforceCount = 24;
 
   const shiftDuration = useMemo(
@@ -79,10 +87,68 @@ export default function NewShiftPolicyPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
+  async function accessToken() {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    return sessionResult?.data.session?.access_token || "";
+  }
+
+  async function loadShiftBridge() {
+    const token = await accessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/company/policies/shift-bridge", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as Partial<ShiftPolicyState> & { error?: string };
+    if (!response.ok) {
+      notify(result.error || "Unable to load shift policy.");
+      setLoading(false);
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      ...result,
+    }));
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadShiftBridge();
+  }, []);
+
   function startNewPolicy() {
     setDraft(initialState);
     setShowForm(true);
     notify("New shift policy form opened.");
+  }
+
+  async function saveShiftPolicy() {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+
+    setSaving(true);
+    const response = await fetch("/api/company/policies/shift-bridge", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(draft),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string };
+    setSaving(false);
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to save shift policy.");
+    }
+    if (result.legacyShiftId) {
+      setDraft((current) => ({ ...current, legacyShiftId: result.legacyShiftId || current.legacyShiftId }));
+    }
+    notify("Shift policy saved and synced to legacy settings.");
   }
 
   return (
@@ -120,7 +186,9 @@ export default function NewShiftPolicyPage() {
         }}
       />
 
-      {showForm ? (
+      {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading shift policy...</div> : null}
+
+      {!loading && showForm ? (
         <>
           <PolicySection
             title="Policy Details"
@@ -219,10 +287,11 @@ export default function NewShiftPolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => notify("Shift policy saved locally.")}
-                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => void saveShiftPolicy()}
+                disabled={saving}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                Save Policy
+                {saving ? "Saving..." : "Save Policy"}
               </button>
               <button
                 type="button"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect } from "react";
 import {
   Field,
   PolicyPage,
@@ -9,8 +10,10 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type AttendancePolicyState = {
+  policyId: string;
   policyName: string;
   policyCode: string;
   effectiveFrom: string;
@@ -36,6 +39,7 @@ type AttendancePolicyState = {
 };
 
 const initialState: AttendancePolicyState = {
+  policyId: "",
   policyName: "Standard Attendance Policy",
   policyCode: "ATT-001",
   effectiveFrom: "2026-03-13",
@@ -64,6 +68,8 @@ export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   function update<K extends keyof AttendancePolicyState>(key: K, value: AttendancePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -74,10 +80,65 @@ export default function NewAttendancePolicyPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
+  async function accessToken() {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    return sessionResult?.data.session?.access_token || "";
+  }
+
+  async function loadAttendanceBridge() {
+    const token = await accessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    const response = await fetch("/api/company/policies/attendance-bridge", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as Partial<AttendancePolicyState> & { error?: string };
+    if (!response.ok) {
+      notify(result.error || "Unable to load attendance policy.");
+      setLoading(false);
+      return;
+    }
+
+    setDraft((current) => ({
+      ...current,
+      ...result,
+    }));
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadAttendanceBridge();
+  }, []);
+
   function openNewForm() {
     setDraft(initialState);
     setShowForm(true);
     notify("New attendance policy form opened.");
+  }
+
+  async function saveAttendancePolicy() {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+
+    setSaving(true);
+    const response = await fetch("/api/company/policies/attendance-bridge", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(draft),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setSaving(false);
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to save attendance policy.");
+    }
+    notify("Attendance policy saved and synced to legacy settings.");
   }
 
   return (
@@ -108,7 +169,9 @@ export default function NewAttendancePolicyPage() {
         }}
       />
 
-      {showForm ? (
+      {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading attendance policy...</div> : null}
+
+      {!loading && showForm ? (
         <>
           <PolicySection
             title="Policy Details"
@@ -265,10 +328,11 @@ export default function NewAttendancePolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => notify("Attendance policy saved locally.")}
-                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+                onClick={() => void saveAttendancePolicy()}
+                disabled={saving}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                Save Policy
+                {saving ? "Saving..." : "Save Policy"}
               </button>
               <button
                 type="button"

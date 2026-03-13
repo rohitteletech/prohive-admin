@@ -4,6 +4,11 @@ import { PolicyLinkCard } from "@/components/company/policy-ui";
 
 const policies = [
   {
+    href: "/company/settings/policies/assignments",
+    title: "Policy Assignments",
+    description: "Assign policies to company, department, and employee scope with effective dates and override priority.",
+  },
+  {
     href: "/company/settings/policies/shift-policy",
     title: "Shift Policy",
     description: "Define shift names, timing windows, grace limits, and the base operating schedule for the company.",
