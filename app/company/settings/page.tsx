@@ -196,11 +196,18 @@ function CompanySettingsPageContent() {
     })();
   }
 
+  function cardClass(tone: "default" | "danger" = "default") {
+    return [
+      "rounded-[24px] border bg-white shadow-sm p-5 sm:p-6",
+      tone === "danger" ? "border-rose-200" : "border-slate-200",
+    ].join(" ");
+  }
+
   return (
-    <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
+    <div className="mx-auto max-w-6xl px-3 pb-6 pt-0 sm:px-4 lg:px-5">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Settings</h1>
-        <p className="mt-2 text-sm text-zinc-600">Manage security preferences and account behavior.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600">Manage security preferences, office attendance setup, brand identity, and account safety without oversized form sections.</p>
       </div>
 
       {toast && <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div>}
@@ -210,86 +217,101 @@ function CompanySettingsPageContent() {
         </div>
       )}
 
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Change Password</h2>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">Current Password</span>
-            <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">New Password</span>
-            <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">Confirm Password</span>
-            <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-          </label>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="space-y-4">
+          <section className={cardClass()}>
+            <div className="flex flex-col gap-1 border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Change Password</h2>
+              <p className="text-sm text-slate-600">Update your login password and keep your admin account secure.</p>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5 sm:col-span-2">
+                <span className="text-sm text-slate-700">Current Password</span>
+                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-sm text-slate-700">New Password</span>
+                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-sm text-slate-700">Confirm Password</span>
+                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+              </label>
+            </div>
+            <button type="button" onClick={handleChangePassword} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800">
+              Update Password
+            </button>
+          </section>
+
+          <section className={cardClass()}>
+            <div className="flex flex-col gap-1 border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Office Attendance Location</h2>
+              <p className="text-sm text-slate-600">Used for employees marked as Office Only. Leave all fields blank if office-radius attendance is not enabled.</p>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1.5">
+                <span className="text-sm text-slate-700">Office Latitude</span>
+                <input value={officeLat} onChange={(e) => setOfficeLat(e.target.value)} placeholder="18.520430" className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+              </label>
+              <label className="grid gap-1.5">
+                <span className="text-sm text-slate-700">Office Longitude</span>
+                <input value={officeLon} onChange={(e) => setOfficeLon(e.target.value)} placeholder="73.856743" className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+              </label>
+              <label className="grid gap-1.5 sm:col-span-2">
+                <span className="text-sm text-slate-700">Allowed Radius (meters)</span>
+                <input value={officeRadiusM} onChange={(e) => setOfficeRadiusM(e.target.value.replace(/[^\d]/g, ""))} placeholder="150" className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none sm:max-w-xs" />
+              </label>
+            </div>
+            <button type="button" onClick={handleSaveAttendanceSettings} disabled={savingAttendance} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
+              {savingAttendance ? "Saving..." : "Save Office Attendance Settings"}
+            </button>
+          </section>
         </div>
-        <button type="button" onClick={handleChangePassword} className="mt-4 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
-          Update Password
-        </button>
-      </section>
 
-      <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Office Attendance Location</h2>
-        <p className="mt-1 text-sm text-slate-600">Used for employees marked as Office Only. Leave all fields blank if you are not using office-radius attendance yet.</p>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">Office Latitude</span>
-            <input value={officeLat} onChange={(e) => setOfficeLat(e.target.value)} placeholder="18.520430" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">Office Longitude</span>
-            <input value={officeLon} onChange={(e) => setOfficeLon(e.target.value)} placeholder="73.856743" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-          </label>
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">Allowed Radius (meters)</span>
-            <input value={officeRadiusM} onChange={(e) => setOfficeRadiusM(e.target.value.replace(/[^\d]/g, ""))} placeholder="150" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-          </label>
+        <div className="space-y-4 xl:sticky xl:top-24">
+          <section className={cardClass()}>
+            <div className="flex flex-col gap-1 border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Company Tagline</h2>
+              <p className="text-sm text-slate-600">Add a short line that employees will see across the app.</p>
+            </div>
+            <label className="mt-4 grid gap-1.5">
+              <span className="text-sm text-slate-700">Tagline (max 100 chars)</span>
+              <input value={taglineInput} onChange={(e) => setTaglineInput(e.target.value)} maxLength={100} placeholder="Example: Trusted service, every day." className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+            </label>
+            <div className="mt-2 text-xs text-slate-500">{taglineInput.trim().length}/100</div>
+            <button
+              type="button"
+              onClick={handleSaveTagline}
+              disabled={savingTagline || taglineInput.trim() === savedTagline}
+              className={[
+                "mt-4 rounded-lg px-4 py-2.5 text-sm font-semibold",
+                savingTagline || taglineInput.trim() === savedTagline
+                  ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
+                  : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
+              ].join(" ")}
+            >
+              {savingTagline ? "Saving..." : "Save Tagline"}
+            </button>
+          </section>
+
+          <section className={cardClass("danger")}>
+            <div className="flex flex-col gap-1 border-b border-rose-100 pb-4">
+              <h2 className="text-lg font-semibold text-rose-700">Security Actions</h2>
+              <p className="text-sm text-slate-600">Use this if account access is suspected on another device.</p>
+            </div>
+            <button type="button" onClick={() => showToast("All other sessions logged out (UI only).")} className="mt-4 w-full rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100">
+              Logout from all other sessions
+            </button>
+          </section>
         </div>
-        <button type="button" onClick={handleSaveAttendanceSettings} disabled={savingAttendance} className="mt-4 rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
-          {savingAttendance ? "Saving..." : "Save Office Attendance Settings"}
-        </button>
-      </section>
-
-      <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-slate-900">Company Tagline</h2>
-        <p className="mt-1 text-sm text-slate-600">Add a short line that represents your company. Employees will see it in app.</p>
-        <label className="mt-3 grid gap-1.5">
-          <span className="text-sm text-slate-700">Tagline (max 100 chars)</span>
-          <input value={taglineInput} onChange={(e) => setTaglineInput(e.target.value)} maxLength={100} placeholder="Example: Trusted service, every day." className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none" />
-        </label>
-        <div className="mt-2 text-xs text-slate-500">{taglineInput.trim().length}/100</div>
-        <button
-          type="button"
-          onClick={handleSaveTagline}
-          disabled={savingTagline || taglineInput.trim() === savedTagline}
-          className={[
-            "mt-4 rounded-lg px-3 py-2 text-sm font-semibold",
-            savingTagline || taglineInput.trim() === savedTagline
-              ? "cursor-not-allowed border border-slate-200 bg-slate-100 text-slate-400"
-              : "border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100",
-          ].join(" ")}
-        >
-          {savingTagline ? "Saving..." : "Save Tagline"}
-        </button>
-      </section>
-
-      <section className="mt-4 rounded-2xl border border-rose-200 bg-white p-4 shadow-sm sm:p-5">
-        <h2 className="text-base font-semibold text-rose-700">Security Actions</h2>
-        <p className="mt-1 text-sm text-slate-600">Use this if account access is suspected on another device.</p>
-        <button type="button" onClick={() => showToast("All other sessions logged out (UI only).")} className="mt-4 rounded-lg border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-100">
-          Logout from all other sessions
-        </button>
-      </section>
+      </div>
     </div>
   );
 }
 
 export default function CompanySettingsPage() {
   return (
-    <Suspense fallback={<div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0" />}>
+    <Suspense fallback={<div className="mx-auto max-w-6xl px-3 pb-6 pt-0 sm:px-4 lg:px-5" />}>
       <CompanySettingsPageContent />
     </Suspense>
   );
