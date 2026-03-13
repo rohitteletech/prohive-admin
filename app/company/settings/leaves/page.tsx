@@ -271,9 +271,9 @@ export default function Page() {
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Leave Settings</h1>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Leave Policy</h1>
         <p className="mt-2 text-sm text-zinc-600">
-          Configure, edit, and maintain company leave policies with quota and carry-forward rules.
+          Configure, edit, and maintain company leave policy rules with quota, carry-forward, and overrides.
         </p>
       </div>
 

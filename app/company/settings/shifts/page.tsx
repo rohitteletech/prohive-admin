@@ -235,8 +235,8 @@ export default function Page() {
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Shift Control</h1>
-        <p className="mt-2 text-sm text-zinc-600">Define, rename, and maintain shift type and timing rules for your company.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Shift Policy</h1>
+        <p className="mt-2 text-sm text-zinc-600">Define, rename, and maintain shift type, timing, and operating rules for your company.</p>
         {loading ? <p className="mt-2 text-sm text-zinc-500">Loading saved shift settings...</p> : null}
       </div>
 
@@ -264,7 +264,7 @@ export default function Page() {
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-            Attendance policy controls have moved to the dedicated attendance policy page. Shift Control now focuses on timings and workforce mapping.
+            Attendance policy controls have moved to the dedicated attendance policy page. Shift Policy now focuses on timings and workforce mapping.
           </div>
           <Link
             href="/company/settings/attendance-policy"

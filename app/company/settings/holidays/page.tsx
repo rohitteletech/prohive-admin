@@ -245,8 +245,8 @@ export default function ManageHolidaysPage() {
   return (
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Manage Holidays</h1>
-        <p className="mt-2 text-sm text-zinc-600">Configure the official holiday calendar used for attendance and leave workflows.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Holiday / Weekly Off Policy</h1>
+        <p className="mt-2 text-sm text-zinc-600">Configure the holiday calendar and weekly off rules used in attendance and leave workflows.</p>
       </div>
 
       {toast && (

@@ -6,22 +6,27 @@ import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const primaryItems = [
-  { href: "/company/settings", label: "Profile", description: "Admin account and company settings" },
-  { href: "/company/leaves", label: "Leave", description: "Review and approve leave requests" },
-  { href: "/company/settings/holidays", label: "Calendar", description: "Manage holidays and calendar dates" },
-  { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
-  { href: "/company/corrections", label: "Correction", description: "Resolve attendance correction requests" },
-];
-
-const supportItems = [
+  { href: "/company/settings", label: "Settings", description: "Admin account, company profile, and security settings" },
   { href: "/company/dashboard", label: "Dashboard", description: "Operational overview" },
   { href: "/company/employees", label: "Employees", description: "Manage employee records" },
   { href: "/company/attendance", label: "Attendance", description: "View daily attendance" },
   { href: "/company/reports", label: "Reports", description: "Export workforce reports" },
+];
+
+const operationsItems = [
+  { href: "/company/leaves", label: "Leave", description: "Review and approve leave requests" },
+  { href: "/company/corrections", label: "Correction", description: "Resolve attendance correction requests" },
+  { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
   { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
-  { href: "/company/settings/shifts", label: "Shift Control", description: "Manage shifts and schedules" },
-  { href: "/company/settings/attendance-policy", label: "Attendance Policy", description: "Define present-day and attendance rules" },
-  { href: "/company/settings/leaves", label: "Leave Settings", description: "Configure leave policy" },
+];
+
+const policyItems = [
+  { href: "/company/settings/policies", label: "Policy Hub", description: "Open the new standalone company policy pages" },
+  { href: "/company/settings/policies/shift-policy", label: "Shift Policy", description: "Define shifts, schedules, and timing rules" },
+  { href: "/company/settings/policies/attendance-policy", label: "Attendance Policy", description: "Define present-day and attendance rules" },
+  { href: "/company/settings/policies/leave-policy", label: "Leave Policy", description: "Configure leave rules and balances" },
+  { href: "/company/settings/policies/holiday-weekly-off-policy", label: "Holiday / Weekly Off Policy", description: "Manage holidays and weekly off patterns" },
+  { href: "/company/settings/policies/correction-regularization-policy", label: "Correction / Regularization Policy", description: "Define missing-punch and correction rules" },
 ];
 
 type NavItem = {
@@ -42,8 +47,8 @@ function navItemStyle(active: boolean) {
   return {
     display: "flex",
     alignItems: "flex-start",
-    minHeight: 54,
-    padding: "10px 12px",
+    minHeight: 52,
+    padding: "11px 12px",
     borderRadius: 14,
     textDecoration: "none",
     fontSize: 13,
@@ -67,7 +72,7 @@ function SidebarGroup({
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
           <Link key={item.href} href={item.href} style={navItemStyle(active)}>
-            <span style={{ display: "grid", gap: 2 }}>
+            <span style={{ display: "grid", gap: 3 }}>
               <span>{item.label}</span>
               <span style={{ fontSize: 11, lineHeight: 1.3, color: active ? "#1d4ed8" : "#64748b", fontWeight: 500 }}>
                 {item.description}
@@ -311,7 +316,7 @@ export default function CompanyLayout({
       >
         <div
           style={{
-            padding: "28px 22px 24px",
+            padding: "24px 22px 20px",
             background: "linear-gradient(180deg, #1d4ed8 0%, #1e3a8a 100%)",
             color: "#ffffff",
           }}
@@ -351,9 +356,25 @@ export default function CompanyLayout({
 
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
-              Workspace
+              Operations
             </div>
-            <SidebarGroup items={supportItems} pathname={pathname} />
+            <SidebarGroup items={operationsItems} pathname={pathname} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
+              Policy Studio
+            </div>
+            <div
+              style={{
+                border: "1px solid #e2e8f0",
+                borderRadius: 18,
+                padding: 10,
+                background: "#f8fafc",
+              }}
+            >
+              <SidebarGroup items={policyItems} pathname={pathname} />
+            </div>
           </div>
         </div>
 
