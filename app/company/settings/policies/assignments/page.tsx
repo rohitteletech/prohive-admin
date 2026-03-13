@@ -109,7 +109,7 @@ export default function PolicyAssignmentsPage() {
   }, []);
 
   const filteredPolicies = useMemo(
-    () => payload.policies.filter((policy) => policy.policyType === form.policyType),
+    () => payload.policies.filter((policy) => policy.policyType === form.policyType && policy.status !== "archived"),
     [payload.policies, form.policyType],
   );
 
@@ -140,6 +140,12 @@ export default function PolicyAssignmentsPage() {
     if (!token) return notify("Company session not found. Please login again.");
     if (!form.policyId) return notify("Select a policy to assign.");
     if (!form.targetId && form.assignmentLevel !== "company") return notify("Select an assignment target.");
+    if (form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
+      return notify("Effective To date cannot be earlier than Effective From date.");
+    }
+    if (form.assignmentLevel !== "company" && targetOptions.length === 0) {
+      return notify(`No ${form.assignmentLevel} targets are available for assignment.`);
+    }
 
     setSaving(true);
     const response = await fetch("/api/company/policy-assignments", {
@@ -233,8 +239,9 @@ export default function PolicyAssignmentsPage() {
             <Select
               value={form.targetId}
               onChange={(e) => setForm((current) => ({ ...current, targetId: e.target.value }))}
-              disabled={form.assignmentLevel === "company"}
+              disabled={form.assignmentLevel === "company" || targetOptions.length === 0}
             >
+              {targetOptions.length === 0 ? <option value="">No targets available</option> : null}
               {targetOptions.map((target) => (
                 <option key={target.id} value={target.id}>
                   {target.label}

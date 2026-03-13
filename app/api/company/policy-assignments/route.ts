@@ -59,6 +59,9 @@ export async function POST(req: NextRequest) {
   if (!policyType || !assignmentLevel || !policyId || !effectiveFrom) {
     return NextResponse.json({ error: "Policy type, policy, assignment level, target, and effective date are required." }, { status: 400 });
   }
+  if (effectiveTo && effectiveTo < effectiveFrom) {
+    return NextResponse.json({ error: "Effective To date cannot be earlier than Effective From date." }, { status: 400 });
+  }
 
   if (assignmentLevel === "company") {
     targetId = context.companyId;
