@@ -50,12 +50,22 @@ const initialState: HolidayPolicyState = {
   compOffValidityDays: "60",
 };
 
+function createNewPolicyDraft(): HolidayPolicyState {
+  return {
+    ...initialState,
+    policyName: "",
+    policyCode: "",
+    defaultCompanyPolicy: "No",
+  };
+}
+
 export default function HolidayWeeklyOffPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   function update<K extends keyof HolidayPolicyState>(key: K, value: HolidayPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -93,6 +103,7 @@ export default function HolidayWeeklyOffPolicyPage() {
       ...current,
       ...result,
     }));
+    setIsCreatingNew(false);
     setLoading(false);
   }
 
@@ -101,8 +112,9 @@ export default function HolidayWeeklyOffPolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft({ ...initialState });
+    setDraft(createNewPolicyDraft());
     setShowForm(true);
+    setIsCreatingNew(true);
     notify("New holiday policy form opened.");
   }
 
@@ -129,6 +141,7 @@ export default function HolidayWeeklyOffPolicyPage() {
       ...current,
       policyId: result.policyId || current.policyId,
     }));
+    setIsCreatingNew(false);
     notify(creating ? "New holiday policy created successfully." : "Holiday policy saved and synced to legacy settings.");
   }
 
@@ -149,6 +162,7 @@ export default function HolidayWeeklyOffPolicyPage() {
         onCreate={openNewForm}
         onEdit={() => {
           setShowForm(true);
+          setIsCreatingNew(false);
           notify("Current holiday policy opened for editing.");
         }}
         row={{
@@ -168,8 +182,13 @@ export default function HolidayWeeklyOffPolicyPage() {
 
       {!loading && showForm ? (
         <>
+          {isCreatingNew ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+              New holiday / weekly off policy draft. Fill the form and save to create a separate policy.
+            </div>
+          ) : null}
           <PolicySection
-            title="Policy Details"
+            title={isCreatingNew ? "New Policy Details" : "Policy Details"}
             description="Define the administrative identity, governance dates, and company-level applicability of this holiday and weekly off policy."
             tone="slate"
           >

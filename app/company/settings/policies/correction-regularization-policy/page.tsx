@@ -54,12 +54,22 @@ const initialState: CorrectionPolicyState = {
   reasonMandatory: "Yes",
 };
 
+function createNewPolicyDraft(): CorrectionPolicyState {
+  return {
+    ...initialState,
+    policyName: "",
+    policyCode: "",
+    defaultCompanyPolicy: "No",
+  };
+}
+
 export default function CorrectionRegularizationPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   function update<K extends keyof CorrectionPolicyState>(key: K, value: CorrectionPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -97,6 +107,7 @@ export default function CorrectionRegularizationPolicyPage() {
       ...current,
       ...result,
     }));
+    setIsCreatingNew(false);
     setLoading(false);
   }
 
@@ -105,8 +116,9 @@ export default function CorrectionRegularizationPolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft({ ...initialState });
+    setDraft(createNewPolicyDraft());
     setShowForm(true);
+    setIsCreatingNew(true);
     notify("New correction policy form opened.");
   }
 
@@ -133,6 +145,7 @@ export default function CorrectionRegularizationPolicyPage() {
       ...current,
       policyId: result.policyId || current.policyId,
     }));
+    setIsCreatingNew(false);
     notify(creating ? "New correction policy created successfully." : "Correction policy saved to policy engine.");
   }
 
@@ -153,6 +166,7 @@ export default function CorrectionRegularizationPolicyPage() {
         onCreate={openNewForm}
         onEdit={() => {
           setShowForm(true);
+          setIsCreatingNew(false);
           notify("Current correction policy opened for editing.");
         }}
         row={{
@@ -172,8 +186,13 @@ export default function CorrectionRegularizationPolicyPage() {
 
       {!loading && showForm ? (
         <>
+          {isCreatingNew ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+              New correction policy draft. Fill the form and save to create a separate policy.
+            </div>
+          ) : null}
           <PolicySection
-            title="Policy Details"
+            title={isCreatingNew ? "New Policy Details" : "Policy Details"}
             description="Define the administrative identity, governance dates, and company-level applicability of this correction policy."
             tone="slate"
           >

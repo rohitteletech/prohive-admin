@@ -64,12 +64,22 @@ const initialState: AttendancePolicyState = {
   penaltyForLateAboveLimit: "0.5",
 };
 
+function createNewPolicyDraft(): AttendancePolicyState {
+  return {
+    ...initialState,
+    policyName: "",
+    policyCode: "",
+    defaultCompanyPolicy: "No",
+  };
+}
+
 export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   function update<K extends keyof AttendancePolicyState>(key: K, value: AttendancePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -107,6 +117,7 @@ export default function NewAttendancePolicyPage() {
       ...current,
       ...result,
     }));
+    setIsCreatingNew(false);
     setLoading(false);
   }
 
@@ -115,8 +126,9 @@ export default function NewAttendancePolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft({ ...initialState });
+    setDraft(createNewPolicyDraft());
     setShowForm(true);
+    setIsCreatingNew(true);
     notify("New attendance policy form opened.");
   }
 
@@ -143,6 +155,7 @@ export default function NewAttendancePolicyPage() {
       ...current,
       policyId: result.policyId || current.policyId,
     }));
+    setIsCreatingNew(false);
     notify(creating ? "New attendance policy created successfully." : "Attendance policy saved and synced to legacy settings.");
   }
 
@@ -159,6 +172,7 @@ export default function NewAttendancePolicyPage() {
         onCreate={openNewForm}
         onEdit={() => {
           setShowForm(true);
+          setIsCreatingNew(false);
           notify("Current attendance policy opened for editing.");
         }}
         row={{
@@ -178,8 +192,13 @@ export default function NewAttendancePolicyPage() {
 
       {!loading && showForm ? (
         <>
+          {isCreatingNew ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+              New attendance policy draft. Fill the form and save to create a separate policy.
+            </div>
+          ) : null}
           <PolicySection
-            title="Policy Details"
+            title={isCreatingNew ? "New Policy Details" : "Policy Details"}
             description="Define the administrative identity, governance dates, and company-level applicability of this attendance policy."
             tone="slate"
           >

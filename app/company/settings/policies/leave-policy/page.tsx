@@ -61,6 +61,15 @@ const initialPolicyState: LeavePolicyState = {
   carryForwardExpiryDays: "90",
 };
 
+function createNewPolicyDraft(): LeavePolicyState {
+  return {
+    ...initialPolicyState,
+    policyName: "",
+    policyCode: "",
+    defaultCompanyPolicy: "No",
+  };
+}
+
 const initialLeaveTypes: LeaveType[] = [
   {
     id: "casual",
@@ -134,6 +143,7 @@ export default function LeavePolicyPage() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
 
   function updatePolicy<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -198,6 +208,7 @@ export default function LeavePolicyPage() {
     if (Array.isArray(nextLeaveTypes) && nextLeaveTypes.length > 0) {
       setLeaveTypes(nextLeaveTypes);
     }
+    setIsCreatingNew(false);
     setLoading(false);
   }
 
@@ -206,9 +217,10 @@ export default function LeavePolicyPage() {
   }, []);
 
   function openNewForm() {
-    setDraft({ ...initialPolicyState });
-    setLeaveTypes(initialLeaveTypes.map((leaveType) => ({ ...leaveType })));
+    setDraft(createNewPolicyDraft());
+    setLeaveTypes([createBlankLeaveType()]);
     setShowForm(true);
+    setIsCreatingNew(true);
     notify("New leave policy form opened.");
   }
 
@@ -238,6 +250,7 @@ export default function LeavePolicyPage() {
       ...current,
       policyId: result.policyId || current.policyId,
     }));
+    setIsCreatingNew(false);
     notify(creating ? "New leave policy created successfully." : "Leave policy saved and synced to legacy settings.");
   }
 
@@ -258,6 +271,7 @@ export default function LeavePolicyPage() {
         onCreate={openNewForm}
         onEdit={() => {
           setShowForm(true);
+          setIsCreatingNew(false);
           notify("Current leave policy opened for editing.");
         }}
         row={{
@@ -277,8 +291,13 @@ export default function LeavePolicyPage() {
 
       {!loading && showForm ? (
         <>
+          {isCreatingNew ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+              New leave policy draft. Add leave types and save to create a separate policy.
+            </div>
+          ) : null}
           <PolicySection
-            title="Policy Details"
+            title={isCreatingNew ? "New Policy Details" : "Policy Details"}
             description="Define the administrative identity, governance dates, and company-level applicability of this leave policy."
             tone="slate"
           >

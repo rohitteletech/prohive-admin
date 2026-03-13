@@ -52,6 +52,15 @@ const initialState: ShiftPolicyState = {
   legacyShiftId: "",
 };
 
+function createNewPolicyDraft(): ShiftPolicyState {
+  return {
+    ...initialState,
+    policyName: "",
+    policyCode: "",
+    defaultCompanyPolicy: "No",
+  };
+}
+
 function formatShiftDuration(start: string, end: string) {
   const [startHour, startMinute] = start.split(":").map(Number);
   const [endHour, endMinute] = end.split(":").map(Number);
@@ -71,6 +80,7 @@ export default function NewShiftPolicyPage() {
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
   const assignedWorkforceCount = 24;
 
   const shiftDuration = useMemo(
@@ -114,6 +124,7 @@ export default function NewShiftPolicyPage() {
       ...current,
       ...result,
     }));
+    setIsCreatingNew(false);
     setLoading(false);
   }
 
@@ -122,8 +133,9 @@ export default function NewShiftPolicyPage() {
   }, []);
 
   function startNewPolicy() {
-    setDraft({ ...initialState });
+    setDraft(createNewPolicyDraft());
     setShowForm(true);
+    setIsCreatingNew(true);
     notify("New shift policy form opened.");
   }
 
@@ -151,6 +163,7 @@ export default function NewShiftPolicyPage() {
       policyId: result.policyId || current.policyId,
       legacyShiftId: result.legacyShiftId || current.legacyShiftId,
     }));
+    setIsCreatingNew(false);
     notify(creating ? "New shift policy created successfully." : "Shift policy saved and synced to legacy settings.");
   }
 
@@ -167,6 +180,7 @@ export default function NewShiftPolicyPage() {
         onCreate={startNewPolicy}
         onEdit={() => {
           setShowForm(true);
+          setIsCreatingNew(false);
           notify("Current shift policy opened for editing.");
         }}
         onDelete={() => {
@@ -193,8 +207,13 @@ export default function NewShiftPolicyPage() {
 
       {!loading && showForm ? (
         <>
+          {isCreatingNew ? (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+              New shift policy draft. Fill the form and save to create a separate policy.
+            </div>
+          ) : null}
           <PolicySection
-            title="Policy Details"
+            title={isCreatingNew ? "New Policy Details" : "Policy Details"}
             description="Define the administrative identity, governance dates, and company-level applicability of this shift policy."
             tone="slate"
           >
