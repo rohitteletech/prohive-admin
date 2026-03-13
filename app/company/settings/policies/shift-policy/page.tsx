@@ -1,11 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
 import {
   AsideCard,
   Field,
-  InfoTile,
   PolicyActions,
   PolicyPage,
   PolicyRegisterSection,
@@ -82,19 +80,12 @@ export default function NewShiftPolicyPage() {
         </>
       }
       aside={
-        <>
-          <AsideCard title="Policy Snapshot" description="Quick view of the shift policy this page is setting up.">
-            <SnapshotRow label="Default Shift" value={`${draft.defaultShiftName}: ${draft.shiftStart} to ${draft.shiftEnd}`} />
-            <SnapshotRow label="Login Access" value={draft.loginAccessRule === "any_time" ? "Punch allowed any time" : "Punch allowed only during shift time"} />
-            <SnapshotRow label="Grace Rule" value={`${draft.graceMinutes} minutes after shift start`} />
-            <SnapshotRow label="Weekly Off" value={draft.weeklyOffPattern === "sunday_only" ? "Sunday only" : draft.weeklyOffPattern === "saturday_sunday" ? "Saturday and Sunday" : "Alternate Saturday + Sunday"} />
-          </AsideCard>
-          <AsideCard title="Next Policies" description="Shift policy should align with attendance and holiday rules.">
-            <Link href="/company/settings/policies/attendance-policy" className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">
-              Open Attendance Policy
-            </Link>
-          </AsideCard>
-        </>
+        <AsideCard title="Policy Snapshot" description="Quick view of the shift policy this page is setting up.">
+          <SnapshotRow label="Default Shift" value={`${draft.defaultShiftName}: ${draft.shiftStart} to ${draft.shiftEnd}`} />
+          <SnapshotRow label="Login Access" value={draft.loginAccessRule === "any_time" ? "Punch allowed any time" : "Punch allowed only during shift time"} />
+          <SnapshotRow label="Grace Rule" value={`${draft.graceMinutes} minutes after shift start`} />
+          <SnapshotRow label="Weekly Off" value={draft.weeklyOffPattern === "sunday_only" ? "Sunday only" : draft.weeklyOffPattern === "saturday_sunday" ? "Saturday and Sunday" : "Alternate Saturday + Sunday"} />
+        </AsideCard>
       }
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
@@ -117,12 +108,6 @@ export default function NewShiftPolicyPage() {
           defaultPolicy: "Yes",
         }}
       />
-      <div className="grid gap-3 md:grid-cols-4">
-        <InfoTile label="Status" value={mode === "published" ? "Published UI" : "Draft UI"} tone="sky" />
-        <InfoTile label="Version" value={draft.version} />
-        <InfoTile label="Effective Date" value={draft.effectiveDate} />
-        <InfoTile label="Pattern" value={draft.shiftRotation === "fixed" ? "Fixed Shift" : "Rotational Shift"} tone="emerald" />
-      </div>
 
       <PolicySection title="Core Shift Rules" description="Define default shift timings and base punch windows." tone="slate">
         <div className="grid gap-4 md:grid-cols-2">
