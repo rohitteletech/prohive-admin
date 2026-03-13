@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 
 type PolicyMode = "draft" | "published";
@@ -9,6 +10,8 @@ type AttendanceRuleState = {
   version: string;
   effectiveDate: string;
   presentMarkRule: "punch_in" | "punch_in_out";
+  loginAccessRule: "any_time" | "shift_time_only";
+  extraHoursPolicy: "yes" | "no";
   fullDayHours: string;
   halfDayHours: string;
   graceMinutes: string;
@@ -16,6 +19,11 @@ type AttendanceRuleState = {
   earlyGoMinutes: string;
   minWorkOutMinutes: string;
   latePunchPenalty: "enabled" | "disabled";
+  latePunchUpToMinutes: string;
+  repeatLateDaysInMonth: string;
+  penaltyForRepeatLate: string;
+  latePunchAboveMinutes: string;
+  penaltyForLateAboveLimit: string;
   earlyGoPenalty: "enabled" | "disabled";
   holidayPunch: "yes" | "no";
   weeklyOffPunch: "yes" | "no";
@@ -29,6 +37,8 @@ const initialState: AttendanceRuleState = {
   version: "v1.0",
   effectiveDate: "2026-03-12",
   presentMarkRule: "punch_in_out",
+  loginAccessRule: "any_time",
+  extraHoursPolicy: "yes",
   fullDayHours: "08:00",
   halfDayHours: "04:00",
   graceMinutes: "10",
@@ -36,6 +46,11 @@ const initialState: AttendanceRuleState = {
   earlyGoMinutes: "20",
   minWorkOutMinutes: "60",
   latePunchPenalty: "enabled",
+  latePunchUpToMinutes: "60",
+  repeatLateDaysInMonth: "3",
+  penaltyForRepeatLate: "1",
+  latePunchAboveMinutes: "60",
+  penaltyForLateAboveLimit: "0.5",
   earlyGoPenalty: "enabled",
   holidayPunch: "yes",
   weeklyOffPunch: "yes",
@@ -106,6 +121,18 @@ export default function CompanyAttendancePolicyPage() {
     return `Present Days = Full Present + (Half Day x ${draft.halfDayFormula})`;
   }, [draft.presentFormula, draft.halfDayFormula]);
 
+  const latePenaltyPreview = useMemo(() => {
+    if (draft.latePunchPenalty === "disabled") return "Late punch penalties are disabled";
+    return `Up to ${draft.latePunchUpToMinutes} mins x ${draft.repeatLateDaysInMonth}/month = ${draft.penaltyForRepeatLate} day, above ${draft.latePunchAboveMinutes} mins = ${draft.penaltyForLateAboveLimit} day`;
+  }, [
+    draft.latePunchPenalty,
+    draft.latePunchUpToMinutes,
+    draft.repeatLateDaysInMonth,
+    draft.penaltyForRepeatLate,
+    draft.latePunchAboveMinutes,
+    draft.penaltyForLateAboveLimit,
+  ]);
+
   return (
     <div className="mx-auto max-w-7xl px-2 pb-6 pt-0 sm:px-3 lg:px-4">
       <div className="grid gap-5 xl:grid-cols-[1.05fr_0.75fr]">
@@ -117,7 +144,7 @@ export default function CompanyAttendancePolicyPage() {
               </span>
               <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-950">Attendance Policy</h1>
               <p className="mt-3 text-sm leading-6 text-slate-600">
-                Create a clear attendance policy for present days, half days, late punch, early go, holidays, and weekly offs.
+                Create a clear attendance policy for present days, half days, late punch, early go, holidays, weekly offs, and monthly deductions.
               </p>
             </div>
 
@@ -158,11 +185,9 @@ export default function CompanyAttendancePolicyPage() {
 
           <div className="mt-8 space-y-6">
             <section className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold text-slate-950">Core Attendance Rules</h2>
-                  <p className="mt-1 text-sm text-slate-600">Define how full present, half day, and work-time checks should behave.</p>
-                </div>
+              <div>
+                <h2 className="text-xl font-semibold text-slate-950">Core Attendance Rules</h2>
+                <p className="mt-1 text-sm text-slate-600">Define how full present, half day, punch access, and work-time checks should behave.</p>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -191,6 +216,17 @@ export default function CompanyAttendancePolicyPage() {
                   >
                     <option value="punch_in">Punch In झाला की Present</option>
                     <option value="punch_in_out">Punch In + Punch Out दोन्ही झाले तरच Present</option>
+                  </select>
+                </Field>
+
+                <Field label="Login Access Rule" hint="Choose whether employees can punch in any time or only during shift time.">
+                  <select
+                    value={draft.loginAccessRule}
+                    onChange={(event) => update("loginAccessRule", event.target.value as AttendanceRuleState["loginAccessRule"])}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  >
+                    <option value="any_time">Allow Login Any Time</option>
+                    <option value="shift_time_only">Allow Login Only During Shift Time</option>
                   </select>
                 </Field>
 
@@ -230,9 +266,20 @@ export default function CompanyAttendancePolicyPage() {
 
             <section className="rounded-3xl border border-slate-200 bg-white p-5">
               <h2 className="text-xl font-semibold text-slate-950">Punch Access and Exception Rules</h2>
-              <p className="mt-1 text-sm text-slate-600">Handle early in, early go, holidays, weekly offs, and special punch conditions.</p>
+              <p className="mt-1 text-sm text-slate-600">Handle extra hours, early in, early go, holidays, weekly offs, and exception flags.</p>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <Field label="Extra Hr Policy">
+                  <select
+                    value={draft.extraHoursPolicy}
+                    onChange={(event) => update("extraHoursPolicy", event.target.value as AttendanceRuleState["extraHoursPolicy"])}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  >
+                    <option value="yes">Yes</option>
+                    <option value="no">No</option>
+                  </select>
+                </Field>
+
                 <Field label="Early In Allowed (mins)">
                   <input
                     value={draft.earlyInMinutes}
@@ -295,6 +342,53 @@ export default function CompanyAttendancePolicyPage() {
               </div>
             </section>
 
+            <section className="rounded-3xl border border-slate-200 bg-white p-5">
+              <h2 className="text-xl font-semibold text-slate-950">Late Punch Penalty Rules</h2>
+              <p className="mt-1 text-sm text-slate-600">Keep monthly late-punch deduction thresholds with the attendance rules instead of shift setup.</p>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <Field label="Late Punch Up To Mins">
+                  <input
+                    value={draft.latePunchUpToMinutes}
+                    onChange={(event) => update("latePunchUpToMinutes", event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  />
+                </Field>
+
+                <Field label="Repeat Late Days In Month">
+                  <input
+                    value={draft.repeatLateDaysInMonth}
+                    onChange={(event) => update("repeatLateDaysInMonth", event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  />
+                </Field>
+
+                <Field label="Penalty For Repeat Late">
+                  <input
+                    value={draft.penaltyForRepeatLate}
+                    onChange={(event) => update("penaltyForRepeatLate", event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  />
+                </Field>
+
+                <Field label="Late Punch Above Mins">
+                  <input
+                    value={draft.latePunchAboveMinutes}
+                    onChange={(event) => update("latePunchAboveMinutes", event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  />
+                </Field>
+
+                <Field label="Penalty For Late Above Limit">
+                  <input
+                    value={draft.penaltyForLateAboveLimit}
+                    onChange={(event) => update("penaltyForLateAboveLimit", event.target.value)}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none"
+                  />
+                </Field>
+              </div>
+            </section>
+
             <section className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
               <h2 className="text-xl font-semibold text-slate-950">Present Day Formula</h2>
               <p className="mt-1 text-sm text-slate-600">Decide how monthly present days should be counted in the dashboard and reports.</p>
@@ -352,6 +446,13 @@ export default function CompanyAttendancePolicyPage() {
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Login Access</div>
+                <div className="mt-2 text-sm font-medium text-slate-800">
+                  {draft.loginAccessRule === "shift_time_only" ? "Punch allowed only during shift time" : "Punch allowed any time"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Full Present</div>
                 <div className="mt-2 text-sm font-medium text-slate-800">Working hours at or above {draft.fullDayHours}</div>
               </div>
@@ -370,6 +471,18 @@ export default function CompanyAttendancePolicyPage() {
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Early Go</div>
                 <div className="mt-2 text-sm font-medium text-slate-800">Punch out earlier than allowed buffer of {draft.earlyGoMinutes} mins</div>
               </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Extra Hr Policy</div>
+                <div className="mt-2 text-sm font-medium text-slate-800">
+                  {draft.extraHoursPolicy === "yes" ? "Extra working time can be counted" : "Extra working time is ignored"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Late Deduction</div>
+                <div className="mt-2 text-sm font-medium text-slate-800">{latePenaltyPreview}</div>
+              </div>
             </div>
           </section>
 
@@ -379,6 +492,17 @@ export default function CompanyAttendancePolicyPage() {
             <p className="mt-3 text-sm leading-6 text-slate-300">
               This is only the UI draft. Backend calculation and mobile summary wiring can be connected after policy approval.
             </p>
+          </section>
+
+          <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+            <h2 className="text-lg font-semibold text-slate-950">Shift Integration</h2>
+            <p className="mt-1 text-sm text-slate-600">Shift timings stay on the shifts page, but attendance counting rules are now maintained here.</p>
+            <Link
+              href="/company/settings/shifts"
+              className="mt-4 inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Open Shift Control
+            </Link>
           </section>
 
           <section className="rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
