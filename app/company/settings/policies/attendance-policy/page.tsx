@@ -31,7 +31,6 @@ type AttendancePolicyState = {
   earlyGoRule: "flag_only" | "affects_penalty";
   presentDaysFormula: "full_plus_half" | "full_only";
   halfDayValue: "0.5" | "1.0";
-  latePunchPenaltyEnabled: "Yes" | "No";
   latePunchUpToMinutes: string;
   repeatLateDaysInMonth: string;
   penaltyForRepeatLate: string;
@@ -57,7 +56,6 @@ const initialState: AttendancePolicyState = {
   earlyGoRule: "flag_only",
   presentDaysFormula: "full_plus_half",
   halfDayValue: "0.5",
-  latePunchPenaltyEnabled: "Yes",
   latePunchUpToMinutes: "60",
   repeatLateDaysInMonth: "3",
   penaltyForRepeatLate: "1",
@@ -174,7 +172,10 @@ export default function NewAttendancePolicyPage() {
         "Content-Type": "application/json",
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(draft),
+      body: JSON.stringify({
+        ...draft,
+        latePunchPenaltyEnabled: draft.latePunchRule === "affects_penalty" ? "Yes" : "No",
+      }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
     setSaving(false);
@@ -363,32 +364,53 @@ export default function NewAttendancePolicyPage() {
             title="Penalty Rules"
             description="Define the late-punch penalty structure and monthly deduction thresholds applicable to this attendance policy."
           >
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Late Punch Penalty Enabled">
-                <Select
-                  value={draft.latePunchPenaltyEnabled}
-                  onChange={(e) => update("latePunchPenaltyEnabled", e.target.value as AttendancePolicyState["latePunchPenaltyEnabled"])}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
+            <div className={`grid gap-4 md:grid-cols-2 ${draft.latePunchRule === "flag_only" ? "opacity-60" : ""}`}>
               <Field label="Late Punch Up To Minutes">
-                <TextInput value={draft.latePunchUpToMinutes} onChange={(e) => update("latePunchUpToMinutes", e.target.value)} />
+                <TextInput
+                  value={draft.latePunchUpToMinutes}
+                  onChange={(e) => update("latePunchUpToMinutes", e.target.value)}
+                  disabled={draft.latePunchRule === "flag_only"}
+                />
               </Field>
               <Field label="Repeat Late Days In Month">
-                <TextInput value={draft.repeatLateDaysInMonth} onChange={(e) => update("repeatLateDaysInMonth", e.target.value)} />
+                <TextInput
+                  value={draft.repeatLateDaysInMonth}
+                  onChange={(e) => update("repeatLateDaysInMonth", e.target.value)}
+                  disabled={draft.latePunchRule === "flag_only"}
+                />
               </Field>
               <Field label="Penalty For Repeat Late">
-                <TextInput value={draft.penaltyForRepeatLate} onChange={(e) => update("penaltyForRepeatLate", e.target.value)} />
+                <TextInput
+                  value={draft.penaltyForRepeatLate}
+                  onChange={(e) => update("penaltyForRepeatLate", e.target.value)}
+                  disabled={draft.latePunchRule === "flag_only"}
+                />
               </Field>
               <Field label="Late Punch Above Minutes">
-                <TextInput value={draft.latePunchAboveMinutes} onChange={(e) => update("latePunchAboveMinutes", e.target.value)} />
+                <TextInput
+                  value={draft.latePunchAboveMinutes}
+                  onChange={(e) => update("latePunchAboveMinutes", e.target.value)}
+                  disabled={draft.latePunchRule === "flag_only"}
+                />
               </Field>
               <Field label="Penalty For Late Above Limit">
-                <TextInput value={draft.penaltyForLateAboveLimit} onChange={(e) => update("penaltyForLateAboveLimit", e.target.value)} />
+                <TextInput
+                  value={draft.penaltyForLateAboveLimit}
+                  onChange={(e) => update("penaltyForLateAboveLimit", e.target.value)}
+                  disabled={draft.latePunchRule === "flag_only"}
+                />
               </Field>
             </div>
+
+            <p className="mt-3 text-xs text-slate-500">
+              {draft.latePunchRule === "flag_only"
+                ? "Late Punch Rule 'Flag Only' असल्यामुळे penalty fields सध्या disabled आहेत."
+                : "Late punch penalty thresholds या policy मध्ये active आहेत."}
+            </p>
+
+            <p className="mt-2 text-xs text-slate-500">
+              Early Go Rule साठी सध्या penalty sub-options configured नाहीत. Future मध्ये early-go thresholds add केल्यावर हेच logic लागू करू.
+            </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
               <button

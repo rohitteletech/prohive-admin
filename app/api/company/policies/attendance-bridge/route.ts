@@ -176,7 +176,10 @@ export async function PUT(req: NextRequest) {
     earlyGoRule: body.earlyGoRule || "flag_only",
     presentDaysFormula: body.presentDaysFormula || "full_plus_half",
     halfDayValue: body.halfDayValue || "0.5",
-    latePunchPenaltyEnabled: body.latePunchPenaltyEnabled || "Yes",
+    latePunchPenaltyEnabled:
+      (body.latePunchRule || "affects_penalty") === "affects_penalty"
+        ? "Yes"
+        : "No",
     latePunchUpToMinutes: String(body.latePunchUpToMinutes || "60"),
     repeatLateDaysInMonth: String(body.repeatLateDaysInMonth || "3"),
     penaltyForRepeatLate: String(body.penaltyForRepeatLate || "1"),
