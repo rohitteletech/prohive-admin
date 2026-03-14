@@ -36,6 +36,11 @@ type AttendanceBridgePayload = {
   penaltyForRepeatLate?: string;
   latePunchAboveMinutes?: string;
   penaltyForLateAboveLimit?: string;
+  earlyGoUpToMinutes?: string;
+  repeatEarlyGoDaysInMonth?: string;
+  penaltyForRepeatEarlyGo?: string;
+  earlyGoAboveMinutes?: string;
+  penaltyForEarlyGoAboveLimit?: string;
 };
 
 function minutesToClock(value: number, fallback = "00:00") {
@@ -139,6 +144,11 @@ export async function GET(req: NextRequest) {
       penaltyForRepeatLate: String(config.penaltyForRepeatLate || normalizePenaltyDayValue(companyResult.data?.late_penalty_repeat_days, 1)),
       latePunchAboveMinutes: String(config.latePunchAboveMinutes || normalizeLatePenaltyMinutes(companyResult.data?.late_penalty_above_mins)),
       penaltyForLateAboveLimit: String(config.penaltyForLateAboveLimit || normalizePenaltyDayValue(companyResult.data?.late_penalty_above_days, 0.5)),
+      earlyGoUpToMinutes: String(config.earlyGoUpToMinutes || "30"),
+      repeatEarlyGoDaysInMonth: String(config.repeatEarlyGoDaysInMonth || "3"),
+      penaltyForRepeatEarlyGo: String(config.penaltyForRepeatEarlyGo || "1"),
+      earlyGoAboveMinutes: String(config.earlyGoAboveMinutes || "60"),
+      penaltyForEarlyGoAboveLimit: String(config.penaltyForEarlyGoAboveLimit || "0.5"),
     } satisfies AttendanceBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load attendance policy bridge." }, { status: 400 });
@@ -185,6 +195,11 @@ export async function PUT(req: NextRequest) {
     penaltyForRepeatLate: String(body.penaltyForRepeatLate || "1"),
     latePunchAboveMinutes: String(body.latePunchAboveMinutes || "60"),
     penaltyForLateAboveLimit: String(body.penaltyForLateAboveLimit || "0.5"),
+    earlyGoUpToMinutes: String(body.earlyGoUpToMinutes || "30"),
+    repeatEarlyGoDaysInMonth: String(body.repeatEarlyGoDaysInMonth || "3"),
+    penaltyForRepeatEarlyGo: String(body.penaltyForRepeatEarlyGo || "1"),
+    earlyGoAboveMinutes: String(body.earlyGoAboveMinutes || "60"),
+    penaltyForEarlyGoAboveLimit: String(body.penaltyForEarlyGoAboveLimit || "0.5"),
   };
 
   if (configJson.defaultCompanyPolicy === "Yes") {

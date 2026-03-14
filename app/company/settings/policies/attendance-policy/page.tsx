@@ -36,6 +36,11 @@ type AttendancePolicyState = {
   penaltyForRepeatLate: string;
   latePunchAboveMinutes: string;
   penaltyForLateAboveLimit: string;
+  earlyGoUpToMinutes: string;
+  repeatEarlyGoDaysInMonth: string;
+  penaltyForRepeatEarlyGo: string;
+  earlyGoAboveMinutes: string;
+  penaltyForEarlyGoAboveLimit: string;
 };
 
 const initialState: AttendancePolicyState = {
@@ -61,6 +66,11 @@ const initialState: AttendancePolicyState = {
   penaltyForRepeatLate: "1",
   latePunchAboveMinutes: "60",
   penaltyForLateAboveLimit: "0.5",
+  earlyGoUpToMinutes: "30",
+  repeatEarlyGoDaysInMonth: "3",
+  penaltyForRepeatEarlyGo: "1",
+  earlyGoAboveMinutes: "60",
+  penaltyForEarlyGoAboveLimit: "0.5",
 };
 
 function createNewPolicyDraft(): AttendancePolicyState {
@@ -409,8 +419,46 @@ export default function NewAttendancePolicyPage() {
             </p>
 
             <p className="mt-2 text-xs text-slate-500">
-              Early Go Rule साठी सध्या penalty sub-options configured नाहीत. Future मध्ये early-go thresholds add केल्यावर हेच logic लागू करू.
+              Early Go Rule `Flag Only` असेल तर खालील early-go penalty fields disabled राहतील.
             </p>
+
+            <div className={`mt-5 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2 ${draft.earlyGoRule === "flag_only" ? "opacity-60" : ""}`}>
+              <Field label="Early Go Up To Minutes">
+                <TextInput
+                  value={draft.earlyGoUpToMinutes}
+                  onChange={(e) => update("earlyGoUpToMinutes", e.target.value)}
+                  disabled={draft.earlyGoRule === "flag_only"}
+                />
+              </Field>
+              <Field label="Repeat Early Go Days In Month">
+                <TextInput
+                  value={draft.repeatEarlyGoDaysInMonth}
+                  onChange={(e) => update("repeatEarlyGoDaysInMonth", e.target.value)}
+                  disabled={draft.earlyGoRule === "flag_only"}
+                />
+              </Field>
+              <Field label="Penalty For Repeat Early Go">
+                <TextInput
+                  value={draft.penaltyForRepeatEarlyGo}
+                  onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value)}
+                  disabled={draft.earlyGoRule === "flag_only"}
+                />
+              </Field>
+              <Field label="Early Go Above Minutes">
+                <TextInput
+                  value={draft.earlyGoAboveMinutes}
+                  onChange={(e) => update("earlyGoAboveMinutes", e.target.value)}
+                  disabled={draft.earlyGoRule === "flag_only"}
+                />
+              </Field>
+              <Field label="Penalty For Early Go Above Limit">
+                <TextInput
+                  value={draft.penaltyForEarlyGoAboveLimit}
+                  onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value)}
+                  disabled={draft.earlyGoRule === "flag_only"}
+                />
+              </Field>
+            </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
               <button
