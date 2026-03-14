@@ -27,17 +27,33 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
   shiftType?: string;
   shiftStartTime?: string;
   shiftEndTime?: string;
+  halfDayAvailable?: string;
+  halfDayHours?: string;
+  halfDayMinWorkMins?: number;
   loginAccessRule?: string;
   earlyInAllowed?: number;
   gracePeriod?: number;
   minimumWorkBeforePunchOut?: number;
 }) {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const halfDayHours = text(
+    config.halfDayHours,
+    fallback?.halfDayHours ||
+      (typeof fallback?.halfDayMinWorkMins === "number"
+        ? `${String(Math.floor(fallback.halfDayMinWorkMins / 60)).padStart(2, "0")}:${String(fallback.halfDayMinWorkMins % 60).padStart(2, "0")}`
+        : "04:00")
+  );
   return {
     shiftName: text(config.shiftName, fallback?.shiftName || "General Shift"),
     shiftType: text(config.shiftType, fallback?.shiftType || "General"),
     shiftStartTime: text(config.shiftStartTime, fallback?.shiftStartTime || "09:00"),
     shiftEndTime: text(config.shiftEndTime, fallback?.shiftEndTime || "18:00"),
+    halfDayAvailable: yesNo(config.halfDayAvailable, fallback?.halfDayAvailable === "No" ? "No" : "Yes"),
+    halfDayHours,
+    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(
+      clockToMinutes(config.halfDayHours, clockToMinutes(halfDayHours, fallback?.halfDayMinWorkMins ?? 240)),
+      fallback?.halfDayMinWorkMins ?? 240,
+    ),
     loginAccessRule: normalizeLoginAccessRule(config.loginAccessRule || fallback?.loginAccessRule),
     earlyInAllowed: wholeNumber(config.earlyInAllowed, fallback?.earlyInAllowed ?? 15),
     gracePeriod: wholeNumber(config.gracePeriod, fallback?.gracePeriod ?? 10),
@@ -49,17 +65,10 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
 }
 
 export function resolveAttendancePolicyRuntime(policy: PolicyDefinition | null, fallback?: {
-  fullDayMinimumHours?: string;
-  halfDayMinimumHours?: string;
   extraHoursCountingRule?: string;
 }) {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
   return {
-    fullDayMinWorkMins: clockToMinutes(config.fullDayMinimumHours, clockToMinutes(fallback?.fullDayMinimumHours, 480)),
-    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(
-      clockToMinutes(config.halfDayMinimumHours, clockToMinutes(fallback?.halfDayMinimumHours, 240)),
-      240,
-    ),
     extraHoursPolicy: normalizeExtraHoursPolicy(
       config.extraHoursCountingRule === "ignore"
         ? "no"

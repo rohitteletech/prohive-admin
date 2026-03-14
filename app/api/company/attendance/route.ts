@@ -166,9 +166,11 @@ function aggregateRows(
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
       const checkInIso = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
       const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
-      const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, { shiftName: shift });
+      const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
+        shiftName: shift,
+        halfDayMinWorkMins,
+      });
       const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
-        halfDayMinimumHours: "04:00",
         extraHoursCountingRule: extraHoursPolicy,
       });
       const shiftConfig = resolvedPolicies?.resolved?.shift
@@ -190,7 +192,7 @@ function aggregateRows(
         shiftStart: shiftConfig?.start || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
-        halfDayMinWorkMins: resolvedAttendance.halfDayMinWorkMins || halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || halfDayMinWorkMins,
       });
 
       return {

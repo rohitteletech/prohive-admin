@@ -22,8 +22,6 @@ type AttendanceBridgePayload = {
   defaultCompanyPolicy?: "Yes" | "No";
   presentTrigger?: "punch_in" | "punch_in_out";
   singlePunchHandling?: "incomplete_punch" | "half_day" | "absent";
-  fullDayMinimumHours?: string;
-  halfDayMinimumHours?: string;
   extraHoursCountingRule?: "count" | "ignore";
   latePunchRule?: "flag_only" | "enforce_penalty";
   earlyGoRule?: "flag_only" | "enforce_penalty";
@@ -74,35 +72,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Attendance policy definition not found." }, { status: 404 });
     }
 
-    const [companyResult, shiftResult] = await Promise.all([
-      context.admin
-        .from("companies")
-        .select(
-          "half_day_min_work_mins,extra_hours_policy,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days"
-        )
-        .eq("id", context.companyId)
-        .maybeSingle(),
-      context.admin
-        .from("company_shift_definitions")
-        .select("id,name,type,start_time,end_time,grace_mins,early_window_mins,min_work_before_out_mins,active")
-        .eq("company_id", context.companyId)
-        .order("active", { ascending: false })
-        .order("created_at", { ascending: true }),
-    ]);
+    const companyResult = await context.admin
+      .from("companies")
+      .select(
+        "extra_hours_policy,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days"
+      )
+      .eq("id", context.companyId)
+      .maybeSingle();
 
     if (companyResult.error) {
       return NextResponse.json({ error: companyResult.error.message || "Unable to load legacy attendance settings." }, { status: 400 });
     }
-    if (shiftResult.error) {
-      return NextResponse.json({ error: shiftResult.error.message || "Unable to load supporting shift settings." }, { status: 400 });
-    }
-
-    const firstShift =
-      (Array.isArray(shiftResult.data) && shiftResult.data.length > 0
-        ? shiftFromDb(shiftResult.data[0] as never)
-        : DEFAULT_COMPANY_SHIFTS[0]) || DEFAULT_COMPANY_SHIFTS[0];
-    const fullDayMinutes = shiftDurationMinutes(firstShift.start, firstShift.end) || 480;
-    const halfDayMinutes = normalizeHalfDayMinWorkMins(companyResult.data?.half_day_min_work_mins, 240);
     const config = (attendancePolicy.configJson || {}) as Record<string, unknown>;
 
     return NextResponse.json({
@@ -120,8 +100,6 @@ export async function GET(req: NextRequest) {
       defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || attendancePolicy.isDefault === false) ? "No" : "Yes",
       presentTrigger: config.presentTrigger === "punch_in" ? "punch_in" : "punch_in_out",
       singlePunchHandling: config.singlePunchHandling === "half_day" || config.singlePunchHandling === "absent" ? config.singlePunchHandling : "incomplete_punch",
-      fullDayMinimumHours: String(config.fullDayMinimumHours || minutesToClock(fullDayMinutes, "08:00")),
-      halfDayMinimumHours: String(config.halfDayMinimumHours || minutesToClock(halfDayMinutes, "04:00")),
       extraHoursCountingRule:
         config.extraHoursCountingRule === "ignore"
           ? "ignore"
@@ -173,8 +151,6 @@ export async function PUT(req: NextRequest) {
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     presentTrigger: body.presentTrigger || "punch_in_out",
     singlePunchHandling: body.singlePunchHandling || "incomplete_punch",
-    fullDayMinimumHours: body.fullDayMinimumHours || "08:00",
-    halfDayMinimumHours: body.halfDayMinimumHours || "04:00",
     extraHoursCountingRule: body.extraHoursCountingRule || "count",
     latePunchRule: body.latePunchRule || "enforce_penalty",
     earlyGoRule: body.earlyGoRule || "flag_only",
@@ -270,7 +246,6 @@ export async function PUT(req: NextRequest) {
   const { error: companyError } = await context.admin
     .from("companies")
     .update({
-      half_day_min_work_mins: normalizeHalfDayMinWorkMins(clockToMinutes(configJson.halfDayMinimumHours, 240), 240),
       extra_hours_policy: configJson.extraHoursCountingRule === "ignore" ? "no" : "yes",
       late_penalty_enabled: configJson.latePunchPenaltyEnabled === "Yes",
       late_penalty_up_to_mins: normalizeLatePenaltyMinutes(configJson.latePunchUpToMinutes, 60),

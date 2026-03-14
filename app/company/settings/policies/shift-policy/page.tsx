@@ -26,6 +26,8 @@ type ShiftPolicyState = {
   shiftStructure: "fixed" | "rotational";
   shiftStartTime: string;
   shiftEndTime: string;
+  halfDayAvailable: "Yes" | "No";
+  halfDayHours: string;
   loginAccessRule: "any_time" | "shift_time_only";
   earlyInAllowed: string;
   gracePeriod: string;
@@ -46,6 +48,8 @@ const initialState: ShiftPolicyState = {
   shiftStructure: "fixed",
   shiftStartTime: "09:00",
   shiftEndTime: "18:00",
+  halfDayAvailable: "Yes",
+  halfDayHours: "04:00",
   loginAccessRule: "any_time",
   earlyInAllowed: "15",
   gracePeriod: "10",
@@ -366,6 +370,25 @@ export default function NewShiftPolicyPage() {
               </Field>
               <Field label="Shift End Time">
                 <TextInput type="time" value={draft.shiftEndTime} onChange={(e) => update("shiftEndTime", e.target.value)} />
+              </Field>
+              <Field label="Half Day Available For This Shift">
+                <Select
+                  value={draft.halfDayAvailable}
+                  onChange={(e) => update("halfDayAvailable", e.target.value as ShiftPolicyState["halfDayAvailable"])}
+                >
+                  <option value="No">No</option>
+                  <option value="Yes">Yes</option>
+                </Select>
+              </Field>
+              <Field
+                label="Half Day Hours"
+                hint={draft.halfDayAvailable === "No" ? "Not applicable when half day is not available for this shift." : undefined}
+              >
+                <TextInput
+                  value={draft.halfDayHours}
+                  onChange={(e) => update("halfDayHours", e.target.value)}
+                  disabled={draft.halfDayAvailable === "No"}
+                />
               </Field>
             </div>
           </PolicySection>

@@ -148,6 +148,7 @@ export async function POST(req: NextRequest) {
   const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
     shiftName: employeeShiftName,
     shiftType: employeeShiftName,
+    halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
     loginAccessRule: companyResult.data?.login_access_rule,
   });
   const matchedShift =
@@ -165,8 +166,6 @@ export async function POST(req: NextRequest) {
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
   const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance, {
-    fullDayMinimumHours: matchedShift && effectiveScheduledWorkMin ? `${String(Math.floor(effectiveScheduledWorkMin / 60)).padStart(2, "0")}:${String(effectiveScheduledWorkMin % 60).padStart(2, "0")}` : "08:00",
-    halfDayMinimumHours: "04:00",
     extraHoursCountingRule: companyResult.data?.extra_hours_policy,
   });
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
@@ -185,7 +184,7 @@ export async function POST(req: NextRequest) {
     shiftStart: matchedShift?.startTime || null,
     scheduledMinutes: effectiveScheduledWorkMin,
     graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
-    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedAttendance.halfDayMinWorkMins),
+    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
   });
 
   return NextResponse.json({
@@ -215,7 +214,7 @@ export async function POST(req: NextRequest) {
       minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || resolvedShift.minimumWorkBeforePunchOut || 60,
       scheduledWorkMin: effectiveScheduledWorkMin || 0,
       extraHoursPolicy,
-      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedAttendance.halfDayMinWorkMins),
+      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
       loginAccessRule,
       weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
       allowPunchOnHoliday: resolvedHoliday.allowPunchOnHoliday,

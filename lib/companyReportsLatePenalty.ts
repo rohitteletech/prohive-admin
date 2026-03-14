@@ -242,10 +242,11 @@ export async function getLatePenaltyReportData(params: {
     const checkInIso = firstIn.effective_punch_at || firstIn.server_received_at || null;
     const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
     const shift = employee.shift_name?.trim() || "General";
-    const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, { shiftName: shift });
-    const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
-      halfDayMinimumHours: "04:00",
+    const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
+      shiftName: shift,
+      halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
     });
+    const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null);
     const shiftConfig = resolvedPolicies?.resolved?.shift
       ? {
           name: resolvedShift.shiftName,
@@ -263,7 +264,7 @@ export async function getLatePenaltyReportData(params: {
       shiftStart: shiftConfig?.start || null,
       scheduledMinutes,
       graceMins: shiftConfig?.graceMins || resolvedShift.gracePeriod || 10,
-      halfDayMinWorkMins: resolvedAttendance.halfDayMinWorkMins || Number(companyResult.data?.half_day_min_work_mins || 240),
+      halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || Number(companyResult.data?.half_day_min_work_mins || 240),
     });
 
     if (decision.lateMinutes <= 0) continue;

@@ -3,7 +3,7 @@ import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { shiftFromDb } from "@/lib/companyShiftDefinitions";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
-import { normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
+import { normalizeHalfDayMinWorkMins, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 
 type ShiftBridgePayload = {
   policyId?: string;
@@ -18,6 +18,8 @@ type ShiftBridgePayload = {
   shiftStructure?: "fixed" | "rotational";
   shiftStartTime?: string;
   shiftEndTime?: string;
+  halfDayAvailable?: "Yes" | "No";
+  halfDayHours?: string;
   loginAccessRule?: "any_time" | "shift_time_only";
   earlyInAllowed?: string;
   gracePeriod?: string;
@@ -28,6 +30,20 @@ type ShiftBridgePayload = {
 function asNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
+}
+
+function minutesToClock(value: number, fallback = "04:00") {
+  if (!Number.isFinite(value) || value < 0) return fallback;
+  const hours = Math.floor(value / 60);
+  const minutes = Math.floor(value % 60);
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function clockToMinutes(value: unknown, fallback: number) {
+  const text = String(value || "").trim();
+  const [hours, minutes] = text.split(":").map(Number);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
+  return Math.max(0, hours * 60 + minutes);
 }
 
 export async function GET(req: NextRequest) {
@@ -58,7 +74,7 @@ export async function GET(req: NextRequest) {
         .order("created_at", { ascending: true }),
       context.admin
         .from("companies")
-        .select("login_access_rule")
+        .select("login_access_rule,half_day_min_work_mins")
         .eq("id", context.companyId)
         .maybeSingle(),
     ]);
@@ -94,6 +110,11 @@ export async function GET(req: NextRequest) {
       shiftStructure: config.shiftStructure === "rotational" ? "rotational" : "fixed",
       shiftStartTime: String(config.shiftStartTime || firstLegacy.start || "09:00"),
       shiftEndTime: String(config.shiftEndTime || firstLegacy.end || "18:00"),
+      halfDayAvailable: config.halfDayAvailable === "No" ? "No" : "Yes",
+      halfDayHours: String(
+        config.halfDayHours ||
+          minutesToClock(normalizeHalfDayMinWorkMins(companyResult.data?.half_day_min_work_mins, 240), "04:00")
+      ),
       loginAccessRule: normalizeLoginAccessRule(config.loginAccessRule || companyResult.data?.login_access_rule),
       earlyInAllowed: String(config.earlyInAllowed || firstLegacy.earlyWindowMins || 15),
       gracePeriod: String(config.gracePeriod || firstLegacy.graceMins || 10),
@@ -131,6 +152,8 @@ export async function PUT(req: NextRequest) {
     shiftStructure: body.shiftStructure || "fixed",
     shiftStartTime: body.shiftStartTime || "09:00",
     shiftEndTime: body.shiftEndTime || "18:00",
+    halfDayAvailable: body.halfDayAvailable || "Yes",
+    halfDayHours: body.halfDayAvailable === "No" ? "00:00" : String(body.halfDayHours || "04:00"),
     loginAccessRule: body.loginAccessRule || "any_time",
     earlyInAllowed:
       (body.loginAccessRule || "any_time") === "any_time"
@@ -252,6 +275,10 @@ export async function PUT(req: NextRequest) {
     .from("companies")
     .update({
       login_access_rule: normalizeLoginAccessRule(configJson.loginAccessRule),
+      half_day_min_work_mins:
+        configJson.halfDayAvailable === "Yes"
+          ? normalizeHalfDayMinWorkMins(clockToMinutes(configJson.halfDayHours, 240), 240)
+          : null,
     })
     .eq("id", context.companyId);
 
