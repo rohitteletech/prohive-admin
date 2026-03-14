@@ -25,7 +25,6 @@ type AttendancePolicyState = {
   singlePunchHandling: "incomplete_punch" | "half_day" | "absent";
   fullDayMinimumHours: string;
   halfDayMinimumHours: string;
-  absentRule: "absent" | "half_day" | "manual_review";
   extraHoursCountingRule: "count" | "ignore";
   latePunchRule: "flag_only" | "enforce_penalty";
   earlyGoRule: "flag_only" | "enforce_penalty";
@@ -55,7 +54,6 @@ const initialState: AttendancePolicyState = {
   singlePunchHandling: "incomplete_punch",
   fullDayMinimumHours: "08:00",
   halfDayMinimumHours: "04:00",
-  absentRule: "absent",
   extraHoursCountingRule: "count",
   latePunchRule: "enforce_penalty",
   earlyGoRule: "flag_only",
@@ -356,13 +354,6 @@ export default function NewAttendancePolicyPage() {
               </Field>
               <Field label="Half Day Minimum Hours">
                 <TextInput value={draft.halfDayMinimumHours} onChange={(e) => update("halfDayMinimumHours", e.target.value)} />
-              </Field>
-              <Field label="Absent Rule">
-                <Select value={draft.absentRule} onChange={(e) => update("absentRule", e.target.value as AttendancePolicyState["absentRule"])}>
-                  <option value="absent">Absent</option>
-                  <option value="half_day">Half Day</option>
-                  <option value="manual_review">Manual Review</option>
-                </Select>
               </Field>
               <Field label="Extra Hours Counting Rule">
                 <Select
