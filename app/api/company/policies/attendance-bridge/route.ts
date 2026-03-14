@@ -26,8 +26,8 @@ type AttendanceBridgePayload = {
   halfDayMinimumHours?: string;
   absentRule?: "no_punch_or_below_minimum" | "below_half_day_threshold" | "manual_override";
   extraHoursCountingRule?: "count" | "ignore";
-  latePunchRule?: "flag_only" | "affects_penalty";
-  earlyGoRule?: "flag_only" | "affects_penalty";
+  latePunchRule?: "flag_only" | "enforce_penalty";
+  earlyGoRule?: "flag_only" | "enforce_penalty";
   presentDaysFormula?: "full_plus_half" | "full_only";
   halfDayValue?: "0.5" | "1.0";
   latePunchPenaltyEnabled?: "Yes" | "No";
@@ -133,8 +133,8 @@ export async function GET(req: NextRequest) {
           : normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy) === "no"
             ? "ignore"
             : "count",
-      latePunchRule: config.latePunchRule === "flag_only" ? "flag_only" : "affects_penalty",
-      earlyGoRule: config.earlyGoRule === "affects_penalty" ? "affects_penalty" : "flag_only",
+      latePunchRule: config.latePunchRule === "flag_only" ? "flag_only" : "enforce_penalty",
+      earlyGoRule: config.earlyGoRule === "enforce_penalty" || config.earlyGoRule === "affects_penalty" ? "enforce_penalty" : "flag_only",
       presentDaysFormula: config.presentDaysFormula === "full_only" ? "full_only" : "full_plus_half",
       halfDayValue: config.halfDayValue === "1.0" ? "1.0" : "0.5",
       latePunchPenaltyEnabled:
@@ -182,12 +182,12 @@ export async function PUT(req: NextRequest) {
     halfDayMinimumHours: body.halfDayMinimumHours || "04:00",
     absentRule: body.absentRule || "no_punch_or_below_minimum",
     extraHoursCountingRule: body.extraHoursCountingRule || "count",
-    latePunchRule: body.latePunchRule || "affects_penalty",
+    latePunchRule: body.latePunchRule || "enforce_penalty",
     earlyGoRule: body.earlyGoRule || "flag_only",
     presentDaysFormula: body.presentDaysFormula || "full_plus_half",
     halfDayValue: body.halfDayValue || "0.5",
     latePunchPenaltyEnabled:
-      (body.latePunchRule || "affects_penalty") === "affects_penalty"
+      (body.latePunchRule || "enforce_penalty") === "enforce_penalty"
         ? "Yes"
         : "No",
     latePunchUpToMinutes: String(body.latePunchUpToMinutes || "60"),

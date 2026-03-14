@@ -27,8 +27,8 @@ type AttendancePolicyState = {
   halfDayMinimumHours: string;
   absentRule: "no_punch_or_below_minimum" | "below_half_day_threshold" | "manual_override";
   extraHoursCountingRule: "count" | "ignore";
-  latePunchRule: "flag_only" | "affects_penalty";
-  earlyGoRule: "flag_only" | "affects_penalty";
+  latePunchRule: "flag_only" | "enforce_penalty";
+  earlyGoRule: "flag_only" | "enforce_penalty";
   presentDaysFormula: "full_plus_half" | "full_only";
   halfDayValue: "0.5" | "1.0";
   latePunchUpToMinutes: string;
@@ -57,7 +57,7 @@ const initialState: AttendancePolicyState = {
   halfDayMinimumHours: "04:00",
   absentRule: "no_punch_or_below_minimum",
   extraHoursCountingRule: "count",
-  latePunchRule: "affects_penalty",
+  latePunchRule: "enforce_penalty",
   earlyGoRule: "flag_only",
   presentDaysFormula: "full_plus_half",
   halfDayValue: "0.5",
@@ -222,7 +222,7 @@ export default function NewAttendancePolicyPage() {
       body: JSON.stringify({
         ...draft,
         status: targetStatus,
-        latePunchPenaltyEnabled: draft.latePunchRule === "affects_penalty" ? "Yes" : "No",
+        latePunchPenaltyEnabled: draft.latePunchRule === "enforce_penalty" ? "Yes" : "No",
       }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
@@ -373,16 +373,16 @@ export default function NewAttendancePolicyPage() {
                   <option value="ignore">Ignore</option>
                 </Select>
               </Field>
-              <Field label="Late Punch Rule">
+              <Field label="Late Punch Penalty">
                 <Select value={draft.latePunchRule} onChange={(e) => update("latePunchRule", e.target.value as AttendancePolicyState["latePunchRule"])}>
-                  <option value="flag_only">Flag Only</option>
-                  <option value="affects_penalty">Affects Penalty</option>
+                  <option value="flag_only">No Action / Flag Only</option>
+                  <option value="enforce_penalty">Enforce Penalty</option>
                 </Select>
               </Field>
-              <Field label="Early Go Rule">
+              <Field label="Early Go Penalty">
                 <Select value={draft.earlyGoRule} onChange={(e) => update("earlyGoRule", e.target.value as AttendancePolicyState["earlyGoRule"])}>
-                  <option value="flag_only">Flag Only</option>
-                  <option value="affects_penalty">Affects Penalty</option>
+                  <option value="flag_only">No Action / Flag Only</option>
+                  <option value="enforce_penalty">Enforce Penalty</option>
                 </Select>
               </Field>
             </div>
@@ -455,12 +455,12 @@ export default function NewAttendancePolicyPage() {
 
             <p className="mt-3 text-xs text-slate-500">
               {draft.latePunchRule === "flag_only"
-                ? "Late Punch Rule 'Flag Only' असल्यामुळे penalty fields सध्या disabled आहेत."
+                ? "Late Punch Penalty 'No Action / Flag Only' असल्यामुळे penalty fields सध्या disabled आहेत."
                 : "Late punch penalty thresholds या policy मध्ये active आहेत."}
             </p>
 
             <p className="mt-2 text-xs text-slate-500">
-              Early Go Rule `Flag Only` असेल तर खालील early-go penalty fields disabled राहतील.
+              Early Go Penalty `No Action / Flag Only` असेल तर खालील early-go penalty fields disabled राहतील.
             </p>
 
             <div className={`mt-5 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2 ${draft.earlyGoRule === "flag_only" ? "opacity-60" : ""}`}>
