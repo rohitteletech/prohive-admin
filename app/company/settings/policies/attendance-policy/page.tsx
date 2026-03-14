@@ -364,18 +364,6 @@ export default function NewAttendancePolicyPage() {
                   <option value="ignore">Ignore</option>
                 </Select>
               </Field>
-              <Field label="Late Punch Penalty">
-                <Select value={draft.latePunchRule} onChange={(e) => update("latePunchRule", e.target.value as AttendancePolicyState["latePunchRule"])}>
-                  <option value="flag_only">No Action / Flag Only</option>
-                  <option value="enforce_penalty">Enforce Penalty</option>
-                </Select>
-              </Field>
-              <Field label="Early Go Penalty">
-                <Select value={draft.earlyGoRule} onChange={(e) => update("earlyGoRule", e.target.value as AttendancePolicyState["earlyGoRule"])}>
-                  <option value="flag_only">No Action / Flag Only</option>
-                  <option value="enforce_penalty">Enforce Penalty</option>
-                </Select>
-              </Field>
             </div>
           </PolicySection>
 
@@ -406,6 +394,14 @@ export default function NewAttendancePolicyPage() {
             title="Penalty Rules"
             description="Define the late-punch penalty structure and monthly deduction thresholds applicable to this attendance policy."
           >
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Late Punch Penalty">
+                <Select value={draft.latePunchRule} onChange={(e) => update("latePunchRule", e.target.value as AttendancePolicyState["latePunchRule"])}>
+                  <option value="flag_only">No Action / Flag Only</option>
+                  <option value="enforce_penalty">Enforce Penalty</option>
+                </Select>
+              </Field>
+            </div>
             <div className={`grid gap-4 md:grid-cols-2 ${draft.latePunchRule === "flag_only" ? "opacity-60" : ""}`}>
               <Field label="Late Punch Up To Minutes">
                 <TextInput
@@ -450,11 +446,20 @@ export default function NewAttendancePolicyPage() {
                 : "Late punch penalty thresholds या policy मध्ये active आहेत."}
             </p>
 
+            <div className="mt-5 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2">
+              <Field label="Early Go Penalty">
+                <Select value={draft.earlyGoRule} onChange={(e) => update("earlyGoRule", e.target.value as AttendancePolicyState["earlyGoRule"])}>
+                  <option value="flag_only">No Action / Flag Only</option>
+                  <option value="enforce_penalty">Enforce Penalty</option>
+                </Select>
+              </Field>
+            </div>
+
             <p className="mt-2 text-xs text-slate-500">
               Early Go Penalty `No Action / Flag Only` असेल तर खालील early-go penalty fields disabled राहतील.
             </p>
 
-            <div className={`mt-5 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2 ${draft.earlyGoRule === "flag_only" ? "opacity-60" : ""}`}>
+            <div className={`mt-4 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2 ${draft.earlyGoRule === "flag_only" ? "opacity-60" : ""}`}>
               <Field label="Early Go Up To Minutes">
                 <TextInput
                   value={draft.earlyGoUpToMinutes}
