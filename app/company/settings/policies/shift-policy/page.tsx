@@ -79,6 +79,20 @@ function formatShiftDuration(start: string, end: string) {
   return `${hours}h ${String(minutes).padStart(2, "0")}m`;
 }
 
+function formatHalfDayHours(start: string, end: string) {
+  const [startHour, startMinute] = start.split(":").map(Number);
+  const [endHour, endMinute] = end.split(":").map(Number);
+  if (![startHour, startMinute, endHour, endMinute].every(Number.isFinite)) return "04:00";
+
+  const startTotal = startHour * 60 + startMinute;
+  const endTotal = endHour * 60 + endMinute;
+  const diff = endTotal >= startTotal ? endTotal - startTotal : 24 * 60 - startTotal + endTotal;
+  const half = Math.floor(diff / 2);
+  const hours = Math.floor(half / 60);
+  const minutes = half % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
 export default function NewShiftPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
@@ -92,6 +106,10 @@ export default function NewShiftPolicyPage() {
 
   const shiftDuration = useMemo(
     () => formatShiftDuration(draft.shiftStartTime, draft.shiftEndTime),
+    [draft.shiftStartTime, draft.shiftEndTime]
+  );
+  const halfDayHours = useMemo(
+    () => formatHalfDayHours(draft.shiftStartTime, draft.shiftEndTime),
     [draft.shiftStartTime, draft.shiftEndTime]
   );
 
@@ -236,6 +254,7 @@ export default function NewShiftPolicyPage() {
       body: JSON.stringify({
         ...draft,
         status: targetStatus,
+        halfDayHours: draft.halfDayAvailable === "No" ? "00:00" : halfDayHours,
         earlyInAllowed: draft.loginAccessRule === "any_time" ? "0" : draft.earlyInAllowed,
       }),
     });
@@ -382,12 +401,16 @@ export default function NewShiftPolicyPage() {
               </Field>
               <Field
                 label="Half Day Hours"
-                hint={draft.halfDayAvailable === "No" ? "Not applicable when half day is not available for this shift." : undefined}
+                hint={
+                  draft.halfDayAvailable === "No"
+                    ? "Not applicable when half day is not available for this shift."
+                    : "Automatically calculated from shift duration."
+                }
               >
                 <TextInput
-                  value={draft.halfDayHours}
-                  onChange={(e) => update("halfDayHours", e.target.value)}
-                  disabled={draft.halfDayAvailable === "No"}
+                  value={draft.halfDayAvailable === "No" ? "00:00" : halfDayHours}
+                  readOnly
+                  disabled
                 />
               </Field>
             </div>
