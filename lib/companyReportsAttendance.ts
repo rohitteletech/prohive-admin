@@ -8,7 +8,7 @@ import {
   shiftDurationMinutes,
   workHoursLabel,
 } from "@/lib/shiftWorkPolicy";
-import { buildDailyAttendanceDecision, calculateMonthlyLatePenalty, rawWorkedMinutes } from "@/lib/attendancePolicy";
+import { buildAttendanceMetrics, buildDailyAttendanceDecision, calculateMonthlyLatePenalty, rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type AdminClientLike = {
   from: (table: string) => any;
@@ -202,7 +202,7 @@ function aggregateRows(params: {
     grouped.set(key, bucket);
   }
 
-  const rows = Array.from(grouped.entries())
+  const preparedRows = Array.from(grouped.entries())
     .map(([key, bucket]) => {
       const ordered = [...bucket].sort((a, b) => {
         const left = new Date(a.effective_punch_at || a.server_received_at).getTime();
@@ -238,11 +238,13 @@ function aggregateRows(params: {
         scheduledMinutes,
         resolvedAttendance.extraHoursPolicy
       );
-      const decision = buildDailyAttendanceDecision({
+      const localDate = key.split(":")[1] || "";
+      const metrics = buildAttendanceMetrics({
         checkInIso,
         checkOutIso,
         timeZone: params.timeZone,
         shiftStart: shiftConfig?.start || null,
+        shiftEnd: shiftConfig?.end || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || params.halfDayMinWorkMins,
@@ -250,6 +252,8 @@ function aggregateRows(params: {
 
       return {
         id: key,
+        employeeId: employee?.id || "",
+        localDate,
         employee: employee?.full_name?.trim() || employee?.employee_code?.trim() || "Unknown Employee",
         department: employee?.department?.trim() || "-",
         shift: shiftConfig?.name || resolvedShift.shiftName || shift,
@@ -257,15 +261,75 @@ function aggregateRows(params: {
         checkIn: checkInIso ? displayTimeInTimeZone(checkInIso, params.timeZone) : "-",
         checkOut: checkOutIso ? displayTimeInTimeZone(checkOutIso, params.timeZone) : "-",
         workHours: effectiveMinutes > 0 ? workHoursLabel(effectiveMinutes) : "-",
-        status: decision.status,
-        lateMinutes: decision.lateMinutes,
-      } satisfies AttendanceReportRowWithLate;
+        checkInIso,
+        checkOutIso,
+        shiftStart: shiftConfig?.start || null,
+        shiftEnd: shiftConfig?.end || null,
+        scheduledMinutes,
+        graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || params.halfDayMinWorkMins,
+        attendancePolicy: resolvedAttendance,
+        metrics,
+      };
     })
     .sort((a, b) => {
       const dateCompare = a.date.localeCompare(b.date);
       if (dateCompare !== 0) return dateCompare;
       return a.employee.localeCompare(b.employee);
     });
+
+  const groupedByEmployeeMonth = new Map<string, typeof preparedRows>();
+  for (const row of preparedRows) {
+    const monthKey = row.localDate.slice(0, 7);
+    const key = `${row.employeeId}:${monthKey}`;
+    const bucket = groupedByEmployeeMonth.get(key) || [];
+    bucket.push(row);
+    groupedByEmployeeMonth.set(key, bucket);
+  }
+
+  const rows: AttendanceReportRowWithLate[] = [];
+  for (const bucket of groupedByEmployeeMonth.values()) {
+    bucket.sort((a, b) => a.localDate.localeCompare(b.localDate));
+    let lateCycleCount = 0;
+    let earlyCycleCount = 0;
+    for (const row of bucket) {
+      const qualifiesLateWithinLimit =
+        row.metrics.lateMinutes > 0 && row.metrics.lateMinutes <= row.attendancePolicy.latePunchUpToMinutes;
+      const qualifiesEarlyWithinLimit =
+        row.metrics.earlyGoMinutes > 0 && row.metrics.earlyGoMinutes <= row.attendancePolicy.earlyGoUpToMinutes;
+      if (qualifiesLateWithinLimit) lateCycleCount += 1;
+      if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
+
+      const decision = buildDailyAttendanceDecision({
+        checkInIso: row.checkInIso,
+        checkOutIso: row.checkOutIso,
+        timeZone: params.timeZone,
+        shiftStart: row.shiftStart,
+        shiftEnd: row.shiftEnd,
+        scheduledMinutes: row.scheduledMinutes,
+        graceMins: row.graceMins,
+        halfDayMinWorkMins: row.halfDayMinWorkMins,
+        policy: row.attendancePolicy,
+        lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
+        earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+      });
+      if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
+      if (decision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+
+      rows.push({
+        id: row.id,
+        employee: row.employee,
+        department: row.department,
+        shift: row.shift,
+        date: row.date,
+        checkIn: row.checkIn,
+        checkOut: row.checkOut,
+        workHours: row.workHours,
+        status: decision.status,
+        lateMinutes: decision.lateMinutes,
+      });
+    }
+  }
 
   const penalty = calculateMonthlyLatePenalty(
     rows.map((row) => row.lateMinutes || 0),

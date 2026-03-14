@@ -214,17 +214,9 @@ export async function getLatePenaltyReportData(params: {
     groupedByDay.set(key, bucket);
   }
 
-  const latePolicy = {
-    enabled: companyResult.data?.late_penalty_enabled === true,
-    upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
-    repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
-    repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
-    aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
-    aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
-  };
-
   const employeeLateMap = new Map<string, { upTo: number; above: number }>();
   const employeeShiftLabelMap = new Map<string, string>();
+  const employeeRuleMap = new Map<string, { upToMins: number; repeatCount: number; repeatDays: number; aboveMins: number; aboveDays: number; enabled: boolean }>();
 
   for (const [key, bucket] of groupedByDay.entries()) {
     const employeeId = key.split(":")[0];
@@ -262,28 +254,45 @@ export async function getLatePenaltyReportData(params: {
       checkOutIso,
       timeZone,
       shiftStart: shiftConfig?.start || null,
+      shiftEnd: shiftConfig?.end || null,
       scheduledMinutes,
       graceMins: shiftConfig?.graceMins || resolvedShift.gracePeriod || 10,
       halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || Number(companyResult.data?.half_day_min_work_mins || 240),
+      policy: resolvedAttendance,
     });
 
     if (decision.lateMinutes <= 0) continue;
     employeeShiftLabelMap.set(employeeId, shiftConfig?.name || resolvedShift.shiftName || shift);
+    employeeRuleMap.set(employeeId, {
+      enabled: resolvedAttendance.latePunchRule === "enforce_penalty",
+      upToMins: resolvedAttendance.latePunchUpToMinutes,
+      repeatCount: resolvedAttendance.repeatLateDaysInMonth,
+      repeatDays: resolvedAttendance.dayCountForRepeatLate,
+      aboveMins: resolvedAttendance.latePunchAboveMinutes,
+      aboveDays: resolvedAttendance.dayCountForLateAboveLimit,
+    });
     const current = employeeLateMap.get(employeeId) || { upTo: 0, above: 0 };
-    if (decision.lateMinutes <= latePolicy.upToMins) current.upTo += 1;
-    if (decision.lateMinutes > latePolicy.aboveMins) current.above += 1;
+    if (decision.lateMinutes <= resolvedAttendance.latePunchUpToMinutes) current.upTo += 1;
+    if (decision.lateMinutes > resolvedAttendance.latePunchAboveMinutes) current.above += 1;
     employeeLateMap.set(employeeId, current);
   }
 
-  const ruleApplied = latePolicy.enabled
-    ? `Up to ${latePolicy.upToMins} min x ${latePolicy.repeatCount} = ${latePolicy.repeatDays} day, above ${latePolicy.aboveMins} min = ${latePolicy.aboveDays} day`
-    : "Disabled";
-
   const rows = Array.from(employeeLateMap.entries()).map(([employeeId, late]) => {
     const employee = employeesById.get(employeeId);
+    const latePolicy = employeeRuleMap.get(employeeId) || {
+      enabled: companyResult.data?.late_penalty_enabled === true,
+      upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
+      repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
+      repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
+      aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
+      aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
+    };
     const totalLateCount = late.upTo + late.above;
-    const repeatBlocks = Math.floor(late.upTo / Math.max(1, latePolicy.repeatCount));
+    const repeatBlocks = Math.floor(late.upTo / Math.max(1, latePolicy.repeatCount + 1));
     const penaltyDays = latePolicy.enabled ? repeatBlocks * latePolicy.repeatDays + late.above * latePolicy.aboveDays : 0;
+    const ruleApplied = latePolicy.enabled
+      ? `Up to ${latePolicy.upToMins} min x ${latePolicy.repeatCount} free, next = ${latePolicy.repeatDays} day; above ${latePolicy.aboveMins} min = ${latePolicy.aboveDays} day`
+      : "Disabled";
     return {
       id: employeeId,
       employee: employee?.full_name?.trim() || "Unknown",

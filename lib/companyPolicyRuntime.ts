@@ -1,4 +1,5 @@
 import { PolicyDefinition } from "@/lib/companyPolicies";
+import type { AttendanceStatusPenaltyRuntime } from "@/lib/attendancePolicy";
 import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
@@ -10,6 +11,11 @@ function text(value: unknown, fallback = "") {
 function wholeNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;
+}
+
+function decimalNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
 }
 
 function yesNo(value: unknown, fallback: "Yes" | "No" = "No") {
@@ -66,8 +72,12 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
 
 export function resolveAttendancePolicyRuntime(policy: PolicyDefinition | null, fallback?: {
   extraHoursCountingRule?: string;
-}) {
+}): AttendanceStatusPenaltyRuntime & {
+  extraHoursPolicy: string;
+} {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const latePunchRule = text(config.latePunchRule, "flag_only") === "enforce_penalty" ? "enforce_penalty" : "flag_only";
+  const earlyGoRule = text(config.earlyGoRule, "flag_only") === "enforce_penalty" ? "enforce_penalty" : "flag_only";
   return {
     extraHoursPolicy: normalizeExtraHoursPolicy(
       config.extraHoursCountingRule === "ignore"
@@ -76,6 +86,21 @@ export function resolveAttendancePolicyRuntime(policy: PolicyDefinition | null, 
           ? "yes"
           : fallback?.extraHoursCountingRule,
     ),
+    presentTrigger: text(config.presentTrigger, "punch_in_out"),
+    singlePunchHandling: text(config.singlePunchHandling, "incomplete_punch"),
+    latePunchRule,
+    earlyGoRule,
+    halfDayValue: text(config.halfDayValue, "0.5") === "1.0" ? 1 : 0.5,
+    latePunchUpToMinutes: wholeNumber(config.latePunchUpToMinutes, 60),
+    repeatLateDaysInMonth: wholeNumber(config.repeatLateDaysInMonth, 3),
+    dayCountForRepeatLate: decimalNumber(config.penaltyForRepeatLate, 1),
+    latePunchAboveMinutes: wholeNumber(config.latePunchAboveMinutes, 60),
+    dayCountForLateAboveLimit: decimalNumber(config.penaltyForLateAboveLimit, 0.5),
+    earlyGoUpToMinutes: wholeNumber(config.earlyGoUpToMinutes, 30),
+    repeatEarlyGoDaysInMonth: wholeNumber(config.repeatEarlyGoDaysInMonth, 3),
+    dayCountForRepeatEarlyGo: decimalNumber(config.penaltyForRepeatEarlyGo, 1),
+    earlyGoAboveMinutes: wholeNumber(config.earlyGoAboveMinutes, 60),
+    dayCountForEarlyGoAboveLimit: decimalNumber(config.penaltyForEarlyGoAboveLimit, 0.5),
   };
 }
 

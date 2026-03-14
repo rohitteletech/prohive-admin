@@ -6,7 +6,10 @@ export type DailyAttendanceDecision = {
   status: AttendanceStatus;
   workedMinutes: number;
   lateMinutes: number;
+  earlyGoMinutes: number;
   isLate: boolean;
+  dayCount: number;
+  appliedRuleCode: "late_above_limit" | "repeat_late" | "early_go_above_limit" | "repeat_early_go" | null;
 };
 
 export type LatePenaltyPolicy = {
@@ -16,6 +19,35 @@ export type LatePenaltyPolicy = {
   repeatDays: number;
   aboveMins: number;
   aboveDays: number;
+};
+
+export type AttendanceStatusPenaltyRuntime = {
+  presentTrigger: string;
+  singlePunchHandling: string;
+  latePunchRule: "flag_only" | "enforce_penalty";
+  earlyGoRule: "flag_only" | "enforce_penalty";
+  halfDayValue: number;
+  latePunchUpToMinutes: number;
+  repeatLateDaysInMonth: number;
+  dayCountForRepeatLate: number;
+  latePunchAboveMinutes: number;
+  dayCountForLateAboveLimit: number;
+  earlyGoUpToMinutes: number;
+  repeatEarlyGoDaysInMonth: number;
+  dayCountForRepeatEarlyGo: number;
+  earlyGoAboveMinutes: number;
+  dayCountForEarlyGoAboveLimit: number;
+};
+
+export type AttendanceMetrics = {
+  workedMinutes: number;
+  lateMinutes: number;
+  earlyGoMinutes: number;
+  isLate: boolean;
+  hasPunchIn: boolean;
+  hasPunchOut: boolean;
+  scheduledMinutes: number | null;
+  halfDayThreshold: number;
 };
 
 export function rawWorkedMinutes(checkInIso: string | null, checkOutIso: string | null) {
@@ -38,60 +70,152 @@ function localMinutesInTimeZone(iso: string, timeZone: string) {
   return hour * 60 + minute;
 }
 
+function statusToDayCount(status: AttendanceStatus) {
+  if (status === "present" || status === "late") return 1;
+  if (status === "half_day") return 0.5;
+  return 0;
+}
+
+function dayCountToStatus(dayCount: number, isLate: boolean) {
+  if (dayCount >= 1) return isLate ? "late" : "present";
+  if (dayCount >= 0.5) return "half_day";
+  return "absent";
+}
+
+function clampDayCount(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  if (value <= 0) return 0;
+  if (value < 1) return 0.5;
+  return 1;
+}
+
+export function buildAttendanceMetrics(params: {
+  checkInIso: string | null;
+  checkOutIso: string | null;
+  timeZone: string;
+  shiftStart: string | null;
+  shiftEnd: string | null;
+  scheduledMinutes: number | null;
+  graceMins: number;
+  halfDayMinWorkMins: number;
+}) {
+  const workedMinutes = rawWorkedMinutes(params.checkInIso, params.checkOutIso);
+  const actualCheckInMinutes = params.checkInIso ? localMinutesInTimeZone(params.checkInIso, params.timeZone) : null;
+  const actualCheckOutMinutes = params.checkOutIso ? localMinutesInTimeZone(params.checkOutIso, params.timeZone) : null;
+  const shiftStartMins = params.shiftStart ? timeToMinutes(params.shiftStart) : null;
+  const shiftEndMins = params.shiftEnd ? timeToMinutes(params.shiftEnd) : null;
+  const grace = Math.max(0, Math.floor(params.graceMins || 0));
+  const lateMinutes =
+    actualCheckInMinutes !== null && shiftStartMins !== null
+      ? Math.max(0, actualCheckInMinutes - (shiftStartMins + grace))
+      : 0;
+  const earlyGoMinutes =
+    actualCheckOutMinutes !== null && shiftEndMins !== null && params.checkOutIso
+      ? Math.max(0, shiftEndMins - actualCheckOutMinutes)
+      : 0;
+  return {
+    workedMinutes,
+    lateMinutes,
+    earlyGoMinutes,
+    isLate: lateMinutes > 0,
+    hasPunchIn: Boolean(params.checkInIso),
+    hasPunchOut: Boolean(params.checkOutIso),
+    scheduledMinutes:
+      typeof params.scheduledMinutes === "number" && Number.isFinite(params.scheduledMinutes) && params.scheduledMinutes > 0
+        ? Math.floor(params.scheduledMinutes)
+        : null,
+    halfDayThreshold: Math.max(0, Math.floor(params.halfDayMinWorkMins || 0)),
+  } satisfies AttendanceMetrics;
+}
+
 export function buildDailyAttendanceDecision(params: {
   checkInIso: string | null;
   checkOutIso: string | null;
   timeZone: string;
   shiftStart: string | null;
+  shiftEnd: string | null;
   scheduledMinutes: number | null;
   graceMins: number;
   halfDayMinWorkMins: number;
+  policy?: AttendanceStatusPenaltyRuntime | null;
+  lateCycleOccurrenceCount?: number;
+  earlyGoCycleOccurrenceCount?: number;
 }) {
-  if (!params.checkInIso) {
+  const metrics = buildAttendanceMetrics(params);
+
+  if (!metrics.hasPunchIn) {
     return {
       status: "absent",
       workedMinutes: 0,
       lateMinutes: 0,
+      earlyGoMinutes: 0,
       isLate: false,
+      dayCount: 0,
+      appliedRuleCode: null,
     } satisfies DailyAttendanceDecision;
   }
 
-  const workedMinutes = rawWorkedMinutes(params.checkInIso, params.checkOutIso);
-  const actualMinutes = localMinutesInTimeZone(params.checkInIso, params.timeZone);
-  const shiftStartMins = params.shiftStart ? timeToMinutes(params.shiftStart) : null;
-  const grace = Math.max(0, Math.floor(params.graceMins || 0));
-  const lateMinutes =
-    actualMinutes !== null && shiftStartMins !== null ? Math.max(0, actualMinutes - (shiftStartMins + grace)) : 0;
-  const isLate = lateMinutes > 0;
-  const halfDayThreshold = Math.max(0, Math.floor(params.halfDayMinWorkMins || 0));
-  const scheduledMinutes =
-    typeof params.scheduledMinutes === "number" && Number.isFinite(params.scheduledMinutes) && params.scheduledMinutes > 0
-      ? Math.floor(params.scheduledMinutes)
-      : null;
+  let baseStatus: AttendanceStatus;
 
-  if (scheduledMinutes !== null && workedMinutes >= scheduledMinutes) {
-    return {
-      status: isLate ? "late" : "present",
-      workedMinutes,
-      lateMinutes,
-      isLate,
-    } satisfies DailyAttendanceDecision;
+  if (metrics.scheduledMinutes !== null && metrics.workedMinutes >= metrics.scheduledMinutes) {
+    baseStatus = metrics.isLate ? "late" : "present";
+  } else if (metrics.workedMinutes >= metrics.halfDayThreshold && metrics.workedMinutes > 0) {
+    baseStatus = "half_day";
+  } else {
+    baseStatus = "absent";
   }
 
-  if (workedMinutes >= halfDayThreshold && workedMinutes > 0) {
-    return {
-      status: "half_day",
-      workedMinutes,
-      lateMinutes,
-      isLate,
-    } satisfies DailyAttendanceDecision;
+  let finalDayCount = statusToDayCount(baseStatus);
+  let appliedRuleCode: DailyAttendanceDecision["appliedRuleCode"] = null;
+
+  if (params.policy) {
+    const lateRepeatThreshold = Math.max(0, Math.floor(params.policy.repeatLateDaysInMonth || 0));
+    const earlyRepeatThreshold = Math.max(0, Math.floor(params.policy.repeatEarlyGoDaysInMonth || 0));
+
+    if (
+      params.policy.latePunchRule === "enforce_penalty" &&
+      metrics.lateMinutes > Math.max(0, params.policy.latePunchAboveMinutes || 0)
+    ) {
+      finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForLateAboveLimit));
+      appliedRuleCode = "late_above_limit";
+    } else if (
+      params.policy.latePunchRule === "enforce_penalty" &&
+      metrics.lateMinutes > 0 &&
+      metrics.lateMinutes <= Math.max(0, params.policy.latePunchUpToMinutes || 0) &&
+      lateRepeatThreshold > 0 &&
+      (params.lateCycleOccurrenceCount || 0) > lateRepeatThreshold
+    ) {
+      finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForRepeatLate));
+      appliedRuleCode = "repeat_late";
+    }
+
+    if (
+      params.policy.earlyGoRule === "enforce_penalty" &&
+      metrics.earlyGoMinutes > Math.max(0, params.policy.earlyGoAboveMinutes || 0)
+    ) {
+      finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForEarlyGoAboveLimit));
+      appliedRuleCode = appliedRuleCode || "early_go_above_limit";
+    } else if (
+      params.policy.earlyGoRule === "enforce_penalty" &&
+      metrics.earlyGoMinutes > 0 &&
+      metrics.earlyGoMinutes <= Math.max(0, params.policy.earlyGoUpToMinutes || 0) &&
+      earlyRepeatThreshold > 0 &&
+      (params.earlyGoCycleOccurrenceCount || 0) > earlyRepeatThreshold
+    ) {
+      finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForRepeatEarlyGo));
+      appliedRuleCode = appliedRuleCode || "repeat_early_go";
+    }
   }
 
+  const finalStatus = dayCountToStatus(finalDayCount, metrics.isLate);
   return {
-    status: "absent",
-    workedMinutes,
-    lateMinutes,
-    isLate,
+    status: finalStatus,
+    workedMinutes: metrics.workedMinutes,
+    lateMinutes: metrics.lateMinutes,
+    earlyGoMinutes: metrics.earlyGoMinutes,
+    isLate: metrics.isLate,
+    dayCount: finalDayCount,
+    appliedRuleCode,
   } satisfies DailyAttendanceDecision;
 }
 
@@ -109,7 +233,7 @@ export function calculateMonthlyLatePenalty(
 
   const repeatLateCount = lateMinutesList.filter((mins) => mins > 0 && mins <= policy.upToMins).length;
   const aboveLimitCount = lateMinutesList.filter((mins) => mins > policy.aboveMins).length;
-  const repeatPenaltyBlocks = Math.floor(repeatLateCount / Math.max(1, policy.repeatCount));
+  const repeatPenaltyBlocks = Math.floor(repeatLateCount / Math.max(1, policy.repeatCount + 1));
   const penaltyDays = repeatPenaltyBlocks * policy.repeatDays + aboveLimitCount * policy.aboveDays;
 
   return {

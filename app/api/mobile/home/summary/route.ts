@@ -5,6 +5,7 @@ import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShi
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
+  buildAttendanceMetrics,
   buildDailyAttendanceDecision,
   rawWorkedMinutes,
 } from "@/lib/attendancePolicy";
@@ -26,6 +27,17 @@ function currentDateInTimeZone(timeZone: string) {
   return isoDateInIndia(new Date().toISOString());
 }
 
+function buildMonthWindow(date: string) {
+  const [yearText, monthText] = date.split("-");
+  const start = new Date(Date.UTC(Number(yearText), Number(monthText) - 1, 1));
+  const end = new Date(`${date}T00:00:00.000Z`);
+  end.setUTCDate(end.getUTCDate() + 2);
+  return {
+    fromIso: start.toISOString(),
+    toIso: end.toISOString(),
+  };
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     employeeId?: string;
@@ -45,6 +57,7 @@ export async function POST(req: NextRequest) {
 
   const timeZone = normalizeTimeZone(body.timeZone || INDIA_TIME_ZONE);
   const today = currentDateInTimeZone(timeZone);
+  const { fromIso, toIso } = buildMonthWindow(today);
   const policyContext = await resolvePoliciesForEmployee(
     session.admin,
     session.employee.company_id,
@@ -76,8 +89,9 @@ export async function POST(req: NextRequest) {
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
       .neq("approval_status", "rejected")
-      .order("server_received_at", { ascending: false })
-      .limit(20),
+      .gte("effective_punch_at", fromIso)
+      .lt("effective_punch_at", toIso)
+      .order("server_received_at", { ascending: false }),
   ]);
 
   if (employeeResult.error) {
@@ -177,14 +191,81 @@ export async function POST(req: NextRequest) {
   const loginAccessRule = normalizeLoginAccessRule(resolvedShift.loginAccessRule);
   const actualWorkedMinutes = rawWorkedMinutes(checkInAt, checkOutAt);
   const workingMinutes = applyExtraHoursPolicy(actualWorkedMinutes, effectiveScheduledWorkMin, extraHoursPolicy);
+  const todayMetrics = buildAttendanceMetrics({
+    checkInIso: checkInAt,
+    checkOutIso: checkOutAt,
+    timeZone,
+    shiftStart: matchedShift?.startTime || null,
+    shiftEnd: matchedShift?.endTime || null,
+    scheduledMinutes: effectiveScheduledWorkMin,
+    graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
+    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
+  });
+  let lateCycleCount = 0;
+  let earlyCycleCount = 0;
+  const groupedByDate = new Map<string, typeof events>();
+  for (const event of [...recentEvents].reverse()) {
+    const punchAt = event.effective_punch_at || event.server_received_at;
+    if (!punchAt) continue;
+    const localDate = isoDateInIndia(punchAt);
+    const bucket = groupedByDate.get(localDate) || [];
+    bucket.push(event);
+    groupedByDate.set(localDate, bucket);
+  }
+  const orderedDates = Array.from(groupedByDate.keys()).sort();
+  for (const localDate of orderedDates) {
+    if (localDate > today) continue;
+    const bucket = groupedByDate.get(localDate) || [];
+    const firstInForDay = bucket.find((row) => row.punch_type === "in") || null;
+    const lastOutForDay = [...bucket].reverse().find((row) => row.punch_type === "out") || null;
+    const metrics = buildAttendanceMetrics({
+      checkInIso: firstInForDay?.effective_punch_at || firstInForDay?.server_received_at || null,
+      checkOutIso: lastOutForDay?.effective_punch_at || lastOutForDay?.server_received_at || null,
+      timeZone,
+      shiftStart: matchedShift?.startTime || null,
+      shiftEnd: matchedShift?.endTime || null,
+      scheduledMinutes: effectiveScheduledWorkMin,
+      graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
+      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
+    });
+    const qualifiesLateWithinLimit =
+      metrics.lateMinutes > 0 && metrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
+    const qualifiesEarlyWithinLimit =
+      metrics.earlyGoMinutes > 0 && metrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
+    if (qualifiesLateWithinLimit) lateCycleCount += 1;
+    if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
+    const decision = buildDailyAttendanceDecision({
+      checkInIso: firstInForDay?.effective_punch_at || firstInForDay?.server_received_at || null,
+      checkOutIso: lastOutForDay?.effective_punch_at || lastOutForDay?.server_received_at || null,
+      timeZone,
+      shiftStart: matchedShift?.startTime || null,
+      shiftEnd: matchedShift?.endTime || null,
+      scheduledMinutes: effectiveScheduledWorkMin,
+      graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
+      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
+      policy: resolvedAttendance,
+      lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
+      earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+    });
+    if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
+    if (decision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+  }
+  const qualifiesLateWithinLimit =
+    todayMetrics.lateMinutes > 0 && todayMetrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
+  const qualifiesEarlyWithinLimit =
+    todayMetrics.earlyGoMinutes > 0 && todayMetrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
   const attendanceDecision = buildDailyAttendanceDecision({
     checkInIso: checkInAt,
     checkOutIso: checkOutAt,
     timeZone,
     shiftStart: matchedShift?.startTime || null,
+    shiftEnd: matchedShift?.endTime || null,
     scheduledMinutes: effectiveScheduledWorkMin,
     graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
     halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
+    policy: resolvedAttendance,
+    lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
+    earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
   });
 
   return NextResponse.json({

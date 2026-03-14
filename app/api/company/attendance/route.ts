@@ -5,7 +5,7 @@ import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
-import { buildDailyAttendanceDecision, rawWorkedMinutes } from "@/lib/attendancePolicy";
+import { buildAttendanceMetrics, buildDailyAttendanceDecision, rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type EventRow = {
   id: string;
@@ -56,9 +56,9 @@ function normalizeTimeZone(value: string | null) {
 }
 
 function buildQueryWindow(date: string) {
-  const start = new Date(`${date}T00:00:00.000Z`);
+  const [yearText, monthText] = date.split("-");
+  const start = new Date(Date.UTC(Number(yearText), Number(monthText) - 1, 1));
   const end = new Date(`${date}T00:00:00.000Z`);
-  start.setUTCDate(start.getUTCDate() - 1);
   end.setUTCDate(end.getUTCDate() + 2);
   return {
     fromIso: start.toISOString(),
@@ -152,7 +152,7 @@ function aggregateRows(
     grouped.set(key, bucket);
   });
 
-  return Array.from(grouped.entries())
+  const preparedRows = Array.from(grouped.entries())
     .map(([key, bucket]) => {
       const ordered = [...bucket].sort((a, b) => {
         const left = new Date(a.effective_punch_at || a.server_received_at).getTime();
@@ -185,18 +185,20 @@ function aggregateRows(
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
       const rawMinutes = rawWorkedMinutes(checkInIso, checkOutIso);
       const effectiveMinutes = applyExtraHoursPolicy(rawMinutes, scheduledMinutes, resolvedAttendance.extraHoursPolicy);
-      const decision = buildDailyAttendanceDecision({
+      const metrics = buildAttendanceMetrics({
         checkInIso,
         checkOutIso,
         timeZone,
         shiftStart: shiftConfig?.start || null,
+        shiftEnd: shiftConfig?.end || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || halfDayMinWorkMins,
       });
-
       return {
         id: key,
+        employeeId: employee?.id || "",
+        localDate: selectedDate,
         employee: employee?.full_name?.trim() || employee?.employee_code?.trim() || "Unknown Employee",
         department: employee?.department?.trim() || "-",
         shift: shiftConfig?.name || resolvedShift.shiftName || shift,
@@ -208,10 +210,82 @@ function aggregateRows(
         checkOutAddress: lastOut?.address_text?.trim() || "-",
         checkOutLatLng: lastOut ? latLngLabel(lastOut.lat, lastOut.lon) : "-",
         workHours: effectiveMinutes > 0 ? workHoursLabel(effectiveMinutes) : "-",
-        status: decision.status,
-      } satisfies AttendanceRow;
+        shiftStart: shiftConfig?.start || null,
+        shiftEnd: shiftConfig?.end || null,
+        graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
+        scheduledMinutes,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || halfDayMinWorkMins,
+        metrics,
+        attendancePolicy: resolvedAttendance,
+        checkInIso,
+        checkOutIso,
+      };
     })
     .sort((a, b) => a.employee.localeCompare(b.employee));
+
+  const groupedByEmployeeMonth = new Map<string, typeof preparedRows>();
+  for (const row of preparedRows) {
+    const monthKey = row.localDate.slice(0, 7);
+    const key = `${row.employeeId}:${monthKey}`;
+    const bucket = groupedByEmployeeMonth.get(key) || [];
+    bucket.push(row);
+    groupedByEmployeeMonth.set(key, bucket);
+  }
+
+  const resolvedRows: AttendanceRow[] = [];
+  for (const bucket of groupedByEmployeeMonth.values()) {
+    bucket.sort((a, b) => a.localDate.localeCompare(b.localDate) || a.employee.localeCompare(b.employee));
+    let lateCycleCount = 0;
+    let earlyCycleCount = 0;
+    for (const row of bucket) {
+      const qualifiesLateWithinLimit =
+        row.metrics.lateMinutes > 0 &&
+        row.metrics.lateMinutes <= row.attendancePolicy.latePunchUpToMinutes;
+      const qualifiesEarlyWithinLimit =
+        row.metrics.earlyGoMinutes > 0 &&
+        row.metrics.earlyGoMinutes <= row.attendancePolicy.earlyGoUpToMinutes;
+
+      if (qualifiesLateWithinLimit) lateCycleCount += 1;
+      if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
+
+      const decision = buildDailyAttendanceDecision({
+        checkInIso: row.checkInIso,
+        checkOutIso: row.checkOutIso,
+        timeZone,
+        shiftStart: row.shiftStart,
+        shiftEnd: row.shiftEnd,
+        scheduledMinutes: row.scheduledMinutes,
+        graceMins: row.graceMins,
+        halfDayMinWorkMins: row.halfDayMinWorkMins,
+        policy: row.attendancePolicy,
+        lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
+        earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+      });
+
+      if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
+      if (decision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+
+      if (row.localDate === selectedDate) {
+        resolvedRows.push({
+          id: row.id,
+          employee: row.employee,
+          department: row.department,
+          shift: row.shift,
+          date: row.date,
+          checkIn: row.checkIn,
+          checkInAddress: row.checkInAddress,
+          checkInLatLng: row.checkInLatLng,
+          checkOut: row.checkOut,
+          checkOutAddress: row.checkOutAddress,
+          checkOutLatLng: row.checkOutLatLng,
+          workHours: row.workHours,
+          status: decision.status,
+        });
+      }
+    }
+  }
+
+  return resolvedRows.sort((a, b) => a.employee.localeCompare(b.employee));
 }
 
 export async function GET(req: NextRequest) {
