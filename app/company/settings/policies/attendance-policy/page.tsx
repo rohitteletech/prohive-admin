@@ -183,6 +183,30 @@ export default function NewAttendancePolicyPage() {
     notify("New attendance policy form opened.");
   }
 
+  async function deleteAttendancePolicy(policyId: string) {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+    if ((assignedCounts[policyId] || 0) > 0) {
+      return notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
+    }
+
+    const response = await fetch(`/api/company/policies/${policyId}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to delete attendance policy.");
+    }
+
+    if (draft.policyId === policyId) {
+      setShowForm(false);
+      setIsCreatingNew(false);
+    }
+    notify("Attendance policy deleted.");
+    await loadAttendanceBridge();
+  }
+
   async function saveAttendancePolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
@@ -246,7 +270,11 @@ export default function NewAttendancePolicyPage() {
           setIsCreatingNew(false);
           notify("Current attendance policy opened for editing.");
         }}
-        rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
+        onDelete={(rowId) => {
+          void deleteAttendancePolicy(rowId);
+        }}
+        emptyState={loading ? "Loading attendance policies..." : "No attendance policies available."}
+        rows={savedPolicies.map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName,
           assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",

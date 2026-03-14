@@ -179,6 +179,7 @@ export function PolicyRegisterSection({
   onEdit,
   onDelete,
   rows,
+  emptyState = "No policies available.",
 }: {
   title?: string;
   description: string;
@@ -197,6 +198,7 @@ export function PolicyRegisterSection({
     createdOn: string;
     defaultPolicy: string;
   }>;
+  emptyState?: string;
 }) {
   return (
     <section className="rounded-[22px] border border-slate-200 bg-white p-4 sm:p-5">
@@ -231,43 +233,51 @@ export function PolicyRegisterSection({
             </tr>
           </thead>
           <tbody className="bg-white text-slate-800">
-            {rows.map((row) => (
-              <tr key={row.id} className="border-t border-slate-200">
-                <td className="px-4 py-3 font-semibold">{row.name}</td>
-                <td className="px-4 py-3">{row.assignedWorkforce || "0"}</td>
-                <td className="px-4 py-3">{row.policyCode || "-"}</td>
-                <td className="px-4 py-3">{row.effectiveFrom}</td>
-                <td className="px-4 py-3">{row.reviewDueOn}</td>
-                <td className="px-4 py-3">
-                  <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
-                    {row.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">{row.createdBy}</td>
-                <td className="px-4 py-3">{row.createdOn}</td>
-                <td className="px-4 py-3">{row.defaultPolicy}</td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => onEdit(row.id)}
-                      className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Edit
-                    </button>
-                    {onDelete ? (
-                      <button
-                        type="button"
-                        onClick={() => onDelete(row.id)}
-                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
-                      >
-                        Delete
-                      </button>
-                    ) : null}
-                  </div>
+            {rows.length === 0 ? (
+              <tr className="border-t border-slate-200">
+                <td colSpan={10} className="px-4 py-6 text-center text-sm text-slate-500">
+                  {emptyState}
                 </td>
               </tr>
-            ))}
+            ) : (
+              rows.map((row) => (
+                <tr key={row.id} className="border-t border-slate-200">
+                  <td className="px-4 py-3 font-semibold">{row.name}</td>
+                  <td className="px-4 py-3">{row.assignedWorkforce || "0"}</td>
+                  <td className="px-4 py-3">{row.policyCode || "-"}</td>
+                  <td className="px-4 py-3">{row.effectiveFrom}</td>
+                  <td className="px-4 py-3">{row.reviewDueOn}</td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
+                      {row.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">{row.createdBy}</td>
+                  <td className="px-4 py-3">{row.createdOn}</td>
+                  <td className="px-4 py-3">{row.defaultPolicy}</td>
+                  <td className="px-4 py-3 text-right">
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => onEdit(row.id)}
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        Edit
+                      </button>
+                      {onDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => onDelete(row.id)}
+                          className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

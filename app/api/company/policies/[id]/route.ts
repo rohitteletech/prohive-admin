@@ -41,3 +41,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   return NextResponse.json({ ok: true, policy: data });
 }
+
+export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const authHeader = req.headers.get("authorization") || "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  const context = await getCompanyAdminContext(token);
+  if (!context.ok) {
+    return NextResponse.json({ error: context.error }, { status: context.status });
+  }
+
+  const { id } = await params;
+
+  const { data: policy, error: policyError } = await context.admin
+    .from("company_policy_definitions")
+    .select("id,status")
+    .eq("company_id", context.companyId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (policyError || !policy) {
+    return NextResponse.json({ error: policyError?.message || "Policy not found." }, { status: 404 });
+  }
+
+  if (String(policy.status || "").toLowerCase() === "active") {
+    return NextResponse.json({ error: "Active policy cannot be deleted. Archive or replace it first." }, { status: 400 });
+  }
+
+  const { count, error: assignmentError } = await context.admin
+    .from("company_policy_assignments")
+    .select("id", { count: "exact", head: true })
+    .eq("company_id", context.companyId)
+    .eq("policy_id", id)
+    .eq("is_active", true);
+
+  if (assignmentError) {
+    return NextResponse.json({ error: assignmentError.message || "Unable to verify policy assignments." }, { status: 400 });
+  }
+
+  if ((count || 0) > 0) {
+    return NextResponse.json({ error: "This policy is currently assigned to workforce. Reassign it before deletion." }, { status: 400 });
+  }
+
+  const { error: deleteError } = await context.admin
+    .from("company_policy_definitions")
+    .delete()
+    .eq("company_id", context.companyId)
+    .eq("id", id);
+
+  if (deleteError) {
+    return NextResponse.json({ error: deleteError.message || "Unable to delete policy." }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true });
+}

@@ -161,6 +161,30 @@ export default function HolidayWeeklyOffPolicyPage() {
     notify("New holiday policy form opened.");
   }
 
+  async function deleteHolidayPolicy(policyId: string) {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+    if ((assignedCounts[policyId] || 0) > 0) {
+      return notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
+    }
+
+    const response = await fetch(`/api/company/policies/${policyId}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to delete holiday policy.");
+    }
+
+    if (draft.policyId === policyId) {
+      setShowForm(false);
+      setIsCreatingNew(false);
+    }
+    notify("Holiday policy deleted.");
+    await loadHolidayBridge();
+  }
+
   async function saveHolidayPolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
@@ -227,7 +251,11 @@ export default function HolidayWeeklyOffPolicyPage() {
           setIsCreatingNew(false);
           notify("Current holiday policy opened for editing.");
         }}
-        rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
+        onDelete={(rowId) => {
+          void deleteHolidayPolicy(rowId);
+        }}
+        emptyState={loading ? "Loading holiday policies..." : "No holiday policies available."}
+        rows={savedPolicies.map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName,
           assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",

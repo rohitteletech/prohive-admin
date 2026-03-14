@@ -191,6 +191,32 @@ export default function NewShiftPolicyPage() {
     notify("New shift policy form opened.");
   }
 
+  async function deleteShiftPolicy(policyId: string) {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+    if ((assignedCounts[policyId] || 0) > 0) {
+      return notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
+    }
+
+    const response = await fetch(`/api/company/policies/${policyId}`, {
+      method: "DELETE",
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to delete shift policy.");
+    }
+
+    if (draft.policyId === policyId) {
+      setShowForm(false);
+      setIsCreatingNew(false);
+    }
+    notify("Shift policy deleted.");
+    await loadShiftBridge();
+  }
+
   async function saveShiftPolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
@@ -256,13 +282,10 @@ export default function NewShiftPolicyPage() {
           notify("Current shift policy opened for editing.");
         }}
         onDelete={(rowId) => {
-          if ((assignedCounts[rowId] || 0) > 0) {
-            notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
-            return;
-          }
-          notify("Shift policy can now be deleted.");
+          void deleteShiftPolicy(rowId);
         }}
-        rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
+        emptyState={loading ? "Loading shift policies..." : "No shift policies available."}
+        rows={savedPolicies.map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName || "-",
           assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",

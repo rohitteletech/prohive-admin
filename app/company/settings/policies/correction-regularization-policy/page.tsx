@@ -165,6 +165,30 @@ export default function CorrectionRegularizationPolicyPage() {
     notify("New correction policy form opened.");
   }
 
+  async function deleteCorrectionPolicy(policyId: string) {
+    const token = await accessToken();
+    if (!token) return notify("Company session not found. Please login again.");
+    if ((assignedCounts[policyId] || 0) > 0) {
+      return notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
+    }
+
+    const response = await fetch(`/api/company/policies/${policyId}`, {
+      method: "DELETE",
+      headers: { authorization: `Bearer ${token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    if (!response.ok || !result.ok) {
+      return notify(result.error || "Unable to delete correction policy.");
+    }
+
+    if (draft.policyId === policyId) {
+      setShowForm(false);
+      setIsCreatingNew(false);
+    }
+    notify("Correction policy deleted.");
+    await loadCorrectionBridge();
+  }
+
   async function saveCorrectionPolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
@@ -231,7 +255,11 @@ export default function CorrectionRegularizationPolicyPage() {
           setIsCreatingNew(false);
           notify("Current correction policy opened for editing.");
         }}
-        rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
+        onDelete={(rowId) => {
+          void deleteCorrectionPolicy(rowId);
+        }}
+        emptyState={loading ? "Loading correction policies..." : "No correction policies available."}
+        rows={savedPolicies.map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName,
           assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",
