@@ -24,7 +24,7 @@ type AttendanceBridgePayload = {
   singlePunchHandling?: "incomplete_punch" | "half_day" | "absent";
   fullDayMinimumHours?: string;
   halfDayMinimumHours?: string;
-  absentRule?: "no_punch_or_below_minimum" | "below_half_day_threshold" | "manual_override";
+  absentRule?: "absent" | "half_day" | "manual_review";
   extraHoursCountingRule?: "count" | "ignore";
   latePunchRule?: "flag_only" | "enforce_penalty";
   earlyGoRule?: "flag_only" | "enforce_penalty";
@@ -124,9 +124,9 @@ export async function GET(req: NextRequest) {
       fullDayMinimumHours: String(config.fullDayMinimumHours || minutesToClock(fullDayMinutes, "08:00")),
       halfDayMinimumHours: String(config.halfDayMinimumHours || minutesToClock(halfDayMinutes, "04:00")),
       absentRule:
-        config.absentRule === "below_half_day_threshold" || config.absentRule === "manual_override"
+        config.absentRule === "half_day" || config.absentRule === "manual_review"
           ? config.absentRule
-          : "no_punch_or_below_minimum",
+          : "absent",
       extraHoursCountingRule:
         config.extraHoursCountingRule === "ignore"
           ? "ignore"
@@ -180,7 +180,7 @@ export async function PUT(req: NextRequest) {
     singlePunchHandling: body.singlePunchHandling || "incomplete_punch",
     fullDayMinimumHours: body.fullDayMinimumHours || "08:00",
     halfDayMinimumHours: body.halfDayMinimumHours || "04:00",
-    absentRule: body.absentRule || "no_punch_or_below_minimum",
+    absentRule: body.absentRule || "absent",
     extraHoursCountingRule: body.extraHoursCountingRule || "count",
     latePunchRule: body.latePunchRule || "enforce_penalty",
     earlyGoRule: body.earlyGoRule || "flag_only",
