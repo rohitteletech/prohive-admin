@@ -110,6 +110,23 @@ export async function PUT(req: NextRequest) {
     reasonMandatory: body.reasonMandatory || "Yes",
   };
 
+  if (configJson.status === "active") {
+    const archiveQuery = context.admin
+      .from("company_policy_definitions")
+      .update({
+        status: "archived",
+        is_default: false,
+      })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "correction")
+      .eq("status", "active");
+
+    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    if (archiveError) {
+      return NextResponse.json({ error: archiveError.message || "Unable to archive existing active correction policies." }, { status: 400 });
+    }
+  }
+
   if (configJson.defaultCompanyPolicy === "Yes") {
     const { error: clearDefaultError } = await context.admin
       .from("company_policy_definitions")

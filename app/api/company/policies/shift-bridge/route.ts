@@ -132,11 +132,33 @@ export async function PUT(req: NextRequest) {
     shiftStartTime: body.shiftStartTime || "09:00",
     shiftEndTime: body.shiftEndTime || "18:00",
     loginAccessRule: body.loginAccessRule || "any_time",
-    earlyInAllowed: String(body.earlyInAllowed || "15"),
+    earlyInAllowed:
+      (body.loginAccessRule || "any_time") === "any_time"
+        ? "0"
+        : String(body.earlyInAllowed || "15"),
     gracePeriod: String(body.gracePeriod || "10"),
     minimumWorkBeforePunchOut: String(body.minimumWorkBeforePunchOut || "60"),
     legacyShiftId: body.legacyShiftId || "",
   };
+
+  if (configJson.status === "active") {
+    const currentPolicyId = policy?.id || "";
+    const archiveQuery = context.admin
+      .from("company_policy_definitions")
+      .update({
+        status: "archived",
+        is_default: false,
+      })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "shift")
+      .eq("status", "active");
+
+    const { error: archiveError } = currentPolicyId ? await archiveQuery.neq("id", currentPolicyId) : await archiveQuery;
+
+    if (archiveError) {
+      return NextResponse.json({ error: archiveError.message || "Unable to archive existing active shift policies." }, { status: 400 });
+    }
+  }
 
   if (configJson.defaultCompanyPolicy === "Yes") {
     const { error: clearDefaultError } = await context.admin

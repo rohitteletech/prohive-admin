@@ -79,12 +79,12 @@ export default function NewShiftPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [savedPolicies, setSavedPolicies] = useState<ShiftPolicyState[]>([]);
+  const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const assignedWorkforceCount = 24;
 
   const shiftDuration = useMemo(
     () => formatShiftDuration(draft.shiftStartTime, draft.shiftEndTime),
@@ -133,6 +133,9 @@ export default function NewShiftPolicyPage() {
     const policiesResponse = await fetch("/api/company/policies?policy_type=shift", {
       headers: { authorization: `Bearer ${token}` },
     });
+    const assignmentsResponse = await fetch("/api/company/policy-assignments", {
+      headers: { authorization: `Bearer ${token}` },
+    });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
       policies?: Array<{
         id: string;
@@ -144,6 +147,9 @@ export default function NewShiftPolicyPage() {
         isDefault: boolean;
         configJson?: Record<string, unknown>;
       }>;
+    };
+    const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
+      assignments?: Array<{ policyId: string; isActive: boolean }>;
     };
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
@@ -164,6 +170,12 @@ export default function NewShiftPolicyPage() {
           })
         : [nextPolicy];
     setSavedPolicies(loadedPolicies);
+    const nextAssignedCounts = (assignmentsResult.assignments || []).reduce<Record<string, number>>((counts, assignment) => {
+      if (!assignment.isActive || !assignment.policyId) return counts;
+      counts[assignment.policyId] = (counts[assignment.policyId] || 0) + 1;
+      return counts;
+    }, {});
+    setAssignedCounts(nextAssignedCounts);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -179,7 +191,7 @@ export default function NewShiftPolicyPage() {
     notify("New shift policy form opened.");
   }
 
-  async function saveShiftPolicy() {
+  async function saveShiftPolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
@@ -191,7 +203,11 @@ export default function NewShiftPolicyPage() {
         "Content-Type": "application/json",
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(draft),
+      body: JSON.stringify({
+        ...draft,
+        status: targetStatus,
+        earlyInAllowed: draft.loginAccessRule === "any_time" ? "0" : draft.earlyInAllowed,
+      }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string; policyId?: string };
     setSaving(false);
@@ -200,6 +216,7 @@ export default function NewShiftPolicyPage() {
     }
     const nextPolicy = {
       ...draft,
+      status: targetStatus,
       policyId: result.policyId || draft.policyId,
       legacyShiftId: result.legacyShiftId || draft.legacyShiftId,
     };
@@ -210,7 +227,12 @@ export default function NewShiftPolicyPage() {
     });
     setIsCreatingNew(false);
     setShowForm(false);
-    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
+    showSuccess(
+      targetStatus === "Active"
+        ? (creating ? "Policy Enforced Successfully" : "Policy Updated And Enforced Successfully")
+        : (creating ? "Policy Saved as Draft" : "Draft Updated Successfully"),
+    );
+    await loadShiftBridge();
   }
 
   return (
@@ -233,8 +255,8 @@ export default function NewShiftPolicyPage() {
           setIsCreatingNew(false);
           notify("Current shift policy opened for editing.");
         }}
-        onDelete={() => {
-          if (assignedWorkforceCount > 0) {
+        onDelete={(rowId) => {
+          if ((assignedCounts[rowId] || 0) > 0) {
             notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
             return;
           }
@@ -243,7 +265,7 @@ export default function NewShiftPolicyPage() {
         rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName || "-",
-          assignedWorkforce: `${assignedWorkforceCount} Employees`,
+          assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",
           policyCode: policy.policyCode,
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
@@ -280,13 +302,6 @@ export default function NewShiftPolicyPage() {
               </Field>
               <Field label="Next Review Date">
                 <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => update("nextReviewDate", e.target.value)} />
-              </Field>
-              <Field label="Status">
-                <Select value={draft.status} onChange={(e) => update("status", e.target.value as ShiftPolicyState["status"])}>
-                  <option value="Draft">Draft</option>
-                  <option value="Active">Active</option>
-                  <option value="Archived">Archived</option>
-                </Select>
               </Field>
               <Field label="Default Company Policy">
                 <Select
@@ -346,8 +361,15 @@ export default function NewShiftPolicyPage() {
                   <option value="shift_time_only">Allow Login Only During Shift Time</option>
                 </Select>
               </Field>
-              <Field label="Early In Allowed (mins)">
-                <TextInput value={draft.earlyInAllowed} onChange={(e) => update("earlyInAllowed", e.target.value)} />
+              <Field
+                label="Early In Allowed (mins)"
+                hint={draft.loginAccessRule === "any_time" ? "Not applicable when login is allowed at any time." : undefined}
+              >
+                <TextInput
+                  value={draft.loginAccessRule === "any_time" ? "0" : draft.earlyInAllowed}
+                  onChange={(e) => update("earlyInAllowed", e.target.value)}
+                  disabled={draft.loginAccessRule === "any_time"}
+                />
               </Field>
               <Field label="Grace Period (mins)">
                 <TextInput value={draft.gracePeriod} onChange={(e) => update("gracePeriod", e.target.value)} />
@@ -360,11 +382,19 @@ export default function NewShiftPolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void saveShiftPolicy()}
+                onClick={() => void saveShiftPolicy("Active")}
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Submitting..." : "Submit"}
+                {saving ? "Processing..." : "Enforce Policy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveShiftPolicy("Draft")}
+                disabled={saving}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+              >
+                {saving ? "Processing..." : "Save as Draft"}
               </button>
               <button
                 type="button"

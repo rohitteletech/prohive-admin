@@ -68,6 +68,7 @@ export default function CorrectionRegularizationPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [savedPolicies, setSavedPolicies] = useState<CorrectionPolicyState[]>([]);
+  const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -116,8 +117,14 @@ export default function CorrectionRegularizationPolicyPage() {
     const policiesResponse = await fetch("/api/company/policies?policy_type=correction", {
       headers: { authorization: `Bearer ${token}` },
     });
+    const assignmentsResponse = await fetch("/api/company/policy-assignments", {
+      headers: { authorization: `Bearer ${token}` },
+    });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
       policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+    };
+    const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
+      assignments?: Array<{ policyId: string; isActive: boolean }>;
     };
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
@@ -137,6 +144,12 @@ export default function CorrectionRegularizationPolicyPage() {
           })
         : [nextPolicy];
     setSavedPolicies(loadedPolicies);
+    const nextAssignedCounts = (assignmentsResult.assignments || []).reduce<Record<string, number>>((counts, assignment) => {
+      if (!assignment.isActive || !assignment.policyId) return counts;
+      counts[assignment.policyId] = (counts[assignment.policyId] || 0) + 1;
+      return counts;
+    }, {});
+    setAssignedCounts(nextAssignedCounts);
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -152,7 +165,7 @@ export default function CorrectionRegularizationPolicyPage() {
     notify("New correction policy form opened.");
   }
 
-  async function saveCorrectionPolicy() {
+  async function saveCorrectionPolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
@@ -164,7 +177,10 @@ export default function CorrectionRegularizationPolicyPage() {
         "Content-Type": "application/json",
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(draft),
+      body: JSON.stringify({
+        ...draft,
+        status: targetStatus,
+      }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
     setSaving(false);
@@ -173,6 +189,7 @@ export default function CorrectionRegularizationPolicyPage() {
     }
     const nextPolicy = {
       ...draft,
+      status: targetStatus,
       policyId: result.policyId || draft.policyId,
     };
     setDraft(nextPolicy);
@@ -182,7 +199,12 @@ export default function CorrectionRegularizationPolicyPage() {
     });
     setIsCreatingNew(false);
     setShowForm(false);
-    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
+    showSuccess(
+      targetStatus === "Active"
+        ? (creating ? "Policy Enforced Successfully" : "Policy Updated And Enforced Successfully")
+        : (creating ? "Policy Saved as Draft" : "Draft Updated Successfully"),
+    );
+    await loadCorrectionBridge();
   }
 
   return (
@@ -212,7 +234,7 @@ export default function CorrectionRegularizationPolicyPage() {
         rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName,
-          assignedWorkforce: "24 Employees",
+          assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",
           policyCode: policy.policyCode,
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
@@ -249,13 +271,6 @@ export default function CorrectionRegularizationPolicyPage() {
               </Field>
               <Field label="Next Review Date">
                 <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => update("nextReviewDate", e.target.value)} />
-              </Field>
-              <Field label="Status">
-                <Select value={draft.status} onChange={(e) => update("status", e.target.value as CorrectionPolicyState["status"])}>
-                  <option value="Draft">Draft</option>
-                  <option value="Active">Active</option>
-                  <option value="Archived">Archived</option>
-                </Select>
               </Field>
               <Field label="Default Company Policy">
                 <Select
@@ -383,11 +398,19 @@ export default function CorrectionRegularizationPolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void saveCorrectionPolicy()}
+                onClick={() => void saveCorrectionPolicy("Active")}
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Submitting..." : "Submit"}
+                {saving ? "Processing..." : "Enforce Policy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveCorrectionPolicy("Draft")}
+                disabled={saving}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+              >
+                {saving ? "Processing..." : "Save as Draft"}
               </button>
               <button
                 type="button"

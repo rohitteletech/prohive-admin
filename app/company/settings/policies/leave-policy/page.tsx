@@ -141,6 +141,7 @@ export default function LeavePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialPolicyState);
   const [savedPolicies, setSavedPolicies] = useState<LeavePolicyState[]>([]);
+  const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
   const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
   const [savedLeaveTypes, setSavedLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
   const [savedLeaveTypesByPolicy, setSavedLeaveTypesByPolicy] = useState<Record<string, LeaveType[]>>({});
@@ -220,8 +221,14 @@ export default function LeavePolicyPage() {
     const policiesResponse = await fetch("/api/company/policies?policy_type=leave", {
       headers: { authorization: `Bearer ${token}` },
     });
+    const assignmentsResponse = await fetch("/api/company/policy-assignments", {
+      headers: { authorization: `Bearer ${token}` },
+    });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
       policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+    };
+    const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
+      assignments?: Array<{ policyId: string; isActive: boolean }>;
     };
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
@@ -241,6 +248,12 @@ export default function LeavePolicyPage() {
           })
         : [nextPolicy];
     setSavedPolicies(loadedPolicies);
+    const nextAssignedCounts = (assignmentsResult.assignments || []).reduce<Record<string, number>>((counts, assignment) => {
+      if (!assignment.isActive || !assignment.policyId) return counts;
+      counts[assignment.policyId] = (counts[assignment.policyId] || 0) + 1;
+      return counts;
+    }, {});
+    setAssignedCounts(nextAssignedCounts);
     setSavedLeaveTypesByPolicy(
       Object.fromEntries(
         (Array.isArray(policiesResult.policies) ? policiesResult.policies : []).map((policyRow) => {
@@ -265,7 +278,7 @@ export default function LeavePolicyPage() {
     notify("New leave policy form opened.");
   }
 
-  async function saveLeavePolicy() {
+  async function saveLeavePolicy(targetStatus: "Draft" | "Active") {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
@@ -279,6 +292,7 @@ export default function LeavePolicyPage() {
       },
       body: JSON.stringify({
         ...draft,
+        status: targetStatus,
         leaveTypes,
       }),
     });
@@ -289,6 +303,7 @@ export default function LeavePolicyPage() {
     }
     const nextPolicy = {
       ...draft,
+      status: targetStatus,
       policyId: result.policyId || draft.policyId,
     };
     setDraft(nextPolicy);
@@ -303,7 +318,12 @@ export default function LeavePolicyPage() {
     }));
     setIsCreatingNew(false);
     setShowForm(false);
-    showSuccess(creating ? "New Policy Created Successfully" : "Policy Updated Successfully");
+    showSuccess(
+      targetStatus === "Active"
+        ? (creating ? "Policy Enforced Successfully" : "Policy Updated And Enforced Successfully")
+        : (creating ? "Policy Saved as Draft" : "Draft Updated Successfully"),
+    );
+    await loadLeaveBridge();
   }
 
   return (
@@ -334,7 +354,7 @@ export default function LeavePolicyPage() {
         rows={(savedPolicies.length > 0 ? savedPolicies : [draft]).map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName,
-          assignedWorkforce: "24 Employees",
+          assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",
           policyCode: policy.policyCode,
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
@@ -371,13 +391,6 @@ export default function LeavePolicyPage() {
               </Field>
               <Field label="Next Review Date">
                 <TextInput type="date" value={draft.nextReviewDate} onChange={(e) => updatePolicy("nextReviewDate", e.target.value)} />
-              </Field>
-              <Field label="Status">
-                <Select value={draft.status} onChange={(e) => updatePolicy("status", e.target.value as LeavePolicyState["status"])}>
-                  <option value="Draft">Draft</option>
-                  <option value="Active">Active</option>
-                  <option value="Archived">Archived</option>
-                </Select>
               </Field>
               <Field label="Default Company Policy">
                 <Select
@@ -540,11 +553,19 @@ export default function LeavePolicyPage() {
             <div className="mt-5 flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => void saveLeavePolicy()}
+                onClick={() => void saveLeavePolicy("Active")}
                 disabled={saving}
                 className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
               >
-                {saving ? "Submitting..." : "Submit"}
+                {saving ? "Processing..." : "Enforce Policy"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void saveLeavePolicy("Draft")}
+                disabled={saving}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+              >
+                {saving ? "Processing..." : "Save as Draft"}
               </button>
               <button
                 type="button"

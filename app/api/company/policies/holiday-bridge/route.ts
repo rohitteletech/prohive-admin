@@ -160,6 +160,23 @@ export async function PUT(req: NextRequest) {
     compOffValidityDays: String(body.compOffValidityDays || "60"),
   };
 
+  if (configJson.status === "active") {
+    const archiveQuery = context.admin
+      .from("company_policy_definitions")
+      .update({
+        status: "archived",
+        is_default: false,
+      })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "holiday_weekoff")
+      .eq("status", "active");
+
+    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    if (archiveError) {
+      return NextResponse.json({ error: archiveError.message || "Unable to archive existing active holiday policies." }, { status: 400 });
+    }
+  }
+
   if (configJson.defaultCompanyPolicy === "Yes") {
     const { error: clearDefaultError } = await context.admin
       .from("company_policy_definitions")

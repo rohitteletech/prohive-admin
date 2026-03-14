@@ -202,6 +202,23 @@ export async function PUT(req: NextRequest) {
     penaltyForEarlyGoAboveLimit: String(body.penaltyForEarlyGoAboveLimit || "0.5"),
   };
 
+  if (configJson.status === "active") {
+    const archiveQuery = context.admin
+      .from("company_policy_definitions")
+      .update({
+        status: "archived",
+        is_default: false,
+      })
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "attendance")
+      .eq("status", "active");
+
+    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    if (archiveError) {
+      return NextResponse.json({ error: archiveError.message || "Unable to archive existing active attendance policies." }, { status: 400 });
+    }
+  }
+
   if (configJson.defaultCompanyPolicy === "Yes") {
     const { error: clearDefaultError } = await context.admin
       .from("company_policy_definitions")

@@ -234,7 +234,7 @@ export function PolicyRegisterSection({
             {rows.map((row) => (
               <tr key={row.id} className="border-t border-slate-200">
                 <td className="px-4 py-3 font-semibold">{row.name}</td>
-                <td className="px-4 py-3">{row.assignedWorkforce || "0 Employees"}</td>
+                <td className="px-4 py-3">{row.assignedWorkforce || "0"}</td>
                 <td className="px-4 py-3">{row.policyCode || "-"}</td>
                 <td className="px-4 py-3">{row.effectiveFrom}</td>
                 <td className="px-4 py-3">{row.reviewDueOn}</td>

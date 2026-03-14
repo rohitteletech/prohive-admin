@@ -109,7 +109,7 @@ export default function PolicyAssignmentsPage() {
   }, []);
 
   const filteredPolicies = useMemo(
-    () => payload.policies.filter((policy) => policy.policyType === form.policyType && policy.status !== "archived"),
+    () => payload.policies.filter((policy) => policy.policyType === form.policyType && policy.status === "active"),
     [payload.policies, form.policyType],
   );
 
