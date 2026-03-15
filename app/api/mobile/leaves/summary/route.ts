@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
         code: leaveType.code,
         annual_quota: leaveType.annualQuota,
         carry_forward:
-          leaveType.carryForwardAllowed && String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
+          String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
             ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
             : 0,
         accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",

@@ -137,7 +137,6 @@ export type ResolvedLeaveTypeRuntime = {
   annualQuota: number;
   halfDayAllowed: boolean;
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
-  carryForwardAllowed: boolean;
 };
 
 export function resolveLeaveTypesRuntime(policy: PolicyDefinition | null) {
@@ -161,7 +160,6 @@ export function resolveLeaveTypesRuntime(policy: PolicyDefinition | null) {
           text(source.accrualRule) === "Manual Credit Only"
             ? (text(source.accrualRule) as ResolvedLeaveTypeRuntime["accrualRule"])
             : "Yearly Upfront",
-        carryForwardAllowed: yesNo(source.carryForwardAllowed, "No") === "Yes",
       } satisfies ResolvedLeaveTypeRuntime;
     })
     .filter((row): row is ResolvedLeaveTypeRuntime => Boolean(row));

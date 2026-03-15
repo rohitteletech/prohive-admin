@@ -11,7 +11,6 @@ type LeaveTypePayload = {
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
-  carryForwardAllowed: "Yes" | "No";
 };
 
 type LeaveBridgePayload = {
@@ -95,7 +94,6 @@ export async function GET(req: NextRequest) {
             annualQuota: String(legacy.annualQuota),
             halfDayAllowed: "Yes" as const,
             accrualRule: fromLegacyAccrualMode(legacy.accrualMode),
-            carryForwardAllowed: (legacy.carryForward > 0 ? "Yes" : "No") as "Yes" | "No",
           } satisfies LeaveTypePayload;
         })
       : [];
@@ -258,7 +256,7 @@ export async function PUT(req: NextRequest) {
     code: String(leaveType.code || "").trim().toUpperCase() || "LV",
     annual_quota: Math.max(0, Math.round(Number(leaveType.annualQuota || 0))),
     carry_forward:
-      leaveType.carryForwardAllowed === "Yes" && configJson.carryForwardEnabled === "Yes"
+      configJson.carryForwardEnabled === "Yes"
         ? Math.max(0, Math.round(Number(configJson.maximumCarryForwardDays || 0)))
         : 0,
     accrual_mode: toLegacyAccrualMode(leaveType.accrualRule),

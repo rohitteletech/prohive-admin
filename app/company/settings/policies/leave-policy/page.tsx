@@ -21,7 +21,6 @@ type LeaveType = {
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
-  carryForwardAllowed: "Yes" | "No";
 };
 
 type LeavePolicyState = {
@@ -78,7 +77,6 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "12",
     halfDayAllowed: "Yes",
     accrualRule: "Yearly Upfront",
-    carryForwardAllowed: "No",
   },
   {
     id: "sick",
@@ -88,7 +86,6 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "12",
     halfDayAllowed: "Yes",
     accrualRule: "Yearly Upfront",
-    carryForwardAllowed: "No",
   },
   {
     id: "earned",
@@ -98,7 +95,6 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "18",
     halfDayAllowed: "Yes",
     accrualRule: "Monthly Accrual",
-    carryForwardAllowed: "Yes",
   },
   {
     id: "comp",
@@ -108,7 +104,6 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "0",
     halfDayAllowed: "No",
     accrualRule: "Manual Credit Only",
-    carryForwardAllowed: "No",
   },
 ];
 
@@ -121,7 +116,6 @@ function createBlankLeaveType(): LeaveType {
     annualQuota: "",
     halfDayAllowed: "No",
     accrualRule: "Yearly Upfront",
-    carryForwardAllowed: "No",
   };
 }
 
@@ -481,15 +475,6 @@ export default function LeavePolicyPage() {
                         <option value="Manual Credit Only">Manual Credit Only</option>
                       </Select>
                     </Field>
-                    <Field label="Carry Forward Allowed">
-                      <Select
-                        value={leaveType.carryForwardAllowed}
-                        onChange={(e) => updateLeaveType(leaveType.id, "carryForwardAllowed", e.target.value)}
-                      >
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
-                      </Select>
-                    </Field>
                   </div>
                 </div>
               ))}
@@ -543,7 +528,7 @@ export default function LeavePolicyPage() {
             description="Define whether unused leave can move into the next period and how long the carried balance should remain valid."
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Carry Forward Enabled">
+              <Field label="Carry Forward Allowed">
                 <Select
                   value={draft.carryForwardEnabled}
                   onChange={(e) => updatePolicy("carryForwardEnabled", e.target.value as LeavePolicyState["carryForwardEnabled"])}
@@ -553,10 +538,18 @@ export default function LeavePolicyPage() {
                 </Select>
               </Field>
               <Field label="Maximum Carry Forward Days">
-                <TextInput value={draft.maximumCarryForwardDays} onChange={(e) => updatePolicy("maximumCarryForwardDays", e.target.value)} />
+                <TextInput
+                  value={draft.maximumCarryForwardDays}
+                  onChange={(e) => updatePolicy("maximumCarryForwardDays", e.target.value)}
+                  disabled={draft.carryForwardEnabled !== "Yes"}
+                />
               </Field>
               <Field label="Carry Forward Expiry (Days)">
-                <TextInput value={draft.carryForwardExpiryDays} onChange={(e) => updatePolicy("carryForwardExpiryDays", e.target.value)} />
+                <TextInput
+                  value={draft.carryForwardExpiryDays}
+                  onChange={(e) => updatePolicy("carryForwardExpiryDays", e.target.value)}
+                  disabled={draft.carryForwardEnabled !== "Yes"}
+                />
               </Field>
             </div>
 

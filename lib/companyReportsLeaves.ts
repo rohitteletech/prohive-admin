@@ -150,7 +150,7 @@ export async function getLeaveReportData(params: {
         ? {
             annual_quota: resolvedPolicy.annualQuota,
             carry_forward:
-              resolvedPolicy.carryForwardAllowed && String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
+              String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
                 ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
                 : 0,
             accrual_mode: resolvedPolicy.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
