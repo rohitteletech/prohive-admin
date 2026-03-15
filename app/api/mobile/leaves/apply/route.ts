@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { todayISOInIndia } from "@/lib/dateTime";
-import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 import { getMobileSessionContext } from "@/lib/mobileSession";
@@ -24,6 +24,13 @@ function diffDaysInclusive(fromDate: string, toDate: string) {
   const end = isoDateToUtcMs(toDate);
   const diff = end - start;
   return Math.floor(diff / 86400000) + 1;
+}
+
+function addDaysToIsoDate(isoDate: string, days: number) {
+  const start = isoDateToUtcMs(isoDate);
+  if (!Number.isFinite(start)) return "";
+  const shifted = new Date(start + days * 86400000);
+  return shifted.toISOString().slice(0, 10);
 }
 
 async function findApprovedOverlap(params: {
@@ -108,7 +115,35 @@ export async function POST(req: NextRequest) {
     fromDate,
     ["leave"],
   );
+  const leavePolicyRuntime = resolveLeavePolicyRuntime(policyContext.resolved.leave);
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
+  const todayIso = todayISOInIndia();
+  const initialStatus =
+    leavePolicyRuntime.approvalFlow === "hr"
+      ? "pending_hr"
+      : leavePolicyRuntime.approvalFlow === "manager"
+        ? "pending_manager"
+        : "pending_manager";
+
+  if (fromDate < todayIso && !leavePolicyRuntime.backdatedLeaveAllowed) {
+    return NextResponse.json(
+      { error: "Backdated leave is not allowed under your current leave policy." },
+      { status: 400 },
+    );
+  }
+
+  const earliestAllowedStartDate = addDaysToIsoDate(todayIso, leavePolicyRuntime.noticePeriodDays);
+  if (earliestAllowedStartDate && fromDate < earliestAllowedStartDate) {
+    return NextResponse.json(
+      {
+        error:
+          leavePolicyRuntime.noticePeriodDays === 0
+            ? "Leave can only be applied from today onward."
+            : `Leave must be applied at least ${leavePolicyRuntime.noticePeriodDays} day(s) in advance.`,
+      },
+      { status: 400 },
+    );
+  }
 
   const { data: policyRows, error: policyError } = await session.admin
     .from("company_leave_policies")
@@ -172,7 +207,7 @@ export async function POST(req: NextRequest) {
         carryForward: Number(policy.carry_forward || 0),
         accrualMode: normalizeAccrualMode(policy.accrual_mode),
         overrideDays: overrideResult.overrideDays,
-        asOfIsoDate: todayISOInIndia(),
+        asOfIsoDate: todayIso,
       });
       const availableNow = Math.max(roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - usageResult.pendingUsed), 0);
       return { policy, availableNow, error: null as string | null };
@@ -210,7 +245,8 @@ export async function POST(req: NextRequest) {
       unpaid_days: unpaidDays,
       leave_mode: leaveMode,
       reason,
-      status: "pending",
+      status: initialStatus,
+      approval_flow_snapshot: leavePolicyRuntime.approvalFlow,
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })

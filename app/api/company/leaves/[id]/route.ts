@@ -8,6 +8,8 @@ type Body = {
   admin_remark?: string;
 };
 
+type LeaveWorkflowStatus = "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
+
 function normalizeOptional(value?: string) {
   const trimmed = (value || "").trim();
   return trimmed ? trimmed : null;
@@ -58,18 +60,31 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
 
   const { data: requestRow, error: requestError } = await context.admin
     .from("employee_leave_requests")
-    .select("id,employee_id,leave_policy_code,days,paid_days,status,from_date,to_date")
+    .select("id,employee_id,leave_policy_code,days,paid_days,status,from_date,to_date,approval_flow_snapshot")
     .eq("company_id", context.companyId)
     .eq("id", id)
     .maybeSingle();
   if (requestError || !requestRow?.id) {
     return NextResponse.json({ error: requestError?.message || "Leave request not found." }, { status: 404 });
   }
-  if (requestRow.status !== "pending") {
+  if (
+    requestRow.status !== "pending" &&
+    requestRow.status !== "pending_manager" &&
+    requestRow.status !== "pending_hr"
+  ) {
     return NextResponse.json({ error: "Only pending leave requests can be updated." }, { status: 400 });
   }
 
-  if (body.status === "approved") {
+  const approvalFlow =
+    requestRow.approval_flow_snapshot === "hr" || requestRow.approval_flow_snapshot === "manager"
+      ? requestRow.approval_flow_snapshot
+      : "manager_hr";
+  const requiresTwoStage = approvalFlow === "manager_hr";
+  const currentStage = requestRow.status === "pending_hr" ? "hr" : "manager";
+  const nextApprovedStatus: LeaveWorkflowStatus =
+    requiresTwoStage && currentStage === "manager" ? "pending_hr" : "approved";
+
+  if (body.status === "approved" && nextApprovedStatus === "approved") {
     const year = Number(String(requestRow.from_date || "").slice(0, 4) || todayISOInIndia().slice(0, 4));
     const [policyResult, usageResult, overrideResult, overlapResult] = await Promise.all([
       context.admin
@@ -141,14 +156,18 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const { data, error } = await context.admin
     .from("employee_leave_requests")
     .update({
-      status: body.status,
-      admin_remark: normalizeOptional(body.admin_remark),
+      status: body.status === "approved" ? nextApprovedStatus : body.status,
+      admin_remark:
+        body.status === "approved" && nextApprovedStatus === "pending_hr"
+          ? `${normalizeOptional(body.admin_remark) || ""} (Manager stage approved)`.trim()
+          : normalizeOptional(body.admin_remark),
       reviewed_at: new Date().toISOString(),
       reviewed_by: context.adminEmail,
       updated_at: new Date().toISOString(),
     })
     .eq("company_id", context.companyId)
     .eq("id", id)
+    .in("status", ["pending", "pending_manager", "pending_hr"])
     .select("id,status")
     .maybeSingle();
 

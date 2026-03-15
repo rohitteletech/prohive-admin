@@ -176,6 +176,14 @@ export function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
     text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Approval",
   );
   return {
+    approvalFlow:
+      text(config.approvalFlow) === "manager"
+        ? "manager"
+        : text(config.approvalFlow) === "hr"
+          ? "hr"
+          : "manager_hr",
+    noticePeriodDays: wholeNumber(config.noticePeriodDays, 1),
+    backdatedLeaveAllowed: yesNo(config.backdatedLeaveAllowed, "No") === "Yes",
     ifEmployeePunchesOnApprovedLeave:
       action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Approval"
         ? action

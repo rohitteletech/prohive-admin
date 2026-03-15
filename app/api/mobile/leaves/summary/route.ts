@@ -85,7 +85,7 @@ export async function POST(req: NextRequest) {
     unpaid_days?: number | null;
     leave_mode?: "paid" | "unpaid" | "mixed" | null;
     reason: string;
-    status: "pending" | "approved" | "rejected";
+    status: "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
     admin_remark: string | null;
     submitted_at: string;
   }>;

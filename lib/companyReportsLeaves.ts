@@ -24,7 +24,7 @@ export type LeaveReportRow = {
   days: number;
   paidDays: number;
   unpaidDays: number;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
   availableBalance: number;
   submittedAt: string;
 };
@@ -214,7 +214,13 @@ export async function getLeaveReportData(params: {
       days: Number(row.days || 0),
       paidDays: Number((row.paid_days ?? row.days) || 0),
       unpaidDays: Number(row.unpaid_days || 0),
-      status: row.status === "approved" || row.status === "rejected" ? row.status : "pending",
+      status:
+        row.status === "approved" ||
+        row.status === "rejected" ||
+        row.status === "pending_manager" ||
+        row.status === "pending_hr"
+          ? row.status
+          : "pending",
       availableBalance,
       submittedAt: String(row.submitted_at || ""),
     });
@@ -235,7 +241,7 @@ export async function getLeaveReportData(params: {
     rows: filteredRows,
     summary: {
       total: filteredRows.length,
-      pending: filteredRows.filter((row) => row.status === "pending").length,
+      pending: filteredRows.filter((row) => row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr").length,
       approved: filteredRows.filter((row) => row.status === "approved").length,
       rejected: filteredRows.filter((row) => row.status === "rejected").length,
       totalAvailableBalance: roundLeaveDays(filteredRows.reduce((sum, row) => sum + row.availableBalance, 0)),

@@ -20,7 +20,7 @@ export type CompanyHoliday = {
   type: HolidayType;
 };
 
-export type LeaveRequestStatus = "pending" | "approved" | "rejected";
+export type LeaveRequestStatus = "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
 
 export type LeaveRequestRow = {
   id: string;
@@ -163,7 +163,13 @@ export function leaveRequestFromDb(row: Record<string, unknown>): LeaveRequestRo
     submittedTime: Number.isNaN(submittedAt.getTime())
       ? ""
       : formatDisplayTime(submittedAt),
-    status: (row.status === "approved" || row.status === "rejected" ? row.status : "pending") as LeaveRequestStatus,
+    status:
+      row.status === "approved" ||
+      row.status === "rejected" ||
+      row.status === "pending_manager" ||
+      row.status === "pending_hr"
+        ? (row.status as LeaveRequestStatus)
+        : "pending",
     adminRemark: normalizeText(row.admin_remark) || undefined,
   };
 }

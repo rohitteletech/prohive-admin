@@ -8,7 +8,17 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 function statusChip(status: LeaveRequestStatus) {
   if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "pending_manager") return "border-indigo-200 bg-indigo-50 text-indigo-700";
+  if (status === "pending_hr") return "border-violet-200 bg-violet-50 text-violet-700";
   return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function statusLabel(status: LeaveRequestStatus) {
+  if (status === "pending_manager") return "Pending Manager";
+  if (status === "pending_hr") return "Pending HR";
+  if (status === "approved") return "Approved";
+  if (status === "rejected") return "Rejected";
+  return "Pending";
 }
 
 function leaveModeLabel(mode: LeaveRequestRow["leaveMode"]) {
@@ -79,7 +89,7 @@ export default function Page() {
 
   const stats = useMemo(() => {
     const total = filtered.length;
-    const pending = filtered.filter((r) => r.status === "pending").length;
+    const pending = filtered.filter((r) => r.status === "pending" || r.status === "pending_manager" || r.status === "pending_hr").length;
     const approved = filtered.filter((r) => r.status === "approved").length;
     const rejected = filtered.filter((r) => r.status === "rejected").length;
     return { total, pending, approved, rejected };
@@ -175,6 +185,8 @@ export default function Page() {
           >
             <option value="all">All Status</option>
             <option value="pending">Pending</option>
+            <option value="pending_manager">Pending Manager</option>
+            <option value="pending_hr">Pending HR</option>
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
           </select>
@@ -241,11 +253,11 @@ export default function Page() {
                   </td>
                   <td className="px-5 py-3">
                     <span className={["rounded-full border px-2.5 py-1 text-xs font-semibold capitalize", statusChip(row.status)].join(" ")}>
-                      {row.status}
+                      {statusLabel(row.status)}
                     </span>
                   </td>
                   <td className="px-5 py-3">
-                    {row.status === "pending" ? (
+                    {row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr" ? (
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -253,7 +265,7 @@ export default function Page() {
                           onClick={() => updateLeaveStatus(row.id, "approved")}
                           className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
                         >
-                          Approve
+                          {row.status === "pending_manager" ? "Manager Approve" : row.status === "pending_hr" ? "HR Approve" : "Approve"}
                         </button>
                         <button
                           type="button"
