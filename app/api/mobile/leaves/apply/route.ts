@@ -108,7 +108,6 @@ export async function POST(req: NextRequest) {
     fromDate,
     ["leave"],
   );
-  const resolvedLeaveConfig = (policyContext.resolved.leave?.configJson || {}) as Record<string, unknown>;
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
 
   const { data: policyRows, error: policyError } = await session.admin
@@ -128,8 +127,8 @@ export async function POST(req: NextRequest) {
         code: leaveType.code,
         annual_quota: leaveType.annualQuota,
         carry_forward:
-          String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
-            ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
+          leaveType.carryForwardAllowed
+            ? Math.max(0, Math.round(Number(leaveType.maximumCarryForwardDays || 0)))
             : 0,
         accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
         active: true,

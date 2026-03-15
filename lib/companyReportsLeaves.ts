@@ -143,15 +143,14 @@ export async function getLeaveReportData(params: {
     if (balanceCache.has(cacheKey)) return balanceCache.get(cacheKey) || 0;
 
     const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null);
-    const resolvedLeaveConfig = ((resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave?.configJson || {}) as Record<string, unknown>);
     const resolvedPolicy = resolvedLeaveTypes.find((row) => row.code === leavePolicyCode);
     const policy =
       resolvedPolicy
         ? {
             annual_quota: resolvedPolicy.annualQuota,
             carry_forward:
-              String(resolvedLeaveConfig.carryForwardEnabled || "Yes") !== "No"
-                ? Math.max(0, Math.round(Number(resolvedLeaveConfig.maximumCarryForwardDays || 0)))
+              resolvedPolicy.carryForwardAllowed
+                ? Math.max(0, Math.round(Number(resolvedPolicy.maximumCarryForwardDays || 0)))
                 : 0,
             accrual_mode: resolvedPolicy.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
           }

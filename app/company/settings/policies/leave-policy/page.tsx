@@ -21,6 +21,9 @@ type LeaveType = {
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
+  carryForwardAllowed: "Yes" | "No";
+  maximumCarryForwardDays: string;
+  carryForwardExpiryDays: string;
 };
 
 type LeavePolicyState = {
@@ -36,9 +39,6 @@ type LeavePolicyState = {
   backdatedLeaveAllowed: "Yes" | "No";
   leaveOverridesAttendance: "Yes" | "No";
   sandwichLeave: "Enabled" | "Disabled";
-  carryForwardEnabled: "Yes" | "No";
-  maximumCarryForwardDays: string;
-  carryForwardExpiryDays: string;
 };
 
 const initialPolicyState: LeavePolicyState = {
@@ -54,9 +54,6 @@ const initialPolicyState: LeavePolicyState = {
   backdatedLeaveAllowed: "No",
   leaveOverridesAttendance: "Yes",
   sandwichLeave: "Disabled",
-  carryForwardEnabled: "Yes",
-  maximumCarryForwardDays: "10",
-  carryForwardExpiryDays: "90",
 };
 
 function createNewPolicyDraft(): LeavePolicyState {
@@ -77,6 +74,9 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "12",
     halfDayAllowed: "Yes",
     accrualRule: "Yearly Upfront",
+    carryForwardAllowed: "No",
+    maximumCarryForwardDays: "0",
+    carryForwardExpiryDays: "0",
   },
   {
     id: "sick",
@@ -86,6 +86,9 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "12",
     halfDayAllowed: "Yes",
     accrualRule: "Yearly Upfront",
+    carryForwardAllowed: "No",
+    maximumCarryForwardDays: "0",
+    carryForwardExpiryDays: "0",
   },
   {
     id: "earned",
@@ -95,6 +98,9 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "18",
     halfDayAllowed: "Yes",
     accrualRule: "Monthly Accrual",
+    carryForwardAllowed: "Yes",
+    maximumCarryForwardDays: "10",
+    carryForwardExpiryDays: "90",
   },
   {
     id: "comp",
@@ -104,6 +110,9 @@ const initialLeaveTypes: LeaveType[] = [
     annualQuota: "0",
     halfDayAllowed: "No",
     accrualRule: "Manual Credit Only",
+    carryForwardAllowed: "No",
+    maximumCarryForwardDays: "0",
+    carryForwardExpiryDays: "0",
   },
 ];
 
@@ -116,6 +125,9 @@ function createBlankLeaveType(): LeaveType {
     annualQuota: "",
     halfDayAllowed: "No",
     accrualRule: "Yearly Upfront",
+    carryForwardAllowed: "No",
+    maximumCarryForwardDays: "0",
+    carryForwardExpiryDays: "0",
   };
 }
 
@@ -475,6 +487,29 @@ export default function LeavePolicyPage() {
                         <option value="Manual Credit Only">Manual Credit Only</option>
                       </Select>
                     </Field>
+                    <Field label="Carry Forward Allowed">
+                      <Select
+                        value={leaveType.carryForwardAllowed}
+                        onChange={(e) => updateLeaveType(leaveType.id, "carryForwardAllowed", e.target.value)}
+                      >
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </Select>
+                    </Field>
+                    <Field label="Maximum Carry Forward Days">
+                      <TextInput
+                        value={leaveType.maximumCarryForwardDays}
+                        onChange={(e) => updateLeaveType(leaveType.id, "maximumCarryForwardDays", e.target.value)}
+                        disabled={leaveType.carryForwardAllowed !== "Yes"}
+                      />
+                    </Field>
+                    <Field label="Carry Forward Expiry (Days)">
+                      <TextInput
+                        value={leaveType.carryForwardExpiryDays}
+                        onChange={(e) => updateLeaveType(leaveType.id, "carryForwardExpiryDays", e.target.value)}
+                        disabled={leaveType.carryForwardAllowed !== "Yes"}
+                      />
+                    </Field>
                   </div>
                 </div>
               ))}
@@ -523,65 +558,34 @@ export default function LeavePolicyPage() {
             </div>
           </PolicySection>
 
-          <PolicySection
-            title="Carry Forward Rules"
-            description="Define whether unused leave can move into the next period and how long the carried balance should remain valid."
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Carry Forward Allowed">
-                <Select
-                  value={draft.carryForwardEnabled}
-                  onChange={(e) => updatePolicy("carryForwardEnabled", e.target.value as LeavePolicyState["carryForwardEnabled"])}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
-              <Field label="Maximum Carry Forward Days">
-                <TextInput
-                  value={draft.maximumCarryForwardDays}
-                  onChange={(e) => updatePolicy("maximumCarryForwardDays", e.target.value)}
-                  disabled={draft.carryForwardEnabled !== "Yes"}
-                />
-              </Field>
-              <Field label="Carry Forward Expiry (Days)">
-                <TextInput
-                  value={draft.carryForwardExpiryDays}
-                  onChange={(e) => updatePolicy("carryForwardExpiryDays", e.target.value)}
-                  disabled={draft.carryForwardEnabled !== "Yes"}
-                />
-              </Field>
-            </div>
-
-            <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void saveLeavePolicy("Active")}
-                disabled={saving}
-                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {saving ? "Processing..." : "Enforce Policy"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void saveLeavePolicy("Draft")}
-                disabled={saving}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
-              >
-                {saving ? "Processing..." : "Save as Draft"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowForm(false);
-                  notify("Leave policy form closed.");
-                }}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-            </div>
-          </PolicySection>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void saveLeavePolicy("Active")}
+              disabled={saving}
+              className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {saving ? "Processing..." : "Enforce Policy"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void saveLeavePolicy("Draft")}
+              disabled={saving}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+            >
+              {saving ? "Processing..." : "Save as Draft"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowForm(false);
+                notify("Leave policy form closed.");
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+          </div>
         </>
       ) : null}
     </PolicyPage>

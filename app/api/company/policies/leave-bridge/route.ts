@@ -11,6 +11,9 @@ type LeaveTypePayload = {
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
+  carryForwardAllowed: "Yes" | "No";
+  maximumCarryForwardDays: string;
+  carryForwardExpiryDays: string;
 };
 
 type LeaveBridgePayload = {
@@ -26,9 +29,6 @@ type LeaveBridgePayload = {
   backdatedLeaveAllowed?: "Yes" | "No";
   leaveOverridesAttendance?: "Yes" | "No";
   sandwichLeave?: "Enabled" | "Disabled";
-  carryForwardEnabled?: "Yes" | "No";
-  maximumCarryForwardDays?: string;
-  carryForwardExpiryDays?: string;
   leaveTypes?: LeaveTypePayload[];
 };
 
@@ -94,6 +94,9 @@ export async function GET(req: NextRequest) {
             annualQuota: String(legacy.annualQuota),
             halfDayAllowed: "Yes" as const,
             accrualRule: fromLegacyAccrualMode(legacy.accrualMode),
+            carryForwardAllowed: (legacy.carryForward > 0 ? "Yes" : "No") as "Yes" | "No",
+            maximumCarryForwardDays: String(legacy.carryForward > 0 ? legacy.carryForward : 0),
+            carryForwardExpiryDays: "90",
           } satisfies LeaveTypePayload;
         })
       : [];
@@ -119,9 +122,6 @@ export async function GET(req: NextRequest) {
       backdatedLeaveAllowed: config.backdatedLeaveAllowed === "Yes" ? "Yes" : "No",
       leaveOverridesAttendance: config.leaveOverridesAttendance === "No" ? "No" : "Yes",
       sandwichLeave: config.sandwichLeave === "Enabled" ? "Enabled" : "Disabled",
-      carryForwardEnabled: config.carryForwardEnabled === "No" ? "No" : "Yes",
-      maximumCarryForwardDays: toNumberString(config.maximumCarryForwardDays, "10"),
-      carryForwardExpiryDays: toNumberString(config.carryForwardExpiryDays, "90"),
       leaveTypes: configLeaveTypes && configLeaveTypes.length > 0 ? configLeaveTypes : legacyLeaveTypes,
     } satisfies LeaveBridgePayload);
   } catch (error) {
@@ -160,13 +160,15 @@ export async function PUT(req: NextRequest) {
     backdatedLeaveAllowed: body.backdatedLeaveAllowed || "No",
     leaveOverridesAttendance: body.leaveOverridesAttendance || "Yes",
     sandwichLeave: body.sandwichLeave || "Disabled",
-    carryForwardEnabled: body.carryForwardEnabled || "Yes",
-    maximumCarryForwardDays: body.maximumCarryForwardDays || "10",
-    carryForwardExpiryDays: body.carryForwardExpiryDays || "90",
     leaveTypes: leaveTypes.map((leaveType) => ({
       ...leaveType,
       accrualRule: normalizeAccrualRule(leaveType.accrualRule),
       annualQuota: toNumberString(leaveType.annualQuota, "0"),
+      carryForwardAllowed: leaveType.carryForwardAllowed === "Yes" ? "Yes" : "No",
+      maximumCarryForwardDays:
+        leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.maximumCarryForwardDays, "0") : "0",
+      carryForwardExpiryDays:
+        leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.carryForwardExpiryDays, "0") : "0",
     })),
   };
 
@@ -256,8 +258,8 @@ export async function PUT(req: NextRequest) {
     code: String(leaveType.code || "").trim().toUpperCase() || "LV",
     annual_quota: Math.max(0, Math.round(Number(leaveType.annualQuota || 0))),
     carry_forward:
-      configJson.carryForwardEnabled === "Yes"
-        ? Math.max(0, Math.round(Number(configJson.maximumCarryForwardDays || 0)))
+      leaveType.carryForwardAllowed === "Yes"
+        ? Math.max(0, Math.round(Number(leaveType.maximumCarryForwardDays || 0)))
         : 0,
     accrual_mode: toLegacyAccrualMode(leaveType.accrualRule),
     encashable: false,
