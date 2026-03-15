@@ -63,6 +63,7 @@ export async function POST(req: NextRequest) {
     deviceId?: string;
     fromDate?: string;
     toDate?: string;
+    isHalfDay?: boolean;
     reason?: string;
   };
 
@@ -77,6 +78,7 @@ export async function POST(req: NextRequest) {
 
   const fromDate = String(body.fromDate || "").trim();
   const toDate = String(body.toDate || "").trim();
+  const isHalfDay = body.isHalfDay === true;
   const reason = String(body.reason || "").trim();
 
   if (!fromDate) return NextResponse.json({ error: "From date is required." }, { status: 400 });
@@ -87,7 +89,11 @@ export async function POST(req: NextRequest) {
   }
   if (!reason) return NextResponse.json({ error: "Reason is required." }, { status: 400 });
 
-  const days = diffDaysInclusive(fromDate, toDate);
+  if (isHalfDay && fromDate !== toDate) {
+    return NextResponse.json({ error: "Half day leave can only be applied for a single date." }, { status: 400 });
+  }
+
+  const days = isHalfDay ? 0.5 : diffDaysInclusive(fromDate, toDate);
   if (!Number.isFinite(days) || days <= 0) {
     return NextResponse.json({ error: "Leave duration is invalid." }, { status: 400 });
   }
@@ -155,11 +161,21 @@ export async function POST(req: NextRequest) {
   if (policyError) {
     return NextResponse.json({ error: policyError.message || "Unable to load leave policies." }, { status: 400 });
   }
-  const policies = resolvedLeaveTypes.length > 0
+  const policies: Array<{
+    id: string;
+    name: string;
+    code: string;
+    halfDayAllowed?: boolean;
+    annual_quota: number;
+    carry_forward: number;
+    accrual_mode: "upfront" | "monthly";
+    active: boolean;
+  }> = resolvedLeaveTypes.length > 0
     ? resolvedLeaveTypes.map((leaveType) => ({
         id: leaveType.id,
         name: leaveType.name,
         code: leaveType.code,
+        halfDayAllowed: leaveType.halfDayAllowed,
         annual_quota: leaveType.annualQuota,
         carry_forward:
           leaveType.carryForwardAllowed
@@ -168,15 +184,33 @@ export async function POST(req: NextRequest) {
         accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
         active: true,
       }))
-    : Array.isArray(policyRows) ? policyRows : [];
+    : Array.isArray(policyRows)
+      ? policyRows.map((policy) => ({
+          id: String(policy.id || ""),
+          name: String(policy.name || ""),
+          code: String(policy.code || ""),
+          annual_quota: Number(policy.annual_quota || 0),
+          carry_forward: Number(policy.carry_forward || 0),
+          accrual_mode: policy.accrual_mode === "upfront" ? "upfront" : "monthly",
+          active: Boolean(policy.active),
+        }))
+      : [];
   if (policies.length === 0) {
     return NextResponse.json({ error: "No active leave policy configured. Contact admin." }, { status: 400 });
+  }
+
+  const eligiblePolicies = isHalfDay
+    ? policies.filter((policy) => policy.halfDayAllowed !== false)
+    : policies;
+
+  if (eligiblePolicies.length === 0) {
+    return NextResponse.json({ error: "No leave type allows half day leave under your assigned policy." }, { status: 400 });
   }
 
   const currentYear = Number(fromDate.slice(0, 4));
 
   const availabilityByPolicy = await Promise.all(
-    policies.map(async (policy) => {
+    eligiblePolicies.map(async (policy) => {
       const leavePolicyCode = String(policy.code || "");
       const [usageResult, overrideResult] = await Promise.all([
         fetchLeaveUsageForYear({
@@ -269,6 +303,7 @@ export async function POST(req: NextRequest) {
       paidDays: Number((data.paid_days ?? data.days) || 0),
       unpaidDays: Number(data.unpaid_days || 0),
       leaveMode: String(data.leave_mode || "paid"),
+      isHalfDay,
       reason: data.reason,
       status: data.status,
       adminRemark: data.admin_remark,
