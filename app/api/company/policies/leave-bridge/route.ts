@@ -10,7 +10,7 @@ type LeaveTypePayload = {
   paymentMode: "Paid" | "Unpaid";
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
-  accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
+  accrualRule: "Yearly Upfront" | "Monthly Accrual";
   carryForwardAllowed: "Yes" | "No";
   maximumCarryForwardDays: string;
   carryForwardExpiryDays: string;
@@ -34,8 +34,6 @@ type LeaveBridgePayload = {
 
 function normalizeAccrualRule(value: unknown): LeaveTypePayload["accrualRule"] {
   if (value === "Monthly Accrual") return "Monthly Accrual";
-  if (value === "Quarterly Accrual") return "Quarterly Accrual";
-  if (value === "Manual Credit Only") return "Manual Credit Only";
   return "Yearly Upfront";
 }
 

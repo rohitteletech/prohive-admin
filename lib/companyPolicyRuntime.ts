@@ -136,7 +136,7 @@ export type ResolvedLeaveTypeRuntime = {
   paymentMode: "Paid" | "Unpaid";
   annualQuota: number;
   halfDayAllowed: boolean;
-  accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
+  accrualRule: "Yearly Upfront" | "Monthly Accrual";
   carryForwardAllowed: boolean;
   maximumCarryForwardDays: number;
   carryForwardExpiryDays: number;
@@ -158,10 +158,8 @@ export function resolveLeaveTypesRuntime(policy: PolicyDefinition | null) {
         annualQuota: wholeNumber(source.annualQuota, 0),
         halfDayAllowed: yesNo(source.halfDayAllowed, "Yes") === "Yes",
         accrualRule:
-          text(source.accrualRule) === "Monthly Accrual" ||
-          text(source.accrualRule) === "Quarterly Accrual" ||
-          text(source.accrualRule) === "Manual Credit Only"
-            ? (text(source.accrualRule) as ResolvedLeaveTypeRuntime["accrualRule"])
+          text(source.accrualRule) === "Monthly Accrual"
+            ? "Monthly Accrual"
             : "Yearly Upfront",
         carryForwardAllowed: yesNo(source.carryForwardAllowed, "No") === "Yes",
         maximumCarryForwardDays: wholeNumber(source.maximumCarryForwardDays, 0),

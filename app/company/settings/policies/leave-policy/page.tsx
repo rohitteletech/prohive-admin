@@ -20,7 +20,7 @@ type LeaveType = {
   paymentMode: "Paid" | "Unpaid";
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
-  accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
+  accrualRule: "Yearly Upfront" | "Monthly Accrual";
   carryForwardAllowed: "Yes" | "No";
   maximumCarryForwardDays: string;
   carryForwardExpiryDays: string;
@@ -109,7 +109,7 @@ const initialLeaveTypes: LeaveType[] = [
     paymentMode: "Paid",
     annualQuota: "0",
     halfDayAllowed: "No",
-    accrualRule: "Manual Credit Only",
+    accrualRule: "Monthly Accrual",
     carryForwardAllowed: "No",
     maximumCarryForwardDays: "0",
     carryForwardExpiryDays: "0",
@@ -483,8 +483,6 @@ export default function LeavePolicyPage() {
                       <Select value={leaveType.accrualRule} onChange={(e) => updateLeaveType(leaveType.id, "accrualRule", e.target.value)}>
                         <option value="Yearly Upfront">Yearly Upfront</option>
                         <option value="Monthly Accrual">Monthly Accrual</option>
-                        <option value="Quarterly Accrual">Quarterly Accrual</option>
-                        <option value="Manual Credit Only">Manual Credit Only</option>
                       </Select>
                     </Field>
                     <Field label="Carry Forward Allowed">
