@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
     fromDate?: string;
     toDate?: string;
     isHalfDay?: boolean;
+    leavePolicyCode?: string;
     reason?: string;
   };
 
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
   const fromDate = String(body.fromDate || "").trim();
   const toDate = String(body.toDate || "").trim();
   const isHalfDay = body.isHalfDay === true;
+  const selectedLeavePolicyCode = String(body.leavePolicyCode || "").trim().toUpperCase();
   const reason = String(body.reason || "").trim();
 
   if (!fromDate) return NextResponse.json({ error: "From date is required." }, { status: 400 });
@@ -207,10 +209,29 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No leave type allows half day leave under your assigned policy." }, { status: 400 });
   }
 
+  const requestedPolicies = selectedLeavePolicyCode
+    ? eligiblePolicies.filter((policy) => String(policy.code || "").trim().toUpperCase() === selectedLeavePolicyCode)
+    : eligiblePolicies;
+
+  if (selectedLeavePolicyCode && requestedPolicies.length === 0) {
+    return NextResponse.json(
+      {
+        error: isHalfDay
+          ? "Selected leave type does not allow half day leave under your assigned policy."
+          : "Selected leave type is not available under your assigned policy.",
+      },
+      { status: 400 },
+    );
+  }
+
+  if (!selectedLeavePolicyCode && requestedPolicies.length > 1) {
+    return NextResponse.json({ error: "Please select a leave type before applying." }, { status: 400 });
+  }
+
   const currentYear = Number(fromDate.slice(0, 4));
 
   const availabilityByPolicy = await Promise.all(
-    eligiblePolicies.map(async (policy) => {
+    requestedPolicies.map(async (policy) => {
       const leavePolicyCode = String(policy.code || "");
       const [usageResult, overrideResult] = await Promise.all([
         fetchLeaveUsageForYear({
@@ -253,11 +274,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: failed.error }, { status: 400 });
   }
 
-  const selected = availabilityByPolicy.reduce((best, item) => {
-    if (!best) return item;
-    if (item.availableNow > best.availableNow) return item;
-    return best;
-  }, null as (typeof availabilityByPolicy)[number] | null);
+  const selected = availabilityByPolicy[0] ?? null;
   if (!selected) {
     return NextResponse.json({ error: "Unable to determine leave balance." }, { status: 400 });
   }
