@@ -102,18 +102,6 @@ const initialLeaveTypes: LeaveType[] = [
     maximumCarryForwardDays: "10",
     carryForwardExpiryDays: "90",
   },
-  {
-    id: "comp",
-    name: "Comp Leave",
-    code: "COMP",
-    paymentMode: "Paid",
-    annualQuota: "0",
-    halfDayAllowed: "No",
-    accrualRule: "Monthly Accrual",
-    carryForwardAllowed: "No",
-    maximumCarryForwardDays: "0",
-    carryForwardExpiryDays: "0",
-  },
 ];
 
 function createBlankLeaveType(): LeaveType {
