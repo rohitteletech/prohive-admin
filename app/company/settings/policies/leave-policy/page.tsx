@@ -461,7 +461,7 @@ export default function LeavePolicyPage() {
                     <Field label="Annual Quota">
                       <TextInput value={leaveType.annualQuota} onChange={(e) => updateLeaveType(leaveType.id, "annualQuota", e.target.value)} />
                     </Field>
-                    <Field label="Half Day Allowed">
+                    <Field label="Half Day Leave Allowed">
                       <Select value={leaveType.halfDayAllowed} onChange={(e) => updateLeaveType(leaveType.id, "halfDayAllowed", e.target.value)}>
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
