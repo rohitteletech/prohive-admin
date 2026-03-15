@@ -1,5 +1,5 @@
 import { SupabaseClient } from "@supabase/supabase-js";
-import { resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { findMatchingShiftRule, isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
@@ -36,12 +36,13 @@ type PunchResponse =
   | {
       status: 200;
       body: {
-        ok: true;
-        eventId: string;
-        approvalStatus: string;
-        effectivePunchAt: string | null;
-        serverReceivedAt: string;
-      };
+      ok: true;
+      eventId: string;
+      approvalStatus: string;
+      effectivePunchAt: string | null;
+      serverReceivedAt: string;
+      notice?: string | null;
+    };
     };
 
 function buildLatestPunchState(lastEvent: {
@@ -370,12 +371,14 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   const policyContext = await resolvePoliciesForEmployee(admin, payload.company_id, payload.employee_id, punchDate, [
     "shift",
     "holiday_weekoff",
+    "leave",
   ]);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
     weeklyOffPolicy: company.weekly_off_policy,
     allowPunchOnHoliday: company.allow_punch_on_holiday !== false,
     allowPunchOnWeeklyOff: company.allow_punch_on_weekly_off !== false,
   });
+  const resolvedLeave = resolveLeavePolicyRuntime(policyContext.resolved.leave);
 
   const { data: leaveOnDate } = await admin
     .from("employee_leave_requests")
@@ -388,12 +391,23 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     .limit(1)
     .maybeSingle();
 
-  if (leaveOnDate?.id) {
+  const punchOnApprovedLeave = Boolean(leaveOnDate?.id);
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Block Punch") {
     return {
       status: 409,
       body: {
         code: "ON_APPROVED_LEAVE",
-        error: "You are on approved leave for this date. Punch is not allowed.",
+        error: "You have an approved leave today. Punch is blocked by company policy.",
+      },
+    };
+  }
+
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Keep Leave") {
+    return {
+      status: 409,
+      body: {
+        code: "KEEP_APPROVED_LEAVE",
+        error: "You have an approved leave today. Your leave remains final for this date.",
       },
     };
   }
@@ -583,6 +597,17 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     return { status: approval.status, body: approval.body };
   }
 
+  let approvalStatus = approval.approvalStatus;
+  let approvalReasonCodes = [...approval.approvalReasonCodes];
+  let noticeMessage: string | null = null;
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Approval") {
+    if (!approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) {
+      approvalReasonCodes.push("PUNCH_ON_APPROVED_LEAVE");
+    }
+    approvalStatus = "pending_approval";
+    noticeMessage = "You have an approved leave today. This punch has been sent for approval review.";
+  }
+
   const serverNowIso = new Date().toISOString();
   const deviceTimeIso = toIsoFromMs(payload.device_time_ms);
   const estimatedTimeIso = toIsoFromMs(payload.estimated_time_ms);
@@ -629,9 +654,9 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
       clock_drift_ms: payload.clock_drift_ms,
       server_received_at: serverNowIso,
       effective_punch_at: effectivePunchAt,
-      requires_approval: approval.approvalStatus === "pending_approval",
-      approval_status: approval.approvalStatus,
-      approval_reason_codes: approval.approvalReasonCodes,
+      requires_approval: approvalStatus === "pending_approval",
+      approval_status: approvalStatus,
+      approval_reason_codes: approvalReasonCodes,
       raw_payload: rawBody,
     })
     .select("event_id,approval_status,effective_punch_at,server_received_at")
@@ -652,6 +677,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
       approvalStatus: inserted.approval_status,
       effectivePunchAt: inserted.effective_punch_at,
       serverReceivedAt: inserted.server_received_at,
+      notice: noticeMessage,
     },
   };
 }

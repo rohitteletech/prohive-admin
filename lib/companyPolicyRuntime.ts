@@ -169,6 +169,20 @@ export function resolveLeaveTypesRuntime(policy: PolicyDefinition | null) {
     .filter((row): row is ResolvedLeaveTypeRuntime => Boolean(row));
 }
 
+export function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
+  const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const action = text(
+    config.ifEmployeePunchesOnApprovedLeave,
+    text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Approval",
+  );
+  return {
+    ifEmployeePunchesOnApprovedLeave:
+      action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Approval"
+        ? action
+        : "Allow Punch and Send for Approval",
+  } as const;
+}
+
 export function resolveCorrectionPolicyRuntime(policy: PolicyDefinition | null) {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
   return {

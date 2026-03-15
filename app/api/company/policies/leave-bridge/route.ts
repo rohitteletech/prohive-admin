@@ -27,7 +27,7 @@ type LeaveBridgePayload = {
   approvalFlow?: "manager" | "manager_hr" | "hr";
   noticePeriodDays?: string;
   backdatedLeaveAllowed?: "Yes" | "No";
-  leaveOverridesAttendance?: "Yes" | "No";
+  ifEmployeePunchesOnApprovedLeave?: "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
   sandwichLeave?: "Enabled" | "Disabled";
   leaveTypes?: LeaveTypePayload[];
 };
@@ -48,6 +48,18 @@ function fromLegacyAccrualMode(value: unknown): LeaveTypePayload["accrualRule"] 
 function toNumberString(value: unknown, fallback: string) {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+function normalizePunchOnApprovedLeaveAction(
+  value: unknown,
+): NonNullable<LeaveBridgePayload["ifEmployeePunchesOnApprovedLeave"]> {
+  const text = String(value || "").trim();
+  if (text === "Keep Leave" || text === "Block Punch" || text === "Allow Punch and Send for Approval") {
+    return text;
+  }
+  if (text === "Yes") return "Keep Leave";
+  if (text === "No") return "Allow Punch and Send for Approval";
+  return "Allow Punch and Send for Approval";
 }
 
 export async function GET(req: NextRequest) {
@@ -118,7 +130,9 @@ export async function GET(req: NextRequest) {
           : "manager_hr",
       noticePeriodDays: toNumberString(config.noticePeriodDays, "1"),
       backdatedLeaveAllowed: config.backdatedLeaveAllowed === "Yes" ? "Yes" : "No",
-      leaveOverridesAttendance: config.leaveOverridesAttendance === "No" ? "No" : "Yes",
+      ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(
+        config.ifEmployeePunchesOnApprovedLeave ?? config.leaveOverridesAttendance,
+      ),
       sandwichLeave: config.sandwichLeave === "Enabled" ? "Enabled" : "Disabled",
       leaveTypes: configLeaveTypes && configLeaveTypes.length > 0 ? configLeaveTypes : legacyLeaveTypes,
     } satisfies LeaveBridgePayload);
@@ -156,7 +170,9 @@ export async function PUT(req: NextRequest) {
     approvalFlow: body.approvalFlow || "manager_hr",
     noticePeriodDays: body.noticePeriodDays || "1",
     backdatedLeaveAllowed: body.backdatedLeaveAllowed || "No",
-    leaveOverridesAttendance: body.leaveOverridesAttendance || "Yes",
+    ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(
+      body.ifEmployeePunchesOnApprovedLeave,
+    ),
     sandwichLeave: body.sandwichLeave || "Disabled",
     leaveTypes: leaveTypes.map((leaveType) => ({
       ...leaveType,

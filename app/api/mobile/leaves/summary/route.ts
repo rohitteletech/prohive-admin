@@ -3,7 +3,7 @@ import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib
 import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { computeLeaveEntitlement, fetchLeaveOverrideDays, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 
 function yearRange(year: number) {
   return {
@@ -116,14 +116,26 @@ export async function POST(req: NextRequest) {
       }))
     : legacyPolicyRows;
 
-  const usageByCode = new Map<string, { approvedUsed: number; pendingUsed: number }>();
-  requests.forEach((row) => {
-    const entry = usageByCode.get(row.leave_policy_code) || { approvedUsed: 0, pendingUsed: 0 };
-    const paidDays = Number((row.paid_days ?? row.days) || 0);
-    if (row.status === "approved") entry.approvedUsed = roundLeaveDays(entry.approvedUsed + paidDays);
-    if (row.status === "pending") entry.pendingUsed = roundLeaveDays(entry.pendingUsed + paidDays);
-    usageByCode.set(row.leave_policy_code, entry);
-  });
+  const usageEntries = await Promise.all(
+    policyRows.map(async (row) => {
+      const code = String(row.code || "");
+      const result = await fetchLeaveUsageForYear({
+        admin: session.admin,
+        companyId: session.employee.company_id,
+        employeeId: session.employee.id,
+        leavePolicyCode: code,
+        year: currentYear,
+      });
+      return [code, result] as const;
+    }),
+  );
+  const usageError = usageEntries.find(([, result]) => result.error)?.[1].error;
+  if (usageError) {
+    return NextResponse.json({ error: usageError }, { status: 400 });
+  }
+  const usageByCode = new Map(
+    usageEntries.map(([code, result]) => [code, { approvedUsed: result.approvedUsed, pendingUsed: result.pendingUsed }]),
+  );
 
   const overrideEntries = await Promise.all(
     policyRows.map(async (row) => {

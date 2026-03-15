@@ -37,7 +37,7 @@ type LeavePolicyState = {
   approvalFlow: "manager" | "manager_hr" | "hr";
   noticePeriodDays: string;
   backdatedLeaveAllowed: "Yes" | "No";
-  leaveOverridesAttendance: "Yes" | "No";
+  ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
   sandwichLeave: "Enabled" | "Disabled";
 };
 
@@ -52,7 +52,7 @@ const initialPolicyState: LeavePolicyState = {
   approvalFlow: "manager_hr",
   noticePeriodDays: "1",
   backdatedLeaveAllowed: "No",
-  leaveOverridesAttendance: "Yes",
+  ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval",
   sandwichLeave: "Disabled",
 };
 
@@ -526,7 +526,7 @@ export default function LeavePolicyPage() {
                   <option value="hr">HR Approval</option>
                 </Select>
               </Field>
-              <Field label="Notice Period (Days)">
+              <Field label="Notice Period for Leave Application (Days)">
                 <TextInput value={draft.noticePeriodDays} onChange={(e) => updatePolicy("noticePeriodDays", e.target.value)} />
               </Field>
               <Field label="Backdated Leave Allowed">
@@ -538,13 +538,19 @@ export default function LeavePolicyPage() {
                   <option value="No">No</option>
                 </Select>
               </Field>
-              <Field label="Leave Overrides Attendance">
+              <Field label="If Employee Punches On Approved Leave">
                 <Select
-                  value={draft.leaveOverridesAttendance}
-                  onChange={(e) => updatePolicy("leaveOverridesAttendance", e.target.value as LeavePolicyState["leaveOverridesAttendance"])}
+                  value={draft.ifEmployeePunchesOnApprovedLeave}
+                  onChange={(e) =>
+                    updatePolicy(
+                      "ifEmployeePunchesOnApprovedLeave",
+                      e.target.value as LeavePolicyState["ifEmployeePunchesOnApprovedLeave"],
+                    )
+                  }
                 >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
+                  <option value="Allow Punch and Send for Approval">Allow Punch and Send for Approval</option>
+                  <option value="Keep Leave">Keep Leave</option>
+                  <option value="Block Punch">Block Punch</option>
                 </Select>
               </Field>
               <Field label="Sandwich Leave">

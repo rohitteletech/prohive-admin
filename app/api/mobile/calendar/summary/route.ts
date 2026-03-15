@@ -211,12 +211,12 @@ export async function POST(req: NextRequest) {
     let status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null = null;
     if (holidayDates.has(iso)) {
       status = "holiday";
+    } else if (presentDates.has(iso)) {
+      status = "present";
     } else if (leaveDates.has(iso)) {
       status = "leave";
     } else if (weeklyOffDates.has(iso)) {
       status = "weekly_off";
-    } else if (presentDates.has(iso)) {
-      status = "present";
     } else if (iso <= today) {
       status = "absent";
     }
