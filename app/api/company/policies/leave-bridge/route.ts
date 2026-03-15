@@ -10,8 +10,6 @@ type LeaveTypePayload = {
   paymentMode: "Paid" | "Unpaid";
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
-  minimumDays: string;
-  maximumDays: string;
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
   carryForwardAllowed: "Yes" | "No";
 };
@@ -96,8 +94,6 @@ export async function GET(req: NextRequest) {
             paymentMode: "Paid" as const,
             annualQuota: String(legacy.annualQuota),
             halfDayAllowed: "Yes" as const,
-            minimumDays: "1",
-            maximumDays: String(Math.max(legacy.annualQuota, legacy.carryForward || 0, 1)),
             accrualRule: fromLegacyAccrualMode(legacy.accrualMode),
             carryForwardAllowed: (legacy.carryForward > 0 ? "Yes" : "No") as "Yes" | "No",
           } satisfies LeaveTypePayload;
@@ -173,8 +169,6 @@ export async function PUT(req: NextRequest) {
       ...leaveType,
       accrualRule: normalizeAccrualRule(leaveType.accrualRule),
       annualQuota: toNumberString(leaveType.annualQuota, "0"),
-      minimumDays: toNumberString(leaveType.minimumDays, "1"),
-      maximumDays: toNumberString(leaveType.maximumDays, "1"),
     })),
   };
 

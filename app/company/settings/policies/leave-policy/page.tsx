@@ -20,8 +20,6 @@ type LeaveType = {
   paymentMode: "Paid" | "Unpaid";
   annualQuota: string;
   halfDayAllowed: "Yes" | "No";
-  minimumDays: string;
-  maximumDays: string;
   accrualRule: "Yearly Upfront" | "Monthly Accrual" | "Quarterly Accrual" | "Manual Credit Only";
   carryForwardAllowed: "Yes" | "No";
 };
@@ -79,8 +77,6 @@ const initialLeaveTypes: LeaveType[] = [
     paymentMode: "Paid",
     annualQuota: "12",
     halfDayAllowed: "Yes",
-    minimumDays: "0.5",
-    maximumDays: "6",
     accrualRule: "Yearly Upfront",
     carryForwardAllowed: "No",
   },
@@ -91,8 +87,6 @@ const initialLeaveTypes: LeaveType[] = [
     paymentMode: "Paid",
     annualQuota: "12",
     halfDayAllowed: "Yes",
-    minimumDays: "0.5",
-    maximumDays: "12",
     accrualRule: "Yearly Upfront",
     carryForwardAllowed: "No",
   },
@@ -103,8 +97,6 @@ const initialLeaveTypes: LeaveType[] = [
     paymentMode: "Paid",
     annualQuota: "18",
     halfDayAllowed: "Yes",
-    minimumDays: "1",
-    maximumDays: "30",
     accrualRule: "Monthly Accrual",
     carryForwardAllowed: "Yes",
   },
@@ -115,8 +107,6 @@ const initialLeaveTypes: LeaveType[] = [
     paymentMode: "Paid",
     annualQuota: "0",
     halfDayAllowed: "No",
-    minimumDays: "1",
-    maximumDays: "5",
     accrualRule: "Manual Credit Only",
     carryForwardAllowed: "No",
   },
@@ -130,8 +120,6 @@ function createBlankLeaveType(): LeaveType {
     paymentMode: "Paid",
     annualQuota: "",
     halfDayAllowed: "No",
-    minimumDays: "1",
-    maximumDays: "",
     accrualRule: "Yearly Upfront",
     carryForwardAllowed: "No",
   };
@@ -484,12 +472,6 @@ export default function LeavePolicyPage() {
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
                       </Select>
-                    </Field>
-                    <Field label="Minimum Days">
-                      <TextInput value={leaveType.minimumDays} onChange={(e) => updateLeaveType(leaveType.id, "minimumDays", e.target.value)} />
-                    </Field>
-                    <Field label="Maximum Days">
-                      <TextInput value={leaveType.maximumDays} onChange={(e) => updateLeaveType(leaveType.id, "maximumDays", e.target.value)} />
                     </Field>
                     <Field label="Accrual Rule">
                       <Select value={leaveType.accrualRule} onChange={(e) => updateLeaveType(leaveType.id, "accrualRule", e.target.value)}>
