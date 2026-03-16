@@ -80,9 +80,23 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       ? requestRow.approval_flow_snapshot
       : "manager_hr";
   const requiresTwoStage = approvalFlow === "manager_hr";
-  const currentStage = requestRow.status === "pending_hr" ? "hr" : "manager";
-  const nextApprovedStatus: LeaveWorkflowStatus =
-    requiresTwoStage && currentStage === "manager" ? "pending_hr" : "approved";
+  const currentStage =
+    requestRow.status === "pending_hr"
+      ? "hr"
+      : requestRow.status === "pending_manager"
+        ? "manager"
+        : approvalFlow === "hr"
+          ? "hr"
+          : "manager";
+
+  if (currentStage === "manager") {
+    return NextResponse.json(
+      { error: "Manager approval is required first. HR/Admin cannot complete the manager stage." },
+      { status: 403 },
+    );
+  }
+
+  const nextApprovedStatus: LeaveWorkflowStatus = "approved";
 
   if (body.status === "approved" && nextApprovedStatus === "approved") {
     const year = Number(String(requestRow.from_date || "").slice(0, 4) || todayISOInIndia().slice(0, 4));
@@ -157,10 +171,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     .from("employee_leave_requests")
     .update({
       status: body.status === "approved" ? nextApprovedStatus : body.status,
-      admin_remark:
-        body.status === "approved" && nextApprovedStatus === "pending_hr"
-          ? `${normalizeOptional(body.admin_remark) || ""} (Manager stage approved)`.trim()
-          : normalizeOptional(body.admin_remark),
+      admin_remark: normalizeOptional(body.admin_remark),
       reviewed_at: new Date().toISOString(),
       reviewed_by: context.adminEmail,
       updated_at: new Date().toISOString(),

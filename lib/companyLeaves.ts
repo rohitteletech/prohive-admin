@@ -39,6 +39,7 @@ export type LeaveRequestRow = {
   submittedDate: string;
   submittedTime: string;
   status: LeaveRequestStatus;
+  approvalFlowSnapshot?: "manager" | "hr" | "manager_hr";
   adminRemark?: string;
   restoredDays: number;
   attendanceOverrideApplied: boolean;
@@ -172,6 +173,12 @@ export function leaveRequestFromDb(row: Record<string, unknown>): LeaveRequestRo
       row.status === "pending_hr"
         ? (row.status as LeaveRequestStatus)
         : "pending",
+    approvalFlowSnapshot:
+      row.approval_flow_snapshot === "manager" ||
+      row.approval_flow_snapshot === "hr" ||
+      row.approval_flow_snapshot === "manager_hr"
+        ? (row.approval_flow_snapshot as "manager" | "hr" | "manager_hr")
+        : undefined,
     adminRemark: normalizeText(row.admin_remark) || undefined,
     restoredDays: Number(row.restored_days || 0),
     attendanceOverrideApplied: Boolean(row.attendance_override_applied),

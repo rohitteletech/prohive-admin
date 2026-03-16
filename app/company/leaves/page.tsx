@@ -95,6 +95,17 @@ export default function Page() {
     return { total, pending, approved, rejected };
   }, [filtered]);
 
+  function rowNeedsManagerReview(row: LeaveRequestRow) {
+    if (row.status === "pending_manager") return true;
+    return row.status === "pending" && (row.approvalFlowSnapshot === "manager" || row.approvalFlowSnapshot === "manager_hr");
+  }
+
+  function rowHrActionable(row: LeaveRequestRow) {
+    if (row.status === "pending_hr") return true;
+    if (row.status !== "pending") return false;
+    return row.approvalFlowSnapshot !== "manager" && row.approvalFlowSnapshot !== "manager_hr";
+  }
+
   async function updateLeaveStatus(id: string, nextStatus: "approved" | "rejected") {
     const remark = window.prompt(
       nextStatus === "approved" ? "Approval remark (optional)" : "Rejection remark (optional)"
@@ -118,16 +129,30 @@ export default function Page() {
         admin_remark: remark,
       }),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    const result = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      error?: string;
+      status?: LeaveRequestStatus;
+    };
     setActionId(null);
     if (!response.ok || !result.ok) {
       return showToast(result.error || "Unable to update leave request.");
     }
 
     setRows((prev) =>
-      prev.map((row) => (row.id === id ? { ...row, status: nextStatus, adminRemark: remark || undefined } : row))
+      prev.map((row) =>
+        row.id === id
+          ? { ...row, status: result.status || nextStatus, adminRemark: remark || undefined }
+          : row
+      )
     );
-    showToast(nextStatus === "approved" ? "Leave approved." : "Leave rejected.");
+    showToast(
+      nextStatus === "approved"
+        ? result.status === "pending_hr"
+          ? "Manager stage completed. Request moved to HR review."
+          : "Leave approved."
+        : "Leave rejected."
+    );
   }
 
   return (
@@ -262,7 +287,9 @@ export default function Page() {
                     </span>
                   </td>
                   <td className="px-5 py-3">
-                    {row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr" ? (
+                    {rowNeedsManagerReview(row) ? (
+                      <span className="text-xs font-medium text-indigo-700">Manager review required</span>
+                    ) : rowHrActionable(row) || row.status === "pending_hr" ? (
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -270,7 +297,7 @@ export default function Page() {
                           onClick={() => updateLeaveStatus(row.id, "approved")}
                           className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
                         >
-                          {row.status === "pending_manager" ? "Manager Approve" : row.status === "pending_hr" ? "HR Approve" : "Approve"}
+                          {row.status === "pending_hr" ? "HR Approve" : "Approve"}
                         </button>
                         <button
                           type="button"

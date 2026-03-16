@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const { data, error } = await context.admin
     .from("employee_leave_requests")
     .select(
-      "id,employee_id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,leave_mode,reason,status,admin_remark,submitted_at"
+      "id,employee_id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,leave_mode,reason,status,approval_flow_snapshot,admin_remark,submitted_at"
       + ",employees(full_name,employee_code)"
     )
     .eq("company_id", context.companyId)
