@@ -11,6 +11,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { formatDisplayDateTime } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type LeaveType = {
@@ -30,6 +31,7 @@ type LeavePolicyState = {
   policyId: string;
   policyName: string;
   policyCode: string;
+  createdAt?: string;
   effectiveFrom: string;
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
@@ -207,7 +209,17 @@ export default function LeavePolicyPage() {
       headers: { authorization: `Bearer ${token}` },
     });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
-      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+      policies?: Array<{
+        id: string;
+        policyName: string;
+        policyCode: string;
+        effectiveFrom: string;
+        nextReviewDate: string;
+        status: string;
+        isDefault: boolean;
+        createdAt?: string;
+        configJson?: Record<string, unknown>;
+      }>;
     };
     const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
@@ -215,11 +227,12 @@ export default function LeavePolicyPage() {
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
         ? policiesResult.policies.map((policyRow) => {
-            const config = (policyRow.configJson || {}) as Partial<LeavePolicyState> & { leaveTypes?: LeaveType[] };
+          const config = (policyRow.configJson || {}) as Partial<LeavePolicyState> & { leaveTypes?: LeaveType[] };
             return {
               ...initialPolicyState,
               ...config,
               policyId: policyRow.id,
+              createdAt: String(policyRow.createdAt || ""),
               policyName: String(config.policyName || policyRow.policyName || ""),
               policyCode: String(config.policyCode || policyRow.policyCode || ""),
               effectiveFrom: String(config.effectiveFrom || policyRow.effectiveFrom || initialPolicyState.effectiveFrom),
@@ -370,7 +383,7 @@ export default function LeavePolicyPage() {
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
           createdBy: "Company Admin",
-          createdOn: "2026-03-13 08:10 AM",
+          createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
       />
