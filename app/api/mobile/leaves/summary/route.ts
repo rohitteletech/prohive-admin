@@ -3,7 +3,7 @@ import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib
 import { resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import { computeLeaveEntitlement, fetchApprovedAttendanceDatesForYear, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, restoredDaysForLeaveRequest, roundLeaveDays } from "@/lib/leaveAccrual";
 
 const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
 
@@ -153,6 +153,15 @@ export async function POST(req: NextRequest) {
     })
   );
   const overrideByCode = new Map(overrideEntries.map(([code, result]) => [code, result.overrideDays]));
+  const attendanceDatesResult = await fetchApprovedAttendanceDatesForYear({
+    admin: session.admin,
+    companyId: session.employee.company_id,
+    employeeId: session.employee.id,
+    year: currentYear,
+  });
+  if (attendanceDatesResult.error) {
+    return NextResponse.json({ error: attendanceDatesResult.error }, { status: 400 });
+  }
 
   return NextResponse.json({
     employee: {
@@ -200,6 +209,8 @@ export async function POST(req: NextRequest) {
       };
     }),
     requests: requests.map((row) => ({
+      restoredDays: restoredDaysForLeaveRequest(row, attendanceDatesResult.approvedAttendanceDates),
+      attendanceOverrideApplied: restoredDaysForLeaveRequest(row, attendanceDatesResult.approvedAttendanceDates) > 0,
       id: row.id,
       leavePolicyCode: row.leave_policy_code,
       leaveName: row.leave_name_snapshot,

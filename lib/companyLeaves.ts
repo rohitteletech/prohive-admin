@@ -40,6 +40,8 @@ export type LeaveRequestRow = {
   submittedTime: string;
   status: LeaveRequestStatus;
   adminRemark?: string;
+  restoredDays: number;
+  attendanceOverrideApplied: boolean;
 };
 
 function normalizeText(value: unknown) {
@@ -171,5 +173,7 @@ export function leaveRequestFromDb(row: Record<string, unknown>): LeaveRequestRo
         ? (row.status as LeaveRequestStatus)
         : "pending",
     adminRemark: normalizeText(row.admin_remark) || undefined,
+    restoredDays: Number(row.restored_days || 0),
+    attendanceOverrideApplied: Boolean(row.attendance_override_applied),
   };
 }

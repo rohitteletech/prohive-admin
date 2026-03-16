@@ -242,6 +242,11 @@ export default function Page() {
                   <td className="px-5 py-3">
                     <div className="max-w-[240px]">
                       <div>{row.reason}</div>
+                      {row.attendanceOverrideApplied && (
+                        <div className="mt-1 rounded-lg border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700">
+                          Approved attendance restored {row.restoredDays} day(s) from this leave request.
+                        </div>
+                      )}
                       {row.adminRemark && <div className="mt-1 text-xs text-slate-500">Remark: {row.adminRemark}</div>}
                     </div>
                   </td>

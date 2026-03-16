@@ -23,6 +23,14 @@ export function roundLeaveDays(value: number) {
   return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+export type LeaveRequestUsageRow = {
+  from_date: string;
+  to_date: string;
+  days: number;
+  paid_days?: number | null;
+  status: "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
+};
+
 function enumerateIsoDates(fromDate: string, toDate: string) {
   const start = new Date(`${fromDate}T00:00:00.000Z`);
   const end = new Date(`${toDate}T00:00:00.000Z`);
@@ -33,6 +41,45 @@ function enumerateIsoDates(fromDate: string, toDate: string) {
     start.setUTCDate(start.getUTCDate() + 1);
   }
   return dates;
+}
+
+export async function fetchApprovedAttendanceDatesForYear(params: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  year: number;
+}) {
+  const yearStart = `${params.year}-01-01`;
+  const yearNextStart = `${params.year + 1}-01-01`;
+  const attendanceResult = await params.admin
+    .from("attendance_punch_events")
+    .select("effective_punch_at,server_received_at,approval_status")
+    .eq("company_id", params.companyId)
+    .eq("employee_id", params.employeeId)
+    .in("approval_status", ["auto_approved", "approved"])
+    .gte("server_received_at", `${yearStart}T00:00:00.000Z`)
+    .lt("server_received_at", `${yearNextStart}T00:00:00.000Z`);
+
+  if (attendanceResult.error) {
+    return { approvedAttendanceDates: new Set<string>(), error: attendanceResult.error.message || "Unable to load attendance overrides." };
+  }
+
+  const approvedAttendanceDates = new Set(
+    ((attendanceResult.data || []) as Array<{ effective_punch_at?: string | null; server_received_at?: string | null }>)
+      .map((row) => row.effective_punch_at || row.server_received_at || "")
+      .map((value) => (value ? isoDateInIndia(value) : ""))
+      .filter(Boolean),
+  );
+
+  return { approvedAttendanceDates, error: null as string | null };
+}
+
+export function restoredDaysForLeaveRequest(
+  row: Pick<LeaveRequestUsageRow, "from_date" | "to_date" | "status">,
+  approvedAttendanceDates: Set<string>,
+) {
+  if (row.status !== "approved") return 0;
+  return enumerateIsoDates(String(row.from_date || ""), String(row.to_date || "")).filter((iso) => approvedAttendanceDates.has(iso)).length;
 }
 
 export function computeLeaveEntitlement(params: {
@@ -63,7 +110,7 @@ export async function fetchLeaveUsageForYear(params: {
 }) {
   const yearStart = `${params.year}-01-01`;
   const yearNextStart = `${params.year + 1}-01-01`;
-  const [leaveUsageResult, attendanceResult] = await Promise.all([
+  const [leaveUsageResult, attendanceDatesResult] = await Promise.all([
     params.admin
     .from("employee_leave_requests")
     .select("from_date,to_date,days,paid_days,status")
@@ -72,45 +119,29 @@ export async function fetchLeaveUsageForYear(params: {
     .eq("leave_policy_code", params.leavePolicyCode)
     .gte("from_date", yearStart)
     .lt("from_date", yearNextStart),
-    params.admin
-      .from("attendance_punch_events")
-      .select("effective_punch_at,server_received_at,approval_status")
-      .eq("company_id", params.companyId)
-      .eq("employee_id", params.employeeId)
-      .in("approval_status", ["auto_approved", "approved"])
-      .gte("server_received_at", `${yearStart}T00:00:00.000Z`)
-      .lt("server_received_at", `${yearNextStart}T00:00:00.000Z`),
+    fetchApprovedAttendanceDatesForYear({
+      admin: params.admin,
+      companyId: params.companyId,
+      employeeId: params.employeeId,
+      year: params.year,
+    }),
   ]);
   if (leaveUsageResult.error) {
     return { approvedUsed: 0, pendingUsed: 0, error: leaveUsageResult.error.message || "Unable to load leave usage." };
   }
-  if (attendanceResult.error) {
-    return { approvedUsed: 0, pendingUsed: 0, error: attendanceResult.error.message || "Unable to load attendance overrides." };
+  if (attendanceDatesResult.error) {
+    return { approvedUsed: 0, pendingUsed: 0, error: attendanceDatesResult.error };
   }
 
   let approvedUsed = 0;
   let pendingUsed = 0;
-  const approvedAttendanceDates = new Set(
-    ((attendanceResult.data || []) as Array<{ effective_punch_at?: string | null; server_received_at?: string | null }>)
-      .map((row) => row.effective_punch_at || row.server_received_at || "")
-      .map((value) => (value ? isoDateInIndia(value) : ""))
-      .filter(Boolean),
-  );
-  ((leaveUsageResult.data || []) as Array<{
-    from_date: string;
-    to_date: string;
-    days: number;
-    paid_days?: number | null;
-    status: "pending" | "approved" | "rejected";
-  }>).forEach((row) => {
+  const approvedAttendanceDates = attendanceDatesResult.approvedAttendanceDates;
+  ((leaveUsageResult.data || []) as LeaveRequestUsageRow[]).forEach((row) => {
     const consumed = Number((row.paid_days ?? row.days) || 0);
-    const restoredDays =
-      row.status === "approved"
-        ? enumerateIsoDates(String(row.from_date || ""), String(row.to_date || "")).filter((iso) => approvedAttendanceDates.has(iso)).length
-        : 0;
+    const restoredDays = restoredDaysForLeaveRequest(row, approvedAttendanceDates);
     const effectiveConsumed = Math.max(roundLeaveDays(consumed - restoredDays), 0);
     if (row.status === "approved") approvedUsed += effectiveConsumed;
-    if (row.status === "pending") pendingUsed += consumed;
+    if (row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr") pendingUsed += consumed;
   });
   return { approvedUsed: roundLeaveDays(approvedUsed), pendingUsed: roundLeaveDays(pendingUsed), error: null as string | null };
 }
