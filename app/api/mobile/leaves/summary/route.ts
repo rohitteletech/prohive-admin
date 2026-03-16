@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
-import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+
+const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
 
 function yearRange(year: number) {
   return {
@@ -38,6 +40,7 @@ export async function POST(req: NextRequest) {
     today,
     ["leave"],
   );
+  const leavePolicyRuntime = resolveLeavePolicyRuntime(policyContext.resolved.leave);
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
 
   const [policyResult, requestResult, holidayResult] = await Promise.all([
@@ -156,6 +159,10 @@ export async function POST(req: NextRequest) {
       id: session.employee.id,
       employeeCode: session.employee.employee_code,
       fullName: session.employee.full_name,
+    },
+    settings: {
+      backdatedLeaveAllowed: leavePolicyRuntime.backdatedLeaveAllowed,
+      maxBackdatedLeaveDays: FIXED_MAX_BACKDATED_LEAVE_DAYS,
     },
     balances: policyRows.map((row) => {
       const code = String(row.code || "");

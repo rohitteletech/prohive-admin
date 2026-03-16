@@ -5,6 +5,8 @@ import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
+const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
+
 function isoDateToUtcMs(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return Number.NaN;
@@ -138,6 +140,16 @@ export async function POST(req: NextRequest) {
       { error: "Backdated leave is not allowed under your current leave policy." },
       { status: 400 },
     );
+  }
+
+  if (fromDate < todayIso && leavePolicyRuntime.backdatedLeaveAllowed) {
+    const earliestBackdatedStartDate = addDaysToIsoDate(todayIso, -FIXED_MAX_BACKDATED_LEAVE_DAYS);
+    if (earliestBackdatedStartDate && fromDate < earliestBackdatedStartDate) {
+      return NextResponse.json(
+        { error: `Backdated leave can only be applied for the last ${FIXED_MAX_BACKDATED_LEAVE_DAYS} day(s).` },
+        { status: 400 },
+      );
+    }
   }
 
   const earliestAllowedStartDate = addDaysToIsoDate(todayIso, leavePolicyRuntime.noticePeriodDays);
