@@ -175,6 +175,7 @@ export async function POST(req: NextRequest) {
   );
   const weeklyOffDates = new Set<string>();
   const presentDates = new Set<string>();
+  const nonWorkingDayTreatmentByDate = new Map<string, string>();
   const leaveDates = new Set<string>();
 
   attendanceRows.forEach((row) => {
@@ -183,6 +184,9 @@ export async function POST(req: NextRequest) {
     const isoDate = isoDateInIndia(punchAt);
     if (isoDate >= start && isoDate < nextStart) {
       presentDates.add(isoDate);
+      if (holidayDates.has(isoDate)) {
+        nonWorkingDayTreatmentByDate.set(isoDate, resolvedHoliday.holidayWorkedStatus);
+      }
     }
   });
 
@@ -206,11 +210,16 @@ export async function POST(req: NextRequest) {
     const iso = monthDate.toISOString().slice(0, 10);
     if (isWeeklyOffDate(iso, weeklyOffPolicy)) {
       weeklyOffDates.add(iso);
+      if (presentDates.has(iso) && !holidayDates.has(iso)) {
+        nonWorkingDayTreatmentByDate.set(iso, resolvedHoliday.weeklyOffWorkedStatus);
+      }
     }
 
     let status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null = null;
     if (holidayDates.has(iso)) {
-      status = "holiday";
+      status = nonWorkingDayTreatmentByDate.get(iso) === "Present + OT" ? "present" : "holiday";
+    } else if (presentDates.has(iso) && weeklyOffDates.has(iso)) {
+      status = nonWorkingDayTreatmentByDate.get(iso) === "Present + OT" ? "present" : "weekly_off";
     } else if (presentDates.has(iso)) {
       status = "present";
     } else if (leaveDates.has(iso)) {
@@ -275,13 +284,14 @@ export async function POST(req: NextRequest) {
       if (status === "present") dots.push("green");
       if (status === "holiday" || status === "weekly_off") dots.push("yellow");
       if (status === "absent") dots.push("red");
+      const treatment = nonWorkingDayTreatmentByDate.get(iso) || "";
       week.push({
         date: iso,
         day: cursor.getUTCDate(),
         inMonth: iso >= start && iso < nextStart,
         status,
         dots,
-        chipText: holidayNamesByDate.get(iso) || "",
+        chipText: treatment && treatment !== "Present + OT" ? treatment : holidayNamesByDate.get(iso) || "",
       });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }

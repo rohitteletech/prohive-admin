@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { resolveAttendancePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
-import { buildAttendanceMetrics, buildDailyAttendanceDecision, rawWorkedMinutes } from "@/lib/attendancePolicy";
+import { applyNonWorkingDayTreatment, buildAttendanceMetrics, buildDailyAttendanceDecision, rawWorkedMinutes, type NonWorkingDayTreatment } from "@/lib/attendancePolicy";
+import { isWeeklyOffDate } from "@/lib/weeklyOff";
 
 type EventRow = {
   id: string;
@@ -40,7 +41,8 @@ type AttendanceRow = {
   checkOutAddress: string;
   checkOutLatLng: string;
   workHours: string;
-  status: "present" | "late" | "half_day" | "absent";
+  status: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
+  nonWorkingDayTreatment?: NonWorkingDayTreatment;
 };
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
@@ -135,7 +137,8 @@ function aggregateRows(
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
   extraHoursPolicy: string,
   halfDayMinWorkMins: number,
-  resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>
+  resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>,
+  holidayDates: Set<string>
 ) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -173,6 +176,7 @@ function aggregateRows(
       const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
         extraHoursCountingRule: extraHoursPolicy,
       });
+      const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedPolicies?.resolved?.holiday_weekoff || null);
       const shiftConfig = resolvedPolicies?.resolved?.shift
         ? {
             name: resolvedShift.shiftName,
@@ -195,6 +199,8 @@ function aggregateRows(
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || halfDayMinWorkMins,
       });
+      const isHoliday = holidayDates.has(selectedDate);
+      const isWeeklyOff = !isHoliday && isWeeklyOffDate(selectedDate, resolvedHoliday.weeklyOffPolicy);
       return {
         id: key,
         employeeId: employee?.id || "",
@@ -219,6 +225,13 @@ function aggregateRows(
         attendancePolicy: resolvedAttendance,
         checkInIso,
         checkOutIso,
+        dayType: isHoliday ? ("holiday" as const) : isWeeklyOff ? ("weekly_off" as const) : null,
+        nonWorkingDayTreatment:
+          isHoliday
+            ? (resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment)
+            : isWeeklyOff
+              ? (resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment)
+              : null,
       };
     })
     .sort((a, b) => a.employee.localeCompare(b.employee));
@@ -248,7 +261,7 @@ function aggregateRows(
       if (qualifiesLateWithinLimit) lateCycleCount += 1;
       if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
 
-      const decision = buildDailyAttendanceDecision({
+      const baseDecision = buildDailyAttendanceDecision({
         checkInIso: row.checkInIso,
         checkOutIso: row.checkOutIso,
         timeZone,
@@ -261,9 +274,14 @@ function aggregateRows(
         lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
         earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
       });
+      const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
+        decision: baseDecision,
+        dayType: row.dayType,
+        treatment: row.nonWorkingDayTreatment,
+      });
 
-      if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
-      if (decision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+      if (baseDecision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
+      if (baseDecision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
 
       if (row.localDate === selectedDate) {
         resolvedRows.push({
@@ -280,6 +298,7 @@ function aggregateRows(
           checkOutLatLng: row.checkOutLatLng,
           workHours: row.workHours,
           status: decision.status,
+          nonWorkingDayTreatment: treatmentLabel || undefined,
         });
       }
     }
@@ -307,7 +326,7 @@ export async function GET(req: NextRequest) {
     const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
     const { fromIso, toIso } = buildQueryWindow(date);
 
-    const [eventsResult, shiftResult, companyResult] = await Promise.all([
+    const [eventsResult, shiftResult, companyResult, holidayResult] = await Promise.all([
       context.admin
         .from("attendance_punch_events")
         .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
@@ -322,6 +341,7 @@ export async function GET(req: NextRequest) {
         .eq("company_id", context.companyId)
         .order("created_at", { ascending: true }),
       context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
+      context.admin.from("company_holidays").select("holiday_date").eq("company_id", context.companyId).eq("holiday_date", date),
     ]);
 
     if (eventsResult.error) {
@@ -332,6 +352,9 @@ export async function GET(req: NextRequest) {
     }
     if (companyResult.error) {
       return NextResponse.json({ error: companyResult.error.message || "Unable to load extra hour policy." }, { status: 400 });
+    }
+    if (holidayResult.error) {
+      return NextResponse.json({ error: holidayResult.error.message || "Unable to load holiday markers." }, { status: 400 });
     }
 
     const shiftRows =
@@ -384,7 +407,7 @@ export async function GET(req: NextRequest) {
         shiftName: row.shift_name,
       })),
       date,
-      ["shift", "attendance"],
+      ["shift", "attendance", "holiday_weekoff"],
     );
 
     const rows = aggregateRows(
@@ -395,7 +418,8 @@ export async function GET(req: NextRequest) {
       effectiveShiftRows,
       extraHoursPolicy,
       halfDayMinWorkMins,
-      resolvedPoliciesByEmployee
+      resolvedPoliciesByEmployee,
+      new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date))
     );
     return NextResponse.json({ rows });
   } catch (error) {

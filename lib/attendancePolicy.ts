@@ -1,6 +1,12 @@
 import { timeToMinutes } from "@/lib/shiftWorkPolicy";
 
-export type AttendanceStatus = "present" | "late" | "half_day" | "absent";
+export type AttendanceStatus = "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
+export type NonWorkingDayTreatment =
+  | "Record Only"
+  | "OT Only"
+  | "Grant Comp Off"
+  | "Present + OT"
+  | "Manual Review";
 
 export type DailyAttendanceDecision = {
   status: AttendanceStatus;
@@ -217,6 +223,61 @@ export function buildDailyAttendanceDecision(params: {
     dayCount: finalDayCount,
     appliedRuleCode,
   } satisfies DailyAttendanceDecision;
+}
+
+export function applyNonWorkingDayTreatment(params: {
+  decision: DailyAttendanceDecision;
+  dayType: "holiday" | "weekly_off" | null;
+  treatment: NonWorkingDayTreatment | null;
+}): {
+  decision: DailyAttendanceDecision;
+  treatmentLabel: NonWorkingDayTreatment | null;
+} {
+  if (!params.dayType || !params.treatment) {
+    return {
+      decision: params.decision,
+      treatmentLabel: null,
+    };
+  }
+
+  if (params.treatment === "Present + OT") {
+    return {
+      decision: {
+        ...params.decision,
+        status: "present" as const,
+        dayCount: 1,
+        isLate: false,
+      },
+      treatmentLabel: "Present + OT",
+    };
+  }
+
+  if (params.treatment === "Manual Review") {
+    return {
+      decision: {
+        ...params.decision,
+        status: "manual_review" as const,
+        dayCount: 0,
+        isLate: false,
+      },
+      treatmentLabel: "Manual Review",
+    };
+  }
+
+  return {
+    decision: {
+      ...params.decision,
+      status: "off_day_worked" as const,
+      dayCount: 0,
+      isLate: false,
+    },
+    treatmentLabel:
+      params.treatment === "Grant Comp Off"
+        ? "Grant Comp Off"
+        : params.treatment === "OT Only"
+          ? "OT Only"
+          : "Record Only",
+  };
 }
 
 export function calculateMonthlyLatePenalty(

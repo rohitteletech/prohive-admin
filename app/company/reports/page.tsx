@@ -35,7 +35,8 @@ type AttendancePreviewRow = {
   checkIn: string;
   checkOut: string;
   workHours: string;
-  status: "present" | "late" | "half_day" | "absent";
+  status: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
+  nonWorkingDayTreatment?: string;
 };
 
 type AttendanceSummary = {
@@ -44,6 +45,8 @@ type AttendanceSummary = {
   late: number;
   halfDay: number;
   absent: number;
+  offDayWorked: number;
+  manualReview: number;
   latePenaltyDays: number;
 };
 
@@ -210,7 +213,16 @@ function attendanceStatusChip(status: AttendancePreviewRow["status"]) {
   if (status === "present") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "late") return "border-amber-200 bg-amber-50 text-amber-700";
   if (status === "half_day") return "border-sky-200 bg-sky-50 text-sky-700";
+  if (status === "off_day_worked") return "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700";
+  if (status === "manual_review") return "border-violet-200 bg-violet-50 text-violet-700";
   return "border-rose-200 bg-rose-50 text-rose-700";
+}
+
+function attendanceStatusLabel(status: AttendancePreviewRow["status"]) {
+  if (status === "off_day_worked") return "Off Day Worked";
+  if (status === "manual_review") return "Manual Review";
+  if (status === "half_day") return "Half Day";
+  return status.replace("_", " ");
 }
 
 function leaveStatusChip(status: LeavePreviewRow["status"]) {
@@ -330,6 +342,8 @@ export default function Page() {
     late: 0,
     halfDay: 0,
     absent: 0,
+    offDayWorked: 0,
+    manualReview: 0,
     latePenaltyDays: 0,
   });
   const [latePenaltyPreviewRows, setLatePenaltyPreviewRows] = useState<LatePenaltyPreviewRow[]>([]);
@@ -422,7 +436,7 @@ export default function Page() {
       setClaimPreviewRows([]);
       setCorrectionPreviewRows([]);
       setEmployeePreviewRows([]);
-      setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+      setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
       setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
@@ -503,6 +517,8 @@ export default function Page() {
             late: 0,
             halfDay: 0,
             absent: 0,
+            offDayWorked: 0,
+            manualReview: 0,
             latePenaltyDays: 0,
           }
         );
@@ -514,7 +530,7 @@ export default function Page() {
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -536,7 +552,7 @@ export default function Page() {
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
         setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -558,7 +574,7 @@ export default function Page() {
         setLeavePreviewRows([]);
         setCorrectionPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
         setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setCorrectionSummary({ total: 0, pending: 0, approved: 0, rejected: 0 });
@@ -580,7 +596,7 @@ export default function Page() {
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
         setEmployeePreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
         setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
@@ -601,7 +617,7 @@ export default function Page() {
         setLeavePreviewRows([]);
         setClaimPreviewRows([]);
         setCorrectionPreviewRows([]);
-        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+        setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
         setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
         setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
         setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
@@ -622,7 +638,7 @@ export default function Page() {
       setClaimPreviewRows([]);
       setCorrectionPreviewRows([]);
       setEmployeePreviewRows([]);
-      setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, latePenaltyDays: 0 });
+      setPreviewSummary({ total: 0, present: 0, late: 0, halfDay: 0, absent: 0, offDayWorked: 0, manualReview: 0, latePenaltyDays: 0 });
       setLatePenaltySummary({ total: 0, totalLateMarks: 0, totalLateUpTo: 0, totalLateAbove: 0, totalPenaltyDays: 0 });
       setLeaveSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAvailableBalance: 0 });
       setClaimSummary({ total: 0, pending: 0, approved: 0, rejected: 0, totalAmount: 0 });
@@ -880,6 +896,8 @@ export default function Page() {
                         {selectedReport === "attendance" ? "Late" : selectedReport === "late_penalty" ? "Late Only" : selectedReport === "employees" ? "Inactive" : "Approved"}
                       </option>
                       {selectedReport === "attendance" && <option value="half_day">Half Day</option>}
+                      {selectedReport === "attendance" && <option value="off_day_worked">Off Day Worked</option>}
+                      {selectedReport === "attendance" && <option value="manual_review">Manual Review</option>}
                       {selectedReport !== "employees" && (
                         <option value={selectedReport === "attendance" ? "absent" : selectedReport === "late_penalty" ? "no_penalty" : "rejected"}>
                           {selectedReport === "attendance" ? "Absent" : selectedReport === "late_penalty" ? "No Penalty" : "Rejected"}
@@ -1116,7 +1134,12 @@ export default function Page() {
                               <td className="px-3 py-3">{row.date}</td>
                               <td className="px-3 py-3">{row.checkIn}</td>
                               <td className="px-3 py-3">{row.checkOut}</td>
-                              <td className="px-3 py-3 font-semibold text-slate-900">{row.workHours}</td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">
+                                {row.workHours}
+                                {row.nonWorkingDayTreatment ? (
+                                  <div className="mt-1 text-[11px] font-medium text-fuchsia-700">{row.nonWorkingDayTreatment}</div>
+                                ) : null}
+                              </td>
                               <td className="px-3 py-3">
                                 <span
                                   className={[
@@ -1124,7 +1147,7 @@ export default function Page() {
                                     attendanceStatusChip(row.status),
                                   ].join(" ")}
                                 >
-                                  {row.status}
+                                  {attendanceStatusLabel(row.status)}
                                 </span>
                               </td>
                             </tr>

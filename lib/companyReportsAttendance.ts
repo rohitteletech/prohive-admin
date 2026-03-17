@@ -1,5 +1,5 @@
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
-import { resolveAttendancePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
@@ -8,7 +8,8 @@ import {
   shiftDurationMinutes,
   workHoursLabel,
 } from "@/lib/shiftWorkPolicy";
-import { buildAttendanceMetrics, buildDailyAttendanceDecision, calculateMonthlyLatePenalty, rawWorkedMinutes } from "@/lib/attendancePolicy";
+import { applyNonWorkingDayTreatment, buildAttendanceMetrics, buildDailyAttendanceDecision, calculateMonthlyLatePenalty, rawWorkedMinutes, type NonWorkingDayTreatment } from "@/lib/attendancePolicy";
+import { isWeeklyOffDate } from "@/lib/weeklyOff";
 
 type AdminClientLike = {
   from: (table: string) => any;
@@ -43,7 +44,8 @@ export type AttendanceReportRow = {
   checkIn: string;
   checkOut: string;
   workHours: string;
-  status: "present" | "late" | "half_day" | "absent";
+  status: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
+  nonWorkingDayTreatment?: NonWorkingDayTreatment;
 };
 
 type AttendanceReportRowWithLate = AttendanceReportRow & {
@@ -187,6 +189,7 @@ function aggregateRows(params: {
     aboveDays: number;
   };
   resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>;
+  holidayDates: Set<string>;
 }) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -223,6 +226,7 @@ function aggregateRows(params: {
       const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
         extraHoursCountingRule: params.extraHoursPolicy,
       });
+      const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedPolicies?.resolved?.holiday_weekoff || null);
       const shiftConfig = resolvedPolicies?.resolved?.shift
         ? {
             name: resolvedShift.shiftName,
@@ -249,6 +253,8 @@ function aggregateRows(params: {
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || params.halfDayMinWorkMins,
       });
+      const isHoliday = params.holidayDates.has(localDate);
+      const isWeeklyOff = !isHoliday && isWeeklyOffDate(localDate, resolvedHoliday.weeklyOffPolicy);
 
       return {
         id: key,
@@ -270,6 +276,13 @@ function aggregateRows(params: {
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || params.halfDayMinWorkMins,
         attendancePolicy: resolvedAttendance,
         metrics,
+        dayType: isHoliday ? ("holiday" as const) : isWeeklyOff ? ("weekly_off" as const) : null,
+        nonWorkingDayTreatment:
+          isHoliday
+            ? (resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment)
+            : isWeeklyOff
+              ? (resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment)
+              : null,
       };
     })
     .sort((a, b) => {
@@ -300,7 +313,7 @@ function aggregateRows(params: {
       if (qualifiesLateWithinLimit) lateCycleCount += 1;
       if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
 
-      const decision = buildDailyAttendanceDecision({
+      const baseDecision = buildDailyAttendanceDecision({
         checkInIso: row.checkInIso,
         checkOutIso: row.checkOutIso,
         timeZone: params.timeZone,
@@ -313,8 +326,13 @@ function aggregateRows(params: {
         lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
         earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
       });
-      if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
-      if (decision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+      const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
+        decision: baseDecision,
+        dayType: row.dayType,
+        treatment: row.nonWorkingDayTreatment,
+      });
+      if (baseDecision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
+      if (baseDecision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
 
       rows.push({
         id: row.id,
@@ -327,6 +345,7 @@ function aggregateRows(params: {
         workHours: row.workHours,
         status: decision.status,
         lateMinutes: decision.lateMinutes,
+        nonWorkingDayTreatment: treatmentLabel || undefined,
       });
     }
   }
@@ -440,8 +459,19 @@ export async function getAttendanceReportData(params: {
       shiftName: row.shift_name,
     })),
     scope.startDate,
-    ["shift", "attendance"],
+    ["shift", "attendance", "holiday_weekoff"],
   );
+
+  const { data: holidayRows, error: holidayError } = await params.admin
+    .from("company_holidays")
+    .select("holiday_date")
+    .eq("company_id", params.companyId)
+    .gte("holiday_date", scope.startDate)
+    .lte("holiday_date", scope.endDate);
+
+  if (holidayError) {
+    return { ok: false as const, status: 400, error: holidayError.message || "Unable to load holiday markers." };
+  }
 
   const aggregation = aggregateRows({
     events,
@@ -459,6 +489,7 @@ export async function getAttendanceReportData(params: {
       aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
     },
     resolvedPoliciesByEmployee,
+    holidayDates: new Set(((holidayRows || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
   });
   const filteredRows = aggregation.rows.filter((row) => {
     const matchesEmployee = employeeQuery
@@ -491,6 +522,8 @@ export async function getAttendanceReportData(params: {
       late: rows.filter((row) => row.status === "late").length,
       halfDay: rows.filter((row) => row.status === "half_day").length,
       absent: rows.filter((row) => row.status === "absent").length,
+      offDayWorked: rows.filter((row) => row.status === "off_day_worked").length,
+      manualReview: rows.filter((row) => row.status === "manual_review").length,
       latePenaltyDays: filteredPenalty.penaltyDays,
     },
   };

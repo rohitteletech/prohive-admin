@@ -5,10 +5,13 @@ import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShi
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
+  applyNonWorkingDayTreatment,
   buildAttendanceMetrics,
   buildDailyAttendanceDecision,
   rawWorkedMinutes,
+  type NonWorkingDayTreatment,
 } from "@/lib/attendancePolicy";
+import { isWeeklyOffDate } from "@/lib/weeklyOff";
 import {
   applyExtraHoursPolicy,
   findMatchingShiftRule,
@@ -66,7 +69,7 @@ export async function POST(req: NextRequest) {
     ["shift", "attendance", "holiday_weekoff"],
   );
 
-  const [employeeResult, companyResult, shiftResult, eventsResult] = await Promise.all([
+  const [employeeResult, companyResult, shiftResult, eventsResult, holidayResult] = await Promise.all([
     session.admin
       .from("employees")
       .select("full_name,employee_code,designation,shift_name")
@@ -92,6 +95,13 @@ export async function POST(req: NextRequest) {
       .gte("effective_punch_at", fromIso)
       .lt("effective_punch_at", toIso)
       .order("server_received_at", { ascending: false }),
+    session.admin
+      .from("company_holidays")
+      .select("id")
+      .eq("company_id", session.employee.company_id)
+      .eq("holiday_date", today)
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (employeeResult.error) {
@@ -105,6 +115,9 @@ export async function POST(req: NextRequest) {
   }
   if (eventsResult.error) {
     return NextResponse.json({ error: eventsResult.error.message || "Unable to load today attendance." }, { status: 400 });
+  }
+  if (holidayResult.error) {
+    return NextResponse.json({ error: holidayResult.error.message || "Unable to load holiday marker." }, { status: 400 });
   }
 
   const recentEvents = (eventsResult.data || []) as Array<{
@@ -254,18 +267,33 @@ export async function POST(req: NextRequest) {
     todayMetrics.lateMinutes > 0 && todayMetrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
   const qualifiesEarlyWithinLimit =
     todayMetrics.earlyGoMinutes > 0 && todayMetrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
-  const attendanceDecision = buildDailyAttendanceDecision({
-    checkInIso: checkInAt,
-    checkOutIso: checkOutAt,
-    timeZone,
-    shiftStart: matchedShift?.startTime || null,
-    shiftEnd: matchedShift?.endTime || null,
-    scheduledMinutes: effectiveScheduledWorkMin,
-    graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
-    halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
-    policy: resolvedAttendance,
-    lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
-    earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+  const todayDayType =
+    holidayResult.data?.id
+      ? "holiday"
+      : isWeeklyOffDate(today, resolvedHoliday.weeklyOffPolicy)
+        ? "weekly_off"
+        : null;
+  const { decision: attendanceDecision, treatmentLabel } = applyNonWorkingDayTreatment({
+    decision: buildDailyAttendanceDecision({
+      checkInIso: checkInAt,
+      checkOutIso: checkOutAt,
+      timeZone,
+      shiftStart: matchedShift?.startTime || null,
+      shiftEnd: matchedShift?.endTime || null,
+      scheduledMinutes: effectiveScheduledWorkMin,
+      graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
+      halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
+      policy: resolvedAttendance,
+      lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
+      earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+    }),
+    dayType: (checkInAt || checkOutAt) ? todayDayType : null,
+    treatment:
+      todayDayType === "holiday"
+        ? (resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment)
+        : todayDayType === "weekly_off"
+          ? (resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment)
+          : null,
   });
 
   return NextResponse.json({
@@ -286,6 +314,7 @@ export async function POST(req: NextRequest) {
       punchInAt: checkInAt,
       punchOutAt: checkOutAt,
       workingMinutes,
+      nonWorkingDayTreatment: treatmentLabel,
     },
     config: {
       shiftName: matchedShift?.name || resolvedShift.shiftName || employeeShiftName,
