@@ -5,6 +5,7 @@ import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
 import {
   applyExtraHoursPolicy,
+  normalizeExtraHoursPolicy,
   shiftDurationMinutes,
   workHoursLabel,
 } from "@/lib/shiftWorkPolicy";
@@ -58,14 +59,6 @@ export type AttendanceReportRow = {
 
 type AttendanceReportRowWithLate = AttendanceReportRow & {
   lateMinutes: number;
-  latePenaltyPolicy: {
-    enabled: boolean;
-    upToMins: number;
-    repeatCount: number;
-    repeatDays: number;
-    aboveMins: number;
-    aboveDays: number;
-  };
 };
 
 export type AttendanceReportInput = {
@@ -203,34 +196,21 @@ function payrollTreatmentLabel(params: {
   return params.treatment || "Record Only";
 }
 
-function sumLatePenaltyDays(rows: AttendanceReportRowWithLate[]) {
-  const grouped = new Map<string, AttendanceReportRowWithLate[]>();
-  for (const row of rows) {
-    const monthKey = row.localDate.slice(0, 7);
-    const key = `${row.employeeId}:${monthKey}`;
-    const bucket = grouped.get(key) || [];
-    bucket.push(row);
-    grouped.set(key, bucket);
-  }
-
-  let total = 0;
-  for (const bucket of grouped.values()) {
-    if (!bucket.length) continue;
-    const policy = bucket[0].latePenaltyPolicy;
-    const penalty = calculateMonthlyLatePenalty(
-      bucket.map((row) => row.lateMinutes || 0),
-      policy,
-    );
-    total += penalty.penaltyDays;
-  }
-  return Number(total.toFixed(1));
-}
-
 function aggregateRows(params: {
   events: EventRow[];
   employeesById: Map<string, EmployeeLookupRow>;
   timeZone: string;
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>;
+  extraHoursPolicy: string;
+  halfDayMinWorkMins: number;
+  latePenaltyPolicy: {
+    enabled: boolean;
+    upToMins: number;
+    repeatCount: number;
+    repeatDays: number;
+    aboveMins: number;
+    aboveDays: number;
+  };
   resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>;
   holidayDates: Set<string>;
   manualReviewResolutionsByEmployeeDate: Map<string, NonWorkingDayTreatment>;
@@ -265,8 +245,11 @@ function aggregateRows(params: {
       const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
       const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
         shiftName: shift,
+        halfDayMinWorkMins: params.halfDayMinWorkMins,
       });
-      const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null);
+      const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
+        extraHoursCountingRule: params.extraHoursPolicy,
+      });
       const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedPolicies?.resolved?.holiday_weekoff || null);
       const shiftConfig = resolvedPolicies?.resolved?.shift
         ? {
@@ -292,7 +275,7 @@ function aggregateRows(params: {
         shiftEnd: shiftConfig?.end || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
-        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || params.halfDayMinWorkMins,
       });
       const isHoliday = params.holidayDates.has(localDate);
       const isWeeklyOff = !isHoliday && isWeeklyOffDate(localDate, resolvedHoliday.weeklyOffPolicy);
@@ -314,7 +297,7 @@ function aggregateRows(params: {
         shiftEnd: shiftConfig?.end || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
-        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || params.halfDayMinWorkMins,
         attendancePolicy: resolvedAttendance,
         metrics,
         dayType: isHoliday ? ("holiday" as const) : isWeeklyOff ? ("weekly_off" as const) : null,
@@ -398,20 +381,18 @@ function aggregateRows(params: {
         otEligible: treatmentLabel === "OT Only" || treatmentLabel === "Present + OT" ? "Yes" : "No",
         compOffGranted: treatmentLabel === "Grant Comp Off" ? "Yes" : "No",
         manualReviewRequired: decision.status === "manual_review" ? "Yes" : "No",
-        latePenaltyPolicy: {
-          enabled: row.attendancePolicy.latePunchRule === "enforce_penalty",
-          upToMins: row.attendancePolicy.latePunchUpToMinutes,
-          repeatCount: row.attendancePolicy.repeatLateDaysInMonth,
-          repeatDays: row.attendancePolicy.dayCountForRepeatLate,
-          aboveMins: row.attendancePolicy.latePunchAboveMinutes,
-          aboveDays: row.attendancePolicy.dayCountForLateAboveLimit,
-        },
       });
     }
   }
 
+  const penalty = calculateMonthlyLatePenalty(
+    rows.map((row) => row.lateMinutes || 0),
+    params.latePenaltyPolicy
+  );
+
   return {
     rows,
+    penalty,
   };
 }
 
@@ -431,7 +412,7 @@ export async function getAttendanceReportData(params: {
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();
   const { fromIso, toIso } = buildQueryWindow(scope.startDate, scope.endDate);
 
-  const [eventsResult, shiftResult] = await Promise.all([
+  const [eventsResult, shiftResult, companyResult] = await Promise.all([
     params.admin
       .from("attendance_punch_events")
       .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
@@ -445,6 +426,13 @@ export async function getAttendanceReportData(params: {
       .select("name,type,start_time,end_time,grace_mins,active")
       .eq("company_id", params.companyId)
       .order("created_at", { ascending: true }),
+    params.admin
+      .from("companies")
+      .select(
+        "extra_hours_policy,half_day_min_work_mins,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days"
+      )
+      .eq("id", params.companyId)
+      .maybeSingle(),
   ]);
 
   if (eventsResult.error) {
@@ -453,6 +441,10 @@ export async function getAttendanceReportData(params: {
   if (shiftResult.error) {
     return { ok: false as const, status: 400, error: shiftResult.error.message || "Unable to load shift rules." };
   }
+  if (companyResult.error) {
+    return { ok: false as const, status: 400, error: companyResult.error.message || "Unable to load company rules." };
+  }
+
   const shiftRows =
     ((shiftResult.data || []) as Array<{ name: string; type: string; start_time: string; end_time: string; grace_mins: number; active: boolean }>)
       .filter((row) => row.active !== false)
@@ -531,6 +523,16 @@ export async function getAttendanceReportData(params: {
     employeesById,
     timeZone,
     shiftRows: effectiveShiftRows,
+    extraHoursPolicy: normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy),
+    halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
+    latePenaltyPolicy: {
+      enabled: companyResult.data?.late_penalty_enabled === true,
+      upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
+      repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
+      repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
+      aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
+      aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
+    },
     resolvedPoliciesByEmployee,
     holidayDates: new Set(((holidayRows || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
     manualReviewResolutionsByEmployeeDate: manualResolutionResult.byEmployeeDate,
@@ -543,7 +545,17 @@ export async function getAttendanceReportData(params: {
     const matchesStatus = statusFilter === "all" ? true : row.status === statusFilter;
     return matchesEmployee && matchesDepartment && matchesStatus;
   });
-  const filteredPenaltyDays = sumLatePenaltyDays(filteredRows);
+  const filteredPenalty = calculateMonthlyLatePenalty(
+    filteredRows.map((row) => row.lateMinutes),
+    {
+      enabled: companyResult.data?.late_penalty_enabled === true,
+      upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
+      repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
+      repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
+      aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
+      aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
+    }
+  );
   const rows = filteredRows.map(({ lateMinutes, ...row }) => row);
 
   return {
@@ -558,7 +570,7 @@ export async function getAttendanceReportData(params: {
       absent: rows.filter((row) => row.status === "absent").length,
       offDayWorked: rows.filter((row) => row.status === "off_day_worked").length,
       manualReview: rows.filter((row) => row.status === "manual_review").length,
-      latePenaltyDays: filteredPenaltyDays,
+      latePenaltyDays: filteredPenalty.penaltyDays,
     },
   };
 }
