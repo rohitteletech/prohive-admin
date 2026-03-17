@@ -17,6 +17,8 @@ const primaryItems = [
 const operationsItems = [
   { href: "/company/leaves", label: "Leave", description: "Review and approve leave requests" },
   { href: "/company/corrections", label: "Correction", description: "Resolve attendance correction requests" },
+  { href: "/company/manual-reviews", label: "Manual Reviews", description: "Review holiday and weekly-off manual cases" },
+  { href: "/company/comp-off-ledger", label: "Comp Off Ledger", description: "Track earned and used comp off balances" },
   { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
   { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
 ];

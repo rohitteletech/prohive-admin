@@ -152,6 +152,30 @@ export async function fetchCompOffEarnedDays(params: {
   return { earnedDates, earnedDays: roundLeaveDays(earnedDates.size), error: null as string | null };
 }
 
+export function deriveCompOffEarnedDates(params: {
+  attendanceDates: Iterable<string>;
+  holidayDates: Set<string>;
+  weeklyOffPolicy: WeeklyOffPolicy;
+  holidayWorkedStatus: NonWorkingDayTreatment;
+  weeklyOffWorkedStatus: NonWorkingDayTreatment;
+}) {
+  const grantsOnHoliday = params.holidayWorkedStatus === "Grant Comp Off";
+  const grantsOnWeeklyOff = params.weeklyOffWorkedStatus === "Grant Comp Off";
+  const earnedDates = new Set<string>();
+
+  for (const isoDate of params.attendanceDates) {
+    if (params.holidayDates.has(isoDate)) {
+      if (grantsOnHoliday) earnedDates.add(isoDate);
+      continue;
+    }
+    if (grantsOnWeeklyOff && isWeeklyOffDate(isoDate, params.weeklyOffPolicy)) {
+      earnedDates.add(isoDate);
+    }
+  }
+
+  return earnedDates;
+}
+
 export function restoredDaysForLeaveRequest(
   row: Pick<LeaveRequestUsageRow, "from_date" | "to_date" | "status">,
   approvedAttendanceDates: Set<string>,
