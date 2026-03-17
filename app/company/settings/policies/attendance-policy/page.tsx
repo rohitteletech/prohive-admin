@@ -236,12 +236,18 @@ export default function NewAttendancePolicyPage() {
     });
     setIsCreatingNew(false);
     setShowForm(false);
-    showSuccess(
-      targetStatus === "Active"
-        ? (creating ? "Policy Enforced Successfully" : "Policy Updated And Enforced Successfully")
-        : (creating ? "Policy Saved as Draft" : "Draft Updated Successfully"),
-    );
+    showSuccess(getAttendancePolicySuccessMessage(targetStatus, creating, draft.status));
     await loadAttendanceBridge();
+  }
+
+  function getAttendancePolicySuccessMessage(targetStatus: "Draft" | "Active", creating: boolean, currentStatus: string) {
+    if (creating) {
+      return targetStatus === "Active" ? "Policy Enforced Successfully" : "Policy Saved as Draft";
+    }
+    if (targetStatus === "Active") {
+      return currentStatus === "Draft" ? "Policy Updated And Enforced Successfully" : "Policy Updated Successfully";
+    }
+    return "Draft Updated Successfully";
   }
 
   function saveExistingAttendancePolicy() {

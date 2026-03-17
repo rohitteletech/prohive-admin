@@ -222,12 +222,18 @@ export default function HolidayWeeklyOffPolicyPage() {
     });
     setIsCreatingNew(false);
     setShowForm(false);
-    showSuccess(
-      targetStatus === "Active"
-        ? (creating ? "Policy Enforced Successfully" : "Policy Updated And Enforced Successfully")
-        : (creating ? "Policy Saved as Draft" : "Draft Updated Successfully"),
-    );
+    showSuccess(getHolidayPolicySuccessMessage(targetStatus, creating, draft.status));
     await loadHolidayBridge();
+  }
+
+  function getHolidayPolicySuccessMessage(targetStatus: "Draft" | "Active", creating: boolean, currentStatus: string) {
+    if (creating) {
+      return targetStatus === "Active" ? "Policy Enforced Successfully" : "Policy Saved as Draft";
+    }
+    if (targetStatus === "Active") {
+      return currentStatus === "Draft" ? "Policy Updated And Enforced Successfully" : "Policy Updated Successfully";
+    }
+    return "Draft Updated Successfully";
   }
 
   function saveExistingHolidayPolicy() {
