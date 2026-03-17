@@ -11,6 +11,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { formatDisplayDateTime } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type HolidayPolicyState = {
@@ -20,6 +21,7 @@ type HolidayPolicyState = {
   effectiveFrom: string;
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
+  createdAt?: string;
   defaultCompanyPolicy: "Yes" | "No";
   weeklyOffPattern: "Sunday Only" | "Saturday + Sunday" | "2nd and 4th Saturday + Sunday";
   holidayPunchAllowed: "Yes" | "No";
@@ -117,7 +119,7 @@ export default function HolidayWeeklyOffPolicyPage() {
       headers: { authorization: `Bearer ${token}` },
     });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
-      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; createdAt?: string; configJson?: Record<string, unknown> }>;
     };
     const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
@@ -135,6 +137,7 @@ export default function HolidayWeeklyOffPolicyPage() {
               effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
               nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
               status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
+              createdAt: policy.createdAt || "",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
             } satisfies HolidayPolicyState;
           })
@@ -264,7 +267,7 @@ export default function HolidayWeeklyOffPolicyPage() {
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
           createdBy: "Company Admin",
-          createdOn: "2026-03-13 08:15 AM",
+          createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
       />

@@ -1,4 +1,6 @@
 import { isoDateInIndia } from "@/lib/dateTime";
+import { isWeeklyOffDate, type WeeklyOffPolicy } from "@/lib/weeklyOff";
+import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
 export type LeaveAccrualMode = "monthly" | "upfront";
 
@@ -43,6 +45,13 @@ function enumerateIsoDates(fromDate: string, toDate: string) {
   return dates;
 }
 
+function addDaysToIsoDate(isoDate: string, days: number) {
+  const start = new Date(`${isoDate}T00:00:00.000Z`);
+  if (Number.isNaN(start.getTime())) return "";
+  start.setUTCDate(start.getUTCDate() + days);
+  return start.toISOString().slice(0, 10);
+}
+
 export async function fetchApprovedAttendanceDatesForYear(params: {
   admin: any;
   companyId: string;
@@ -72,6 +81,75 @@ export async function fetchApprovedAttendanceDatesForYear(params: {
   );
 
   return { approvedAttendanceDates, error: null as string | null };
+}
+
+export async function fetchCompOffEarnedDays(params: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  asOfIsoDate: string;
+  weeklyOffPolicy: WeeklyOffPolicy;
+  holidayWorkedStatus: NonWorkingDayTreatment;
+  weeklyOffWorkedStatus: NonWorkingDayTreatment;
+  compOffValidityDays: number;
+}) {
+  const grantsOnHoliday = params.holidayWorkedStatus === "Grant Comp Off";
+  const grantsOnWeeklyOff = params.weeklyOffWorkedStatus === "Grant Comp Off";
+  const validityDays = Math.max(Number(params.compOffValidityDays || 0), 0);
+
+  if ((!grantsOnHoliday && !grantsOnWeeklyOff) || validityDays <= 0) {
+    return { earnedDates: new Set<string>(), earnedDays: 0, error: null as string | null };
+  }
+
+  const rangeStart = addDaysToIsoDate(params.asOfIsoDate, -validityDays);
+  const rangeEnd = addDaysToIsoDate(params.asOfIsoDate, 1);
+
+  const [attendanceResult, holidayResult] = await Promise.all([
+    params.admin
+      .from("attendance_punch_events")
+      .select("effective_punch_at,server_received_at,approval_status")
+      .eq("company_id", params.companyId)
+      .eq("employee_id", params.employeeId)
+      .in("approval_status", ["auto_approved", "approved"])
+      .gte("server_received_at", `${rangeStart}T00:00:00.000Z`)
+      .lt("server_received_at", `${rangeEnd}T00:00:00.000Z`),
+    params.admin
+      .from("company_holidays")
+      .select("holiday_date")
+      .eq("company_id", params.companyId)
+      .gte("holiday_date", rangeStart)
+      .lte("holiday_date", params.asOfIsoDate),
+  ]);
+
+  if (attendanceResult.error) {
+    return { earnedDates: new Set<string>(), earnedDays: 0, error: attendanceResult.error.message || "Unable to load comp off attendance." };
+  }
+  if (holidayResult.error) {
+    return { earnedDates: new Set<string>(), earnedDays: 0, error: holidayResult.error.message || "Unable to load holiday markers." };
+  }
+
+  const holidayDates = new Set(
+    ((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => String(row.holiday_date || "")).filter(Boolean),
+  );
+  const attendanceDates = new Set(
+    ((attendanceResult.data || []) as Array<{ effective_punch_at?: string | null; server_received_at?: string | null }>)
+      .map((row) => row.effective_punch_at || row.server_received_at || "")
+      .map((value) => (value ? isoDateInIndia(value) : ""))
+      .filter((value) => Boolean(value) && value >= rangeStart && value <= params.asOfIsoDate),
+  );
+
+  const earnedDates = new Set<string>();
+  attendanceDates.forEach((isoDate) => {
+    if (holidayDates.has(isoDate)) {
+      if (grantsOnHoliday) earnedDates.add(isoDate);
+      return;
+    }
+    if (grantsOnWeeklyOff && isWeeklyOffDate(isoDate, params.weeklyOffPolicy)) {
+      earnedDates.add(isoDate);
+    }
+  });
+
+  return { earnedDates, earnedDays: roundLeaveDays(earnedDates.size), error: null as string | null };
 }
 
 export function restoredDaysForLeaveRequest(

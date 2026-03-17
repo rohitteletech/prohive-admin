@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { todayISOInIndia } from "@/lib/dateTime";
-import { resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import { computeLeaveEntitlement, fetchCompOffEarnedDays, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
 const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
+const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
 
 function isoDateToUtcMs(value: string) {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -123,10 +125,11 @@ export async function POST(req: NextRequest) {
     session.employee.company_id,
     session.employee.id,
     fromDate,
-    ["leave"],
+    ["leave", "holiday_weekoff"],
   );
   const leavePolicyRuntime = resolveLeavePolicyRuntime(policyContext.resolved.leave);
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const todayIso = todayISOInIndia();
   const initialStatus =
     leavePolicyRuntime.approvalFlow === "hr"
@@ -225,7 +228,7 @@ export async function POST(req: NextRequest) {
     ? eligiblePolicies.filter((policy) => String(policy.code || "").trim().toUpperCase() === selectedLeavePolicyCode)
     : eligiblePolicies;
 
-  if (selectedLeavePolicyCode && requestedPolicies.length === 0) {
+  if (selectedLeavePolicyCode && requestedPolicies.length === 0 && selectedLeavePolicyCode !== VIRTUAL_COMP_OFF_CODE) {
     return NextResponse.json(
       {
         error: isHalfDay
@@ -241,6 +244,7 @@ export async function POST(req: NextRequest) {
   }
 
   const currentYear = Number(fromDate.slice(0, 4));
+  const selectingCompOff = selectedLeavePolicyCode === VIRTUAL_COMP_OFF_CODE;
 
   const availabilityByPolicy = await Promise.all(
     requestedPolicies.map(async (policy) => {
@@ -281,14 +285,70 @@ export async function POST(req: NextRequest) {
     })
   );
 
+  if (selectingCompOff) {
+    const [compOffEntitlement, compOffUsage] = await Promise.all([
+      fetchCompOffEarnedDays({
+        admin: session.admin,
+        companyId: session.employee.company_id,
+        employeeId: session.employee.id,
+        asOfIsoDate: fromDate,
+        weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
+        holidayWorkedStatus: resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment,
+        weeklyOffWorkedStatus: resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment,
+        compOffValidityDays: resolvedHoliday.compOffValidityDays,
+      }),
+      fetchLeaveUsageForYear({
+        admin: session.admin,
+        companyId: session.employee.company_id,
+        employeeId: session.employee.id,
+        leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
+        year: currentYear,
+      }),
+    ]);
+
+    if (compOffEntitlement.error) {
+      return NextResponse.json({ error: compOffEntitlement.error }, { status: 400 });
+    }
+    if (compOffUsage.error) {
+      return NextResponse.json({ error: compOffUsage.error }, { status: 400 });
+    }
+    if (isHalfDay) {
+      return NextResponse.json({ error: "Half day is not allowed for Comp Off leave." }, { status: 400 });
+    }
+
+    const availableNow = Math.max(
+      roundLeaveDays(compOffEntitlement.earnedDays - compOffUsage.approvedUsed - compOffUsage.pendingUsed),
+      0,
+    );
+    availabilityByPolicy.unshift({
+      policy: {
+        id: "virtual-comp-off",
+        name: "Comp Off",
+        code: VIRTUAL_COMP_OFF_CODE,
+        annual_quota: 0,
+        carry_forward: 0,
+        accrual_mode: "upfront" as const,
+        active: true,
+      },
+      availableNow,
+      error: null as string | null,
+    });
+  }
+
   const failed = availabilityByPolicy.find((item) => item.error);
   if (failed?.error) {
     return NextResponse.json({ error: failed.error }, { status: 400 });
   }
 
-  const selected = availabilityByPolicy[0] ?? null;
+  const selected =
+    availabilityByPolicy.find((item) => String(item.policy.code || "").trim().toUpperCase() === selectedLeavePolicyCode) ||
+    availabilityByPolicy[0] ||
+    null;
   if (!selected) {
     return NextResponse.json({ error: "Unable to determine leave balance." }, { status: 400 });
+  }
+  if (selectingCompOff && days > selected.availableNow) {
+    return NextResponse.json({ error: "Requested Comp Off exceeds available earned balance." }, { status: 400 });
   }
   const paidDays = Math.max(Math.min(days, selected.availableNow), 0);
   const unpaidDays = Math.max(roundLeaveDays(days - paidDays), 0);
