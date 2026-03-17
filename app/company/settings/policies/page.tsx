@@ -37,17 +37,17 @@ const policies = [
 
 export default function CompanyPoliciesHubPage() {
   return (
-    <div className="mx-auto max-w-7xl px-2 pb-6 pt-0 sm:px-3 lg:px-4">
-      <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+    <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6">
+      <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
         <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-700">
           Policy Hub
         </span>
-        <h1 className="mt-4 text-3xl font-bold tracking-tight text-slate-950">Company Policy Pages</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+        <h1 className="mt-4 text-2xl font-bold tracking-tight text-zinc-900 sm:text-[2rem]">Company Policy Pages</h1>
+        <p className="mt-2 max-w-4xl text-sm leading-7 text-zinc-600">
           This is the new standalone policy section. It does not depend on the older settings pages and keeps the five core policy areas separate and aligned.
         </p>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {policies.map((policy) => (
             <PolicyLinkCard key={policy.href} {...policy} />
           ))}
