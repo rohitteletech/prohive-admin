@@ -26,8 +26,20 @@ export async function GET(req: NextRequest) {
       ...targets.employees.map((target) => [target.id, target.label] as const),
       [context.companyId, "Entire Company"] as const,
     ]);
+    const defaultPolicies = policies
+      .filter((policy) => policy.isDefault)
+      .map((policy) => ({
+        id: policy.id,
+        policyType: policy.policyType,
+        policyTypeLabel: policy.policyType === "holiday_weekoff" ? "Holiday / Weekly Off Policy" : policy.policyType === "correction" ? "Correction / Regularization Policy" : `${policy.policyType.charAt(0).toUpperCase()}${policy.policyType.slice(1)} Policy`,
+        policyName: policy.policyName,
+        policyCode: policy.policyCode,
+        effectiveFrom: policy.effectiveFrom,
+        status: policy.status,
+      }));
     return NextResponse.json({
       policies,
+      defaultPolicies,
       assignments: decorateAssignmentRows(assignments, policies, targetLabels),
       targets: {
         company: [{ id: context.companyId, label: "Entire Company" }],
@@ -77,6 +89,12 @@ export async function POST(req: NextRequest) {
   }
   if (selectedPolicy.status === "archived") {
     return NextResponse.json({ error: "Archived policy cannot be assigned." }, { status: 400 });
+  }
+  if (selectedPolicy.isDefault) {
+    return NextResponse.json({ error: "Default company policy is already applied company-wide. Create assignments only for non-default override policies." }, { status: 400 });
+  }
+  if (assignmentLevel === "company") {
+    return NextResponse.json({ error: "Company-level assignment is not needed. Use Default Company Policy for company-wide application." }, { status: 400 });
   }
 
   const existingAssignments = await listCompanyPolicyAssignments(context.admin, context.companyId);

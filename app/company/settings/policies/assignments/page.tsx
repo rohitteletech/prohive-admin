@@ -11,6 +11,7 @@ type PolicyOption = {
   policyName: string;
   policyCode: string;
   status: string;
+  isDefault?: boolean;
 };
 
 type AssignmentRow = {
@@ -34,6 +35,15 @@ type TargetOption = { id: string; label: string };
 
 type Payload = {
   policies: PolicyOption[];
+  defaultPolicies: Array<{
+    id: string;
+    policyType: PolicyType;
+    policyTypeLabel: string;
+    policyName: string;
+    policyCode: string;
+    effectiveFrom: string;
+    status: string;
+  }>;
   assignments: AssignmentRow[];
   targets: {
     company: TargetOption[];
@@ -45,7 +55,7 @@ type Payload = {
 const initialForm = {
   policyType: "shift" as PolicyType,
   policyId: "",
-  assignmentLevel: "company" as AssignmentLevel,
+  assignmentLevel: "department" as AssignmentLevel,
   targetId: "",
   effectiveFrom: "2026-03-13",
   effectiveTo: "",
@@ -57,6 +67,7 @@ export default function PolicyAssignmentsPage() {
   const [saving, setSaving] = useState(false);
   const [payload, setPayload] = useState<Payload>({
     policies: [],
+    defaultPolicies: [],
     assignments: [],
     targets: { company: [], departments: [], employees: [] },
   });
@@ -98,7 +109,6 @@ export default function PolicyAssignmentsPage() {
         ...current,
         policyType: nextPolicy?.policyType || current.policyType,
         policyId: nextPolicy?.id || "",
-        targetId: current.assignmentLevel === "company" ? result.targets.company[0]?.id || "" : current.targetId,
       };
     });
     setLoading(false);
@@ -109,12 +119,30 @@ export default function PolicyAssignmentsPage() {
   }, []);
 
   const filteredPolicies = useMemo(
-    () => payload.policies.filter((policy) => policy.policyType === form.policyType && policy.status === "active"),
+    () => payload.policies.filter((policy) => policy.policyType === form.policyType && policy.status === "active" && !policy.isDefault),
     [payload.policies, form.policyType],
   );
 
+  const defaultPoliciesByType = useMemo(
+    () =>
+      Object.fromEntries(payload.defaultPolicies.map((policy) => [policy.policyType, policy])) as Partial<
+        Record<
+          PolicyType,
+          {
+            id: string;
+            policyType: PolicyType;
+            policyTypeLabel: string;
+            policyName: string;
+            policyCode: string;
+            effectiveFrom: string;
+            status: string;
+          }
+        >
+      >,
+    [payload.defaultPolicies],
+  );
+
   const targetOptions = useMemo(() => {
-    if (form.assignmentLevel === "company") return payload.targets.company;
     if (form.assignmentLevel === "department") return payload.targets.departments;
     return payload.targets.employees;
   }, [payload.targets, form.assignmentLevel]);
@@ -139,11 +167,11 @@ export default function PolicyAssignmentsPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
     if (!form.policyId) return notify("Select a policy to assign.");
-    if (!form.targetId && form.assignmentLevel !== "company") return notify("Select an assignment target.");
+    if (!form.targetId) return notify("Select an assignment target.");
     if (form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
       return notify("Effective To date cannot be earlier than Effective From date.");
     }
-    if (form.assignmentLevel !== "company" && targetOptions.length === 0) {
+    if (targetOptions.length === 0) {
       return notify(`No ${form.assignmentLevel} targets are available for assignment.`);
     }
 
@@ -191,13 +219,37 @@ export default function PolicyAssignmentsPage() {
     <PolicyPage
       badge="Policy Assignments"
       title="Policy Assignments"
-      description="Assign company policy definitions to company-wide scope, departments, or individual employees with effective dates and override priority."
+      description="Review current default company policies and create only department or employee overrides for policies that should not follow the company default."
     >
       {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
 
       <PolicySection
-        title="Assignment Form"
-        description="Select a policy type, choose the applicable policy, and assign it to company, department, or employee scope with an effective period."
+        title="Current Default Company Policies"
+        description="These policies already apply company-wide by default. Use assignments only when a department or employee should follow a different non-default policy."
+      >
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {(["shift", "attendance", "leave", "holiday_weekoff", "correction"] as PolicyType[]).map((policyType) => {
+            const policy = defaultPoliciesByType[policyType];
+            return (
+              <div key={policyType} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">
+                  {policy ? policy.policyTypeLabel : labelPolicyType(policyType)}
+                </div>
+                <div className="mt-2 text-[15px] font-semibold text-slate-900">
+                  {policy ? policy.policyName : "No default policy set"}
+                </div>
+                <div className="mt-1 text-[13px] text-slate-600">
+                  {policy ? `${policy.policyCode} • Effective from ${policy.effectiveFrom}` : "Set a default policy in the policy page first."}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </PolicySection>
+
+      <PolicySection
+        title="Override Assignment Form"
+        description="Select a non-default policy and assign it only where the company default should be overridden."
         tone="slate"
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -229,7 +281,6 @@ export default function PolicyAssignmentsPage() {
               value={form.assignmentLevel}
               onChange={(e) => setForm((current) => ({ ...current, assignmentLevel: e.target.value as AssignmentLevel }))}
             >
-              <option value="company">{labelAssignmentLevel("company")}</option>
               <option value="department">{labelAssignmentLevel("department")}</option>
               <option value="employee">{labelAssignmentLevel("employee")}</option>
             </Select>
@@ -239,7 +290,7 @@ export default function PolicyAssignmentsPage() {
             <Select
               value={form.targetId}
               onChange={(e) => setForm((current) => ({ ...current, targetId: e.target.value }))}
-              disabled={form.assignmentLevel === "company" || targetOptions.length === 0}
+              disabled={targetOptions.length === 0}
             >
               {targetOptions.length === 0 ? <option value="">No targets available</option> : null}
               {targetOptions.map((target) => (
@@ -268,20 +319,25 @@ export default function PolicyAssignmentsPage() {
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => void saveAssignment()}
-            disabled={saving || loading}
-            className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-          >
-            {saving ? "Saving..." : "Save Assignment"}
-          </button>
-        </div>
+              <button
+                type="button"
+                onClick={() => void saveAssignment()}
+                disabled={saving || loading || filteredPolicies.length === 0}
+                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+              >
+                {saving ? "Saving..." : "Save Assignment"}
+              </button>
+            </div>
+            {filteredPolicies.length === 0 ? (
+              <p className="mt-3 text-xs text-slate-500">
+                No non-default active policy is available for this policy type. Create another policy and keep default policy separate before adding an override.
+              </p>
+            ) : null}
       </PolicySection>
 
       <PolicySection
-        title="Assignment Register"
-        description="Review active and inactive policy assignments across company, department, and employee levels."
+        title="Override Assignment Register"
+        description="Review active and inactive override assignments across department and employee levels."
       >
         <div className="overflow-x-auto rounded-2xl border border-slate-200">
           <table className="min-w-full text-left text-sm">
