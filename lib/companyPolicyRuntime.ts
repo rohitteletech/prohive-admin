@@ -146,6 +146,7 @@ export function resolveHolidayPolicyRuntime(policy: PolicyDefinition | null, fal
         : text(config.weeklyOffWorkedStatus) === "Present"
           ? "Present + OT"
           : "Grant Comp Off",
+    compOffValidityDays: wholeNumber(config.compOffValidityDays, 0),
   };
 }
 

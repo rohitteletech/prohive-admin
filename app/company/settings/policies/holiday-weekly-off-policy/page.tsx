@@ -26,7 +26,6 @@ type HolidayPolicyState = {
   weeklyOffPunchAllowed: "Yes" | "No";
   holidayWorkedStatus: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
   weeklyOffWorkedStatus: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
-  compOffEnabled: "Yes" | "No";
   compOffValidityDays: string;
 };
 
@@ -43,7 +42,6 @@ const initialState: HolidayPolicyState = {
   weeklyOffPunchAllowed: "Yes",
   holidayWorkedStatus: "Grant Comp Off",
   weeklyOffWorkedStatus: "Grant Comp Off",
-  compOffEnabled: "Yes",
   compOffValidityDays: "60",
 };
 
@@ -66,6 +64,9 @@ export default function HolidayWeeklyOffPolicyPage() {
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const compOffSelected =
+    draft.holidayWorkedStatus === "Grant Comp Off" || draft.weeklyOffWorkedStatus === "Grant Comp Off";
 
   function update<K extends keyof HolidayPolicyState>(key: K, value: HolidayPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -372,22 +373,19 @@ export default function HolidayWeeklyOffPolicyPage() {
                   <option value="Manual Review">Manual Review</option>
                 </Select>
               </Field>
-            </div>
-          </PolicySection>
-
-          <PolicySection
-            title="Comp Off Rules"
-            description="Define whether compensatory off should be issued for worked non-working days and how long the comp off balance remains valid."
-          >
-            <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Comp Off Enabled">
-                <Select value={draft.compOffEnabled} onChange={(e) => update("compOffEnabled", e.target.value as HolidayPolicyState["compOffEnabled"])}>
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
-              <Field label="Comp Off Validity (Days)">
-                <TextInput value={draft.compOffValidityDays} onChange={(e) => update("compOffValidityDays", e.target.value)} />
+              <Field
+                label="Comp Off Validity (Days)"
+                hint={
+                  compOffSelected
+                    ? "Applied when Grant Comp Off is selected for Holiday or Weekly Off."
+                    : "Set automatically inactive until Grant Comp Off is selected above."
+                }
+              >
+                <TextInput
+                  value={compOffSelected ? draft.compOffValidityDays : "0"}
+                  onChange={(e) => update("compOffValidityDays", e.target.value)}
+                  disabled={!compOffSelected}
+                />
               </Field>
             </div>
 

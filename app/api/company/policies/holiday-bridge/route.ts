@@ -16,7 +16,6 @@ type HolidayBridgePayload = {
   weeklyOffPunchAllowed?: "Yes" | "No";
   holidayWorkedStatus?: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
   weeklyOffWorkedStatus?: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
-  compOffEnabled?: "Yes" | "No";
   compOffValidityDays?: string;
 };
 
@@ -111,7 +110,6 @@ export async function GET(req: NextRequest) {
         config.weeklyOffPunchAllowed === "No" || companyResult.data?.allow_punch_on_weekly_off === false ? "No" : "Yes",
       holidayWorkedStatus: normalizeWorkedDayTreatment(config.holidayWorkedStatus, "Grant Comp Off"),
       weeklyOffWorkedStatus: normalizeWorkedDayTreatment(config.weeklyOffWorkedStatus, "Grant Comp Off"),
-      compOffEnabled: config.compOffEnabled === "No" ? "No" : "Yes",
       compOffValidityDays: String(config.compOffValidityDays || "60"),
     } satisfies HolidayBridgePayload);
   } catch (error) {
@@ -146,8 +144,11 @@ export async function PUT(req: NextRequest) {
     weeklyOffPunchAllowed: body.weeklyOffPunchAllowed || "Yes",
     holidayWorkedStatus: body.holidayWorkedStatus || "Grant Comp Off",
     weeklyOffWorkedStatus: body.weeklyOffWorkedStatus || "Grant Comp Off",
-    compOffEnabled: body.compOffEnabled || "Yes",
-    compOffValidityDays: String(body.compOffValidityDays || "60"),
+    compOffValidityDays: String(
+      body.holidayWorkedStatus === "Grant Comp Off" || body.weeklyOffWorkedStatus === "Grant Comp Off"
+        ? body.compOffValidityDays || "60"
+        : "0"
+    ),
   };
 
   if (configJson.status === "active") {
