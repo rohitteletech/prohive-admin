@@ -16,6 +16,8 @@ type LedgerRow = {
   available: number;
   validityDays: number;
   recentEarnedDates: string[];
+  recentEarnedRows: Array<{ earnedDate: string; expiryDate: string }>;
+  nextExpiry: string;
   overrideId: string;
   overrideReason: string;
   overrideUpdatedAt: string;
@@ -340,7 +342,7 @@ export default function CompOffLedgerPage() {
           className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none"
         />
         <p className="mt-2 text-[11px] text-slate-500">
-          Recent earned dates show the latest comp off eligible holiday or weekly-off worked dates inside the active validity window.
+          Recent earned dates now also show expiry inside the active validity window.
         </p>
       </section>
 
@@ -362,6 +364,7 @@ export default function CompOffLedgerPage() {
                 <th className="px-5 py-3 font-semibold">Pending Used</th>
                 <th className="px-5 py-3 font-semibold">Available</th>
                 <th className="px-5 py-3 font-semibold">Validity</th>
+                <th className="px-5 py-3 font-semibold">Upcoming Expiry</th>
                 <th className="px-5 py-3 font-semibold">Recent Earned Dates</th>
                 <th className="px-5 py-3 font-semibold">Action</th>
               </tr>
@@ -369,14 +372,14 @@ export default function CompOffLedgerPage() {
             <tbody>
               {!loading && error && (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-sm text-rose-600">
+                  <td colSpan={11} className="px-5 py-10 text-center text-sm text-rose-600">
                     {error}
                   </td>
                 </tr>
               )}
               {loading && (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={11} className="px-5 py-10 text-center text-sm text-slate-500">
                     Loading comp off ledger...
                   </td>
                 </tr>
@@ -401,14 +404,24 @@ export default function CompOffLedgerPage() {
                     <td className="px-5 py-3 font-semibold text-emerald-700">{row.available}</td>
                     <td className="px-5 py-3">{row.validityDays > 0 ? `${row.validityDays} days` : "-"}</td>
                     <td className="px-5 py-3">
-                      {row.recentEarnedDates.length > 0 ? (
+                      {row.nextExpiry ? (
+                        <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+                          {formatDisplayDate(row.nextExpiry)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400">No upcoming expiry</span>
+                      )}
+                    </td>
+                    <td className="px-5 py-3">
+                      {row.recentEarnedRows.length > 0 ? (
                         <div className="flex flex-wrap gap-1.5">
-                          {row.recentEarnedDates.map((isoDate) => (
+                          {row.recentEarnedRows.map((entry) => (
                             <span
-                              key={`${row.employeeId}-${isoDate}`}
+                              key={`${row.employeeId}-${entry.earnedDate}`}
                               className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700"
                             >
-                              {formatDisplayDate(isoDate)}
+                              {formatDisplayDate(entry.earnedDate)}
+                              {entry.expiryDate ? ` -> ${formatDisplayDate(entry.expiryDate)}` : ""}
                             </span>
                           ))}
                         </div>
@@ -452,7 +465,7 @@ export default function CompOffLedgerPage() {
                 ))}
               {!loading && !error && filtered.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={11} className="px-5 py-10 text-center text-sm text-slate-500">
                     No comp off ledger rows match current search.
                   </td>
                 </tr>

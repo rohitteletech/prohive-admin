@@ -250,8 +250,23 @@ export async function GET(req: NextRequest) {
     const pendingUsed = roundLeaveDays(usage.pendingUsed);
     const manualAdjustmentDays = roundLeaveDays(adjustment?.extraDays || 0);
     const available = Math.max(roundLeaveDays(earnedDays + manualAdjustmentDays - approvedUsed - pendingUsed), 0);
+    const sortedEarnedDates = Array.from(earnedDates).sort((a, b) => b.localeCompare(a));
+    const recentEarnedRows = sortedEarnedDates.slice(0, 5).map((isoDate) => {
+      const expiryDate = validityDays > 0 ? addDaysToIsoDate(isoDate, validityDays) : "";
+      return {
+        earnedDate: isoDate,
+        expiryDate,
+      };
+    });
+    const nextExpiry = validityDays > 0
+      ? Array.from(earnedDates)
+          .map((isoDate) => addDaysToIsoDate(isoDate, validityDays))
+          .filter((isoDate) => Boolean(isoDate) && isoDate >= asOfDate)
+          .sort((a, b) => a.localeCompare(b))[0] || ""
+      : "";
 
     Array.from(earnedDates).forEach((isoDate) => {
+      const expiryDate = validityDays > 0 ? addDaysToIsoDate(isoDate, validityDays) : "";
       transactions.push({
         id: `earned-${employeeId}-${isoDate}`,
         employeeId,
@@ -263,7 +278,7 @@ export async function GET(req: NextRequest) {
         kind: "Earned",
         source: holidayDates.has(isoDate) ? "Holiday" : "Weekly Off",
         days: 1,
-        note: holidayDates.has(isoDate) ? "Worked on holiday" : "Worked on weekly off",
+        note: `${holidayDates.has(isoDate) ? "Worked on holiday" : "Worked on weekly off"}${expiryDate ? ` • Expires ${formatDisplayDate(expiryDate)}` : ""}`,
       });
     });
 
@@ -278,7 +293,9 @@ export async function GET(req: NextRequest) {
       pendingUsed,
       available,
       validityDays,
-      recentEarnedDates: Array.from(earnedDates).sort((a, b) => b.localeCompare(a)).slice(0, 5),
+      recentEarnedDates: sortedEarnedDates.slice(0, 5),
+      recentEarnedRows,
+      nextExpiry,
       overrideId: adjustment?.id || "",
       overrideReason: adjustment?.reason || "",
       overrideUpdatedAt: adjustment?.updatedAt || "",
