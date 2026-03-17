@@ -7,6 +7,7 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const primaryItems = [
   { href: "/company/settings", label: "Settings", description: "Admin account, company profile, and security settings" },
+  { href: "/company/settings/holidays", label: "Holiday Calendar", description: "Manage company-wide holiday dates" },
   { href: "/company/dashboard", label: "Dashboard", description: "Operational overview" },
   { href: "/company/employees", label: "Employees", description: "Manage employee records" },
   { href: "/company/attendance", label: "Attendance", description: "View daily attendance" },
