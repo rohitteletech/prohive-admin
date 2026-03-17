@@ -354,7 +354,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const { data: company, error: companyError } = await admin
     .from("companies")
-    .select("id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,login_access_rule")
+    .select("id,name,office_lat,office_lon,office_radius_m,status")
     .eq("id", payload.company_id)
     .maybeSingle();
 
@@ -373,11 +373,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     "holiday_weekoff",
     "leave",
   ]);
-  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
-    weeklyOffPolicy: company.weekly_off_policy,
-    allowPunchOnHoliday: company.allow_punch_on_holiday !== false,
-    allowPunchOnWeeklyOff: company.allow_punch_on_weekly_off !== false,
-  });
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const resolvedLeave = resolveLeavePolicyRuntime(policyContext.resolved.leave);
 
   const { data: leaveOnDate } = await admin
@@ -485,7 +481,6 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
     shiftName: String(employee.shift_name || "General"),
     shiftType: String(employee.shift_name || "General"),
-    loginAccessRule: company.login_access_rule,
   });
   const matchedShift = policyContext.resolved.shift
     ? {

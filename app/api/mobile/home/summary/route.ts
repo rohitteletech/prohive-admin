@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("companies")
-      .select("name,company_tagline,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,extra_hours_policy,login_access_rule,half_day_min_work_mins")
+      .select("name,company_tagline")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
     session.admin
@@ -175,8 +175,6 @@ export async function POST(req: NextRequest) {
   const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
     shiftName: employeeShiftName,
     shiftType: employeeShiftName,
-    halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
-    loginAccessRule: companyResult.data?.login_access_rule,
   });
   const matchedShift =
     policyContext.resolved.shift
@@ -192,14 +190,8 @@ export async function POST(req: NextRequest) {
       : findMatchingShiftRule(employeeShiftName, shiftPool);
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
-  const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance, {
-    extraHoursCountingRule: companyResult.data?.extra_hours_policy,
-  });
-  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
-    weeklyOffPolicy: companyResult.data?.weekly_off_policy,
-    allowPunchOnHoliday: companyResult.data?.allow_punch_on_holiday !== false,
-    allowPunchOnWeeklyOff: companyResult.data?.allow_punch_on_weekly_off !== false,
-  });
+  const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance);
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const extraHoursPolicy = normalizeExtraHoursPolicy(resolvedAttendance.extraHoursPolicy);
   const loginAccessRule = normalizeLoginAccessRule(resolvedShift.loginAccessRule);
   const actualWorkedMinutes = rawWorkedMinutes(checkInAt, checkOutAt);

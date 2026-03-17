@@ -73,12 +73,7 @@ export async function POST(req: NextRequest) {
   const yearStart = `${year}-01-01`;
   const yearNextStart = `${year + 1}-01-01`;
 
-  const [companyResult, yearHolidayResult, monthHolidayResult, upcomingHolidayResult, leaveResult, attendanceResult] = await Promise.all([
-    session.admin
-      .from("companies")
-      .select("weekly_off_policy")
-      .eq("id", session.employee.company_id)
-      .maybeSingle(),
+  const [yearHolidayResult, monthHolidayResult, upcomingHolidayResult, leaveResult, attendanceResult] = await Promise.all([
     session.admin
       .from("company_holidays")
       .select("id,holiday_date,name,type")
@@ -119,9 +114,6 @@ export async function POST(req: NextRequest) {
       .order("server_received_at", { ascending: true }),
   ]);
 
-  if (companyResult.error) {
-    return NextResponse.json({ error: companyResult.error.message || "Unable to load weekly off policy." }, { status: 400 });
-  }
   if (monthHolidayResult.error) {
     return NextResponse.json({ error: monthHolidayResult.error.message || "Unable to load holidays." }, { status: 400 });
   }
@@ -144,9 +136,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff, {
-    weeklyOffPolicy: companyResult.data?.weekly_off_policy,
-  });
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const weeklyOffPolicy = normalizeWeeklyOffPolicy(resolvedHoliday.weeklyOffPolicy);
 
   const holidayRows = (monthHolidayResult.data || []) as Array<{

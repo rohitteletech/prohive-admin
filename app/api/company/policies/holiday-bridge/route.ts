@@ -32,19 +32,6 @@ function normalizeWorkedDayTreatment(
   return fallback;
 }
 
-function toNewWeeklyOffPattern(value: unknown): HolidayBridgePayload["weeklyOffPattern"] {
-  const normalized = normalizeWeeklyOffPolicy(value);
-  if (normalized === "saturday_sunday") return "Saturday + Sunday";
-  if (normalized === "second_fourth_saturday_sunday") return "2nd and 4th Saturday + Sunday";
-  return "Sunday Only";
-}
-
-function toLegacyWeeklyOffPattern(value: HolidayBridgePayload["weeklyOffPattern"], customPattern: string) {
-  if (value === "Saturday + Sunday") return "saturday_sunday";
-  if (value === "2nd and 4th Saturday + Sunday") return "second_fourth_saturday_sunday";
-  return "sunday_only";
-}
-
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -63,22 +50,11 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Holiday policy definition not found." }, { status: 404 });
     }
 
-    const [companyResult, holidayResult] = await Promise.all([
-      context.admin
-        .from("companies")
-        .select("weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off")
-        .eq("id", context.companyId)
-        .maybeSingle(),
-      context.admin
+    const holidayResult = await context.admin
         .from("company_holidays")
         .select("id")
         .eq("company_id", context.companyId)
-        .limit(1),
-    ]);
-
-    if (companyResult.error) {
-      return NextResponse.json({ error: companyResult.error.message || "Unable to load legacy holiday settings." }, { status: 400 });
-    }
+        .limit(1);
     if (holidayResult.error) {
       return NextResponse.json({ error: holidayResult.error.message || "Unable to inspect legacy holiday rows." }, { status: 400 });
     }
@@ -104,10 +80,9 @@ export async function GET(req: NextRequest) {
           ? config.weeklyOffPattern
           : config.weeklyOffPattern === "Alternate Saturday + Sunday"
             ? "2nd and 4th Saturday + Sunday"
-          : toNewWeeklyOffPattern(companyResult.data?.weekly_off_policy),
-      holidayPunchAllowed: config.holidayPunchAllowed === "No" || companyResult.data?.allow_punch_on_holiday === false ? "No" : "Yes",
-      weeklyOffPunchAllowed:
-        config.weeklyOffPunchAllowed === "No" || companyResult.data?.allow_punch_on_weekly_off === false ? "No" : "Yes",
+          : "Sunday Only",
+      holidayPunchAllowed: config.holidayPunchAllowed === "No" ? "No" : "Yes",
+      weeklyOffPunchAllowed: config.weeklyOffPunchAllowed === "No" ? "No" : "Yes",
       holidayWorkedStatus: normalizeWorkedDayTreatment(config.holidayWorkedStatus, "Grant Comp Off"),
       weeklyOffWorkedStatus: normalizeWorkedDayTreatment(config.weeklyOffWorkedStatus, "Grant Comp Off"),
       compOffValidityDays: String(config.compOffValidityDays || "60"),
@@ -227,19 +202,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: insertPolicyError?.message || "Unable to create holiday policy definition." }, { status: 400 });
     }
     policyId = insertedPolicy.id;
-  }
-
-  const { error: companyError } = await context.admin
-    .from("companies")
-    .update({
-      weekly_off_policy: toLegacyWeeklyOffPattern(configJson.weeklyOffPattern, ""),
-      allow_punch_on_holiday: configJson.holidayPunchAllowed === "Yes",
-      allow_punch_on_weekly_off: configJson.weeklyOffPunchAllowed === "Yes",
-    })
-    .eq("id", context.companyId);
-
-  if (companyError) {
-    return NextResponse.json({ error: companyError.message || "Unable to sync legacy holiday settings." }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true, policyId });

@@ -4,7 +4,7 @@ import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShi
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
-import { applyExtraHoursPolicy, normalizeExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
+import { applyExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
 import { applyNonWorkingDayTreatment, buildAttendanceMetrics, buildDailyAttendanceDecision, rawWorkedMinutes, type NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
 
@@ -135,8 +135,6 @@ function aggregateRows(
   selectedDate: string,
   timeZone: string,
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
-  extraHoursPolicy: string,
-  halfDayMinWorkMins: number,
   resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>,
   holidayDates: Set<string>
 ) {
@@ -171,11 +169,8 @@ function aggregateRows(
       const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
       const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
         shiftName: shift,
-        halfDayMinWorkMins,
       });
-      const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null, {
-        extraHoursCountingRule: extraHoursPolicy,
-      });
+      const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null);
       const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedPolicies?.resolved?.holiday_weekoff || null);
       const shiftConfig = resolvedPolicies?.resolved?.shift
         ? {
@@ -197,7 +192,7 @@ function aggregateRows(
         shiftEnd: shiftConfig?.end || null,
         scheduledMinutes,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
-        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
       });
       const isHoliday = holidayDates.has(selectedDate);
       const isWeeklyOff = !isHoliday && isWeeklyOffDate(selectedDate, resolvedHoliday.weeklyOffPolicy);
@@ -220,7 +215,7 @@ function aggregateRows(
         shiftEnd: shiftConfig?.end || null,
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
         scheduledMinutes,
-        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || halfDayMinWorkMins,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
         metrics,
         attendancePolicy: resolvedAttendance,
         checkInIso,
@@ -326,7 +321,7 @@ export async function GET(req: NextRequest) {
     const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
     const { fromIso, toIso } = buildQueryWindow(date);
 
-    const [eventsResult, shiftResult, companyResult, holidayResult] = await Promise.all([
+    const [eventsResult, shiftResult, holidayResult] = await Promise.all([
       context.admin
         .from("attendance_punch_events")
         .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
@@ -340,7 +335,6 @@ export async function GET(req: NextRequest) {
         .select("name,type,start_time,end_time,grace_mins,active")
         .eq("company_id", context.companyId)
         .order("created_at", { ascending: true }),
-      context.admin.from("companies").select("extra_hours_policy").eq("id", context.companyId).maybeSingle(),
       context.admin.from("company_holidays").select("holiday_date").eq("company_id", context.companyId).eq("holiday_date", date),
     ]);
 
@@ -349,9 +343,6 @@ export async function GET(req: NextRequest) {
     }
     if (shiftResult.error) {
       return NextResponse.json({ error: shiftResult.error.message || "Unable to load shift rules." }, { status: 400 });
-    }
-    if (companyResult.error) {
-      return NextResponse.json({ error: companyResult.error.message || "Unable to load extra hour policy." }, { status: 400 });
     }
     if (holidayResult.error) {
       return NextResponse.json({ error: holidayResult.error.message || "Unable to load holiday markers." }, { status: 400 });
@@ -376,8 +367,6 @@ export async function GET(req: NextRequest) {
           end: row.end,
           graceMins: row.graceMins,
         }));
-    const extraHoursPolicy = normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy);
-    const halfDayMinWorkMins = 240;
     const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
     const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
     const employeesById = new Map<string, EmployeeLookupRow>();
@@ -416,8 +405,6 @@ export async function GET(req: NextRequest) {
       date,
       timeZone,
       effectiveShiftRows,
-      extraHoursPolicy,
-      halfDayMinWorkMins,
       resolvedPoliciesByEmployee,
       new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date))
     );

@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
-import { shiftFromDb } from "@/lib/companyShiftDefinitions";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 import {
-  normalizeExtraHoursPolicy,
-  normalizeHalfDayMinWorkMins,
   normalizeLatePenaltyCount,
   normalizeLatePenaltyMinutes,
   normalizePenaltyDayValue,
-  shiftDurationMinutes,
 } from "@/lib/shiftWorkPolicy";
 
 type AttendanceBridgePayload = {
@@ -72,17 +67,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Attendance policy definition not found." }, { status: 404 });
     }
 
-    const companyResult = await context.admin
-      .from("companies")
-      .select(
-        "extra_hours_policy,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days"
-      )
-      .eq("id", context.companyId)
-      .maybeSingle();
-
-    if (companyResult.error) {
-      return NextResponse.json({ error: companyResult.error.message || "Unable to load legacy attendance settings." }, { status: 400 });
-    }
     const config = (attendancePolicy.configJson || {}) as Record<string, unknown>;
 
     return NextResponse.json({
@@ -103,20 +87,17 @@ export async function GET(req: NextRequest) {
       extraHoursCountingRule:
         config.extraHoursCountingRule === "ignore"
           ? "ignore"
-          : normalizeExtraHoursPolicy(companyResult.data?.extra_hours_policy) === "no"
-            ? "ignore"
-            : "count",
+          : "count",
       latePunchRule: config.latePunchRule === "flag_only" ? "flag_only" : "enforce_penalty",
       earlyGoRule: config.earlyGoRule === "enforce_penalty" || config.earlyGoRule === "affects_penalty" ? "enforce_penalty" : "flag_only",
       presentDaysFormula: config.presentDaysFormula === "full_only" ? "full_only" : "full_plus_half",
       halfDayValue: config.halfDayValue === "1.0" ? "1.0" : "0.5",
-      latePunchPenaltyEnabled:
-        config.latePunchPenaltyEnabled === "No" || companyResult.data?.late_penalty_enabled !== true ? "No" : "Yes",
-      latePunchUpToMinutes: String(config.latePunchUpToMinutes || normalizeLatePenaltyMinutes(companyResult.data?.late_penalty_up_to_mins)),
-      repeatLateDaysInMonth: String(config.repeatLateDaysInMonth || normalizeLatePenaltyCount(companyResult.data?.late_penalty_repeat_count)),
-      penaltyForRepeatLate: String(config.penaltyForRepeatLate || normalizePenaltyDayValue(companyResult.data?.late_penalty_repeat_days, 1)),
-      latePunchAboveMinutes: String(config.latePunchAboveMinutes || normalizeLatePenaltyMinutes(companyResult.data?.late_penalty_above_mins)),
-      penaltyForLateAboveLimit: String(config.penaltyForLateAboveLimit || normalizePenaltyDayValue(companyResult.data?.late_penalty_above_days, 0.5)),
+      latePunchPenaltyEnabled: config.latePunchPenaltyEnabled === "No" ? "No" : "Yes",
+      latePunchUpToMinutes: String(config.latePunchUpToMinutes || "60"),
+      repeatLateDaysInMonth: String(config.repeatLateDaysInMonth || "3"),
+      penaltyForRepeatLate: String(config.penaltyForRepeatLate || "1"),
+      latePunchAboveMinutes: String(config.latePunchAboveMinutes || "60"),
+      penaltyForLateAboveLimit: String(config.penaltyForLateAboveLimit || "0.5"),
       earlyGoUpToMinutes: String(config.earlyGoUpToMinutes || "30"),
       repeatEarlyGoDaysInMonth: String(config.repeatEarlyGoDaysInMonth || "3"),
       penaltyForRepeatEarlyGo: String(config.penaltyForRepeatEarlyGo || "1"),
@@ -241,23 +222,6 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: insertPolicyError?.message || "Unable to create attendance policy definition." }, { status: 400 });
     }
     policyId = insertedPolicy.id;
-  }
-
-  const { error: companyError } = await context.admin
-    .from("companies")
-    .update({
-      extra_hours_policy: configJson.extraHoursCountingRule === "ignore" ? "no" : "yes",
-      late_penalty_enabled: configJson.latePunchPenaltyEnabled === "Yes",
-      late_penalty_up_to_mins: normalizeLatePenaltyMinutes(configJson.latePunchUpToMinutes, 60),
-      late_penalty_repeat_count: normalizeLatePenaltyCount(configJson.repeatLateDaysInMonth, 3),
-      late_penalty_repeat_days: normalizePenaltyDayValue(configJson.penaltyForRepeatLate, 1),
-      late_penalty_above_mins: normalizeLatePenaltyMinutes(configJson.latePunchAboveMinutes, 60),
-      late_penalty_above_days: normalizePenaltyDayValue(configJson.penaltyForLateAboveLimit, 0.5),
-    })
-    .eq("id", context.companyId);
-
-  if (companyError) {
-    return NextResponse.json({ error: companyError.message || "Unable to sync legacy attendance settings." }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true, policyId });
