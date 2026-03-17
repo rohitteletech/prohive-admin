@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
@@ -265,6 +266,24 @@ function CompanySettingsPageContent() {
             <button type="button" onClick={handleSaveAttendanceSettings} disabled={savingAttendance} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
               {savingAttendance ? "Saving..." : "Save Office Attendance Settings"}
             </button>
+          </section>
+
+          <section className={cardClass()}>
+            <div className="flex flex-col gap-1 border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Holiday Calendar</h2>
+              <p className="text-sm text-slate-600">Manage company-wide holiday dates for the year from one dedicated calendar page.</p>
+            </div>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="max-w-2xl text-sm leading-6 text-slate-600">
+                Use this to add yearly company holidays, review government suggestions, and maintain the master holiday calendar used across the app.
+              </p>
+              <Link
+                href="/company/settings/holidays"
+                className="inline-flex min-h-[42px] items-center justify-center rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+              >
+                Open Holiday Calendar
+              </Link>
+            </div>
           </section>
         </div>
 
