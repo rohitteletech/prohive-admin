@@ -2,6 +2,7 @@ import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
+import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
 import {
   applyExtraHoursPolicy,
   normalizeExtraHoursPolicy,
@@ -37,6 +38,8 @@ type EmployeeLookupRow = {
 
 export type AttendanceReportRow = {
   id: string;
+  employeeId: string;
+  localDate: string;
   employee: string;
   department: string;
   shift: string;
@@ -210,6 +213,7 @@ function aggregateRows(params: {
   };
   resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>;
   holidayDates: Set<string>;
+  manualReviewResolutionsByEmployeeDate: Map<string, NonWorkingDayTreatment>;
 }) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -349,13 +353,15 @@ function aggregateRows(params: {
       const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
         decision: baseDecision,
         dayType: row.dayType,
-        treatment: row.nonWorkingDayTreatment,
+        treatment: params.manualReviewResolutionsByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
       });
       if (baseDecision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
       if (baseDecision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
 
       rows.push({
         id: row.id,
+        employeeId: row.employeeId,
+        localDate: row.localDate,
         employee: row.employee,
         department: row.department,
         shift: row.shift,
@@ -501,6 +507,16 @@ export async function getAttendanceReportData(params: {
   if (holidayError) {
     return { ok: false as const, status: 400, error: holidayError.message || "Unable to load holiday markers." };
   }
+  const manualResolutionResult = await fetchManualReviewResolutionMap({
+    admin: params.admin,
+    companyId: params.companyId,
+    employeeIds,
+    startDate: scope.startDate,
+    endDate: scope.endDate,
+  });
+  if (manualResolutionResult.error) {
+    return { ok: false as const, status: 400, error: manualResolutionResult.error };
+  }
 
   const aggregation = aggregateRows({
     events,
@@ -519,6 +535,7 @@ export async function getAttendanceReportData(params: {
     },
     resolvedPoliciesByEmployee,
     holidayDates: new Set(((holidayRows || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
+    manualReviewResolutionsByEmployeeDate: manualResolutionResult.byEmployeeDate,
   });
   const filteredRows = aggregation.rows.filter((row) => {
     const matchesEmployee = employeeQuery
