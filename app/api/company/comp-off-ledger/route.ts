@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { todayISOInIndia } from "@/lib/dateTime";
+import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { deriveCompOffEarnedDates, roundLeaveDays } from "@/lib/leaveAccrual";
@@ -68,28 +68,10 @@ export async function GET(req: NextRequest) {
     return Math.max(max, Number(resolved?.compOffValidityDays || 0));
   }, 0);
 
-  if (maxValidity <= 0) {
-    return NextResponse.json({
-      rows: employeeRows.map((row) => ({
-        employeeId: String(row.id || ""),
-        employee: String(row.full_name || "Unknown"),
-        employeeCode: String(row.employee_code || ""),
-        department: String(row.department || "-"),
-        earnedDays: 0,
-        approvedUsed: 0,
-        pendingUsed: 0,
-        available: 0,
-        validityDays: 0,
-        recentEarnedDates: [],
-      })),
-      summary: { employees: employeeRows.length, earnedDays: 0, approvedUsed: 0, pendingUsed: 0, available: 0 },
-    });
-  }
-
-  const rangeStart = addDaysToIsoDate(asOfDate, -maxValidity);
+  const rangeStart = maxValidity > 0 ? addDaysToIsoDate(asOfDate, -maxValidity) : asOfDate;
   const rangeEnd = addDaysToIsoDate(asOfDate, 1);
 
-  const [attendanceResult, holidayResult, usageResult] = await Promise.all([
+  const [attendanceResult, holidayResult, usageResult, overrideResult] = await Promise.all([
     context.admin
       .from("attendance_punch_events")
       .select("employee_id,effective_punch_at,server_received_at,approval_status")
@@ -105,11 +87,17 @@ export async function GET(req: NextRequest) {
       .lte("holiday_date", asOfDate),
     context.admin
       .from("employee_leave_requests")
-      .select("employee_id,paid_days,days,status")
+      .select("id,employee_id,from_date,to_date,paid_days,days,status,submitted_at")
       .eq("company_id", context.companyId)
       .eq("leave_policy_code", VIRTUAL_COMP_OFF_CODE)
       .gte("from_date", `${currentYear}-01-01`)
       .lt("from_date", `${currentYear + 1}-01-01`),
+    context.admin
+      .from("employee_leave_balance_overrides")
+      .select("id,employee_id,extra_days,reason,created_by,updated_at")
+      .eq("company_id", context.companyId)
+      .eq("leave_policy_code", VIRTUAL_COMP_OFF_CODE)
+      .eq("year", currentYear),
   ]);
 
   if (attendanceResult.error) {
@@ -120,6 +108,9 @@ export async function GET(req: NextRequest) {
   }
   if (usageResult.error) {
     return NextResponse.json({ error: usageResult.error.message || "Unable to load comp off usage." }, { status: 400 });
+  }
+  if (overrideResult.error) {
+    return NextResponse.json({ error: overrideResult.error.message || "Unable to load comp off adjustments." }, { status: 400 });
   }
 
   const holidayDates = new Set(
@@ -142,11 +133,32 @@ export async function GET(req: NextRequest) {
   });
 
   const usageByEmployee = new Map<string, { approvedUsed: number; pendingUsed: number }>();
+  const overrideByEmployee = new Map<
+    string,
+    { id: string; extraDays: number; reason: string; createdBy: string; updatedAt: string }
+  >();
+  const transactions: Array<{
+    id: string;
+    employeeId: string;
+    employee: string;
+    employeeCode: string;
+    department: string;
+    transactionDate: string;
+    transactionDateLabel: string;
+    kind: "Earned" | "Approved Use" | "Pending Use" | "Manual Adjustment";
+    source: "Holiday" | "Weekly Off" | "Leave Request" | "Admin Override";
+    days: number;
+    note: string;
+  }> = [];
   ((usageResult.data || []) as Array<{
+    id?: string | null;
     employee_id?: string | null;
+    from_date?: string | null;
+    to_date?: string | null;
     paid_days?: number | null;
     days?: number | null;
     status?: string | null;
+    submitted_at?: string | null;
   }>).forEach((row) => {
     const employeeId = String(row.employee_id || "");
     if (!employeeId) return;
@@ -155,6 +167,65 @@ export async function GET(req: NextRequest) {
     if (row.status === "approved") bucket.approvedUsed += consumed;
     if (row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr") bucket.pendingUsed += consumed;
     usageByEmployee.set(employeeId, bucket);
+
+    const employeeRow = employeeRows.find((item) => String(item.id || "") === employeeId);
+    if (!employeeRow) return;
+    if (row.status === "approved" || row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr") {
+      const statusLabel = row.status === "approved" ? "Approved Use" : "Pending Use";
+      const transactionDate = String(row.from_date || row.submitted_at || "");
+      transactions.push({
+        id: `use-${String(row.id || `${employeeId}-${transactionDate}`)}`,
+        employeeId,
+        employee: String(employeeRow.full_name || "Unknown"),
+        employeeCode: String(employeeRow.employee_code || ""),
+        department: String(employeeRow.department || "-"),
+        transactionDate,
+        transactionDateLabel: formatDisplayDate(transactionDate),
+        kind: statusLabel,
+        source: "Leave Request",
+        days: roundLeaveDays(consumed),
+        note:
+          row.from_date && row.to_date
+            ? `${formatDisplayDate(String(row.from_date))} to ${formatDisplayDate(String(row.to_date))}`
+            : "Comp off leave request",
+      });
+    }
+  });
+
+  ((overrideResult.data || []) as Array<{
+    id?: string | null;
+    employee_id?: string | null;
+    extra_days?: number | null;
+    reason?: string | null;
+    created_by?: string | null;
+    updated_at?: string | null;
+  }>).forEach((row) => {
+    const employeeId = String(row.employee_id || "");
+    if (!employeeId) return;
+    const adjustment = {
+      id: String(row.id || ""),
+      extraDays: roundLeaveDays(Number(row.extra_days || 0)),
+      reason: String(row.reason || ""),
+      createdBy: String(row.created_by || ""),
+      updatedAt: String(row.updated_at || ""),
+    };
+    overrideByEmployee.set(employeeId, adjustment);
+
+    const employeeRow = employeeRows.find((item) => String(item.id || "") === employeeId);
+    if (!employeeRow || adjustment.extraDays === 0) return;
+    transactions.push({
+      id: `override-${adjustment.id || employeeId}`,
+      employeeId,
+      employee: String(employeeRow.full_name || "Unknown"),
+      employeeCode: String(employeeRow.employee_code || ""),
+      department: String(employeeRow.department || "-"),
+      transactionDate: adjustment.updatedAt || `${currentYear}-01-01`,
+      transactionDateLabel: formatDisplayDate(adjustment.updatedAt || `${currentYear}-01-01`),
+      kind: "Manual Adjustment",
+      source: "Admin Override",
+      days: adjustment.extraDays,
+      note: adjustment.reason || "Manual comp off adjustment",
+    });
   });
 
   const rows = employeeRows.map((row) => {
@@ -173,10 +244,28 @@ export async function GET(req: NextRequest) {
       weeklyOffWorkedStatus: (resolvedHoliday?.weeklyOffWorkedStatus || "Grant Comp Off") as NonWorkingDayTreatment,
     });
     const usage = usageByEmployee.get(employeeId) || { approvedUsed: 0, pendingUsed: 0 };
+    const adjustment = overrideByEmployee.get(employeeId);
     const earnedDays = roundLeaveDays(earnedDates.size);
     const approvedUsed = roundLeaveDays(usage.approvedUsed);
     const pendingUsed = roundLeaveDays(usage.pendingUsed);
-    const available = Math.max(roundLeaveDays(earnedDays - approvedUsed - pendingUsed), 0);
+    const manualAdjustmentDays = roundLeaveDays(adjustment?.extraDays || 0);
+    const available = Math.max(roundLeaveDays(earnedDays + manualAdjustmentDays - approvedUsed - pendingUsed), 0);
+
+    Array.from(earnedDates).forEach((isoDate) => {
+      transactions.push({
+        id: `earned-${employeeId}-${isoDate}`,
+        employeeId,
+        employee: String(row.full_name || "Unknown"),
+        employeeCode: String(row.employee_code || ""),
+        department: String(row.department || "-"),
+        transactionDate: isoDate,
+        transactionDateLabel: formatDisplayDate(isoDate),
+        kind: "Earned",
+        source: holidayDates.has(isoDate) ? "Holiday" : "Weekly Off",
+        days: 1,
+        note: holidayDates.has(isoDate) ? "Worked on holiday" : "Worked on weekly off",
+      });
+    });
 
     return {
       employeeId,
@@ -184,19 +273,30 @@ export async function GET(req: NextRequest) {
       employeeCode: String(row.employee_code || ""),
       department: String(row.department || "-"),
       earnedDays,
+      manualAdjustmentDays,
       approvedUsed,
       pendingUsed,
       available,
       validityDays,
       recentEarnedDates: Array.from(earnedDates).sort((a, b) => b.localeCompare(a)).slice(0, 5),
+      overrideId: adjustment?.id || "",
+      overrideReason: adjustment?.reason || "",
+      overrideUpdatedAt: adjustment?.updatedAt || "",
+      overrideCreatedBy: adjustment?.createdBy || "",
     };
   });
 
   return NextResponse.json({
     rows,
+    transactions: transactions.sort((a, b) => {
+      const dateCompare = String(b.transactionDate || "").localeCompare(String(a.transactionDate || ""));
+      if (dateCompare !== 0) return dateCompare;
+      return a.employee.localeCompare(b.employee);
+    }),
     summary: {
       employees: rows.length,
       earnedDays: roundLeaveDays(rows.reduce((sum, row) => sum + row.earnedDays, 0)),
+      manualAdjustmentDays: roundLeaveDays(rows.reduce((sum, row) => sum + row.manualAdjustmentDays, 0)),
       approvedUsed: roundLeaveDays(rows.reduce((sum, row) => sum + row.approvedUsed, 0)),
       pendingUsed: roundLeaveDays(rows.reduce((sum, row) => sum + row.pendingUsed, 0)),
       available: roundLeaveDays(rows.reduce((sum, row) => sum + row.available, 0)),

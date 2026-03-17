@@ -305,6 +305,13 @@ export async function POST(req: NextRequest) {
         year: currentYear,
       }),
     ]);
+    const compOffOverride = await fetchLeaveOverrideDays({
+      admin: session.admin,
+      companyId: session.employee.company_id,
+      employeeId: session.employee.id,
+      leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
+      year: currentYear,
+    });
 
     if (compOffEntitlement.error) {
       return NextResponse.json({ error: compOffEntitlement.error }, { status: 400 });
@@ -312,12 +319,15 @@ export async function POST(req: NextRequest) {
     if (compOffUsage.error) {
       return NextResponse.json({ error: compOffUsage.error }, { status: 400 });
     }
+    if (compOffOverride.error) {
+      return NextResponse.json({ error: compOffOverride.error }, { status: 400 });
+    }
     if (isHalfDay) {
       return NextResponse.json({ error: "Half day is not allowed for Comp Off leave." }, { status: 400 });
     }
 
     const availableNow = Math.max(
-      roundLeaveDays(compOffEntitlement.earnedDays - compOffUsage.approvedUsed - compOffUsage.pendingUsed),
+      roundLeaveDays(compOffEntitlement.earnedDays + compOffOverride.overrideDays - compOffUsage.approvedUsed - compOffUsage.pendingUsed),
       0,
     );
     availabilityByPolicy.unshift({

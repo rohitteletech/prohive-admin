@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 
+const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
+
 type Body = {
   employee_id?: string;
   leave_policy_code?: string;
@@ -120,14 +122,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: employeeError?.message || "Employee not found." }, { status: 400 });
   }
 
-  const { data: policy, error: policyError } = await context.admin
-    .from("company_leave_policies")
-    .select("code")
-    .eq("company_id", context.companyId)
-    .eq("code", leavePolicyCode)
-    .maybeSingle();
-  if (policyError || !policy?.code) {
-    return NextResponse.json({ error: policyError?.message || "Leave policy not found." }, { status: 400 });
+  if (leavePolicyCode !== VIRTUAL_COMP_OFF_CODE) {
+    const { data: policy, error: policyError } = await context.admin
+      .from("company_leave_policies")
+      .select("code")
+      .eq("company_id", context.companyId)
+      .eq("code", leavePolicyCode)
+      .maybeSingle();
+    if (policyError || !policy?.code) {
+      return NextResponse.json({ error: policyError?.message || "Leave policy not found." }, { status: 400 });
+    }
   }
 
   const { data: existing } = await context.admin

@@ -179,6 +179,16 @@ export async function POST(req: NextRequest) {
   if (compOffUsage.error) {
     return NextResponse.json({ error: compOffUsage.error }, { status: 400 });
   }
+  const compOffOverride = await fetchLeaveOverrideDays({
+    admin: session.admin,
+    companyId: session.employee.company_id,
+    employeeId: session.employee.id,
+    leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
+    year: currentYear,
+  });
+  if (compOffOverride.error) {
+    return NextResponse.json({ error: compOffOverride.error }, { status: 400 });
+  }
   const attendanceDatesResult = await fetchApprovedAttendanceDatesForYear({
     admin: session.admin,
     companyId: session.employee.company_id,
@@ -225,13 +235,15 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  const compOffRemaining = Math.max(roundLeaveDays(compOffEntitlement.earnedDays - compOffUsage.approvedUsed), 0);
+  const compOffAccruedTotal = roundLeaveDays(compOffEntitlement.earnedDays + compOffOverride.overrideDays);
+  const compOffRemaining = Math.max(roundLeaveDays(compOffAccruedTotal - compOffUsage.approvedUsed), 0);
   const compOffRemainingAfterPending = Math.max(
-    roundLeaveDays(compOffEntitlement.earnedDays - compOffUsage.approvedUsed - compOffUsage.pendingUsed),
+    roundLeaveDays(compOffAccruedTotal - compOffUsage.approvedUsed - compOffUsage.pendingUsed),
     0,
   );
   if (
     compOffEntitlement.earnedDays > 0 ||
+    compOffOverride.overrideDays !== 0 ||
     compOffUsage.approvedUsed > 0 ||
     compOffUsage.pendingUsed > 0
   ) {
@@ -242,10 +254,10 @@ export async function POST(req: NextRequest) {
       annualQuota: 0,
       carryForward: 0,
       accrualMode: "upfront" as const,
-      accrued: compOffEntitlement.earnedDays,
+      accrued: compOffAccruedTotal,
       annualAccrued: 0,
-      overrideDays: compOffEntitlement.earnedDays,
-      total: compOffEntitlement.earnedDays,
+      overrideDays: compOffOverride.overrideDays,
+      total: compOffAccruedTotal,
       approvedUsed: compOffUsage.approvedUsed,
       pendingUsed: compOffUsage.pendingUsed,
       remaining: compOffRemaining,
