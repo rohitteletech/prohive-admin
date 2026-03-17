@@ -1,9 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CompanyHoliday, HolidayType } from "@/lib/companyLeaves";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { WeeklyOffPolicy, weeklyOffPolicyLabel } from "@/lib/weeklyOff";
 import {
   GOVERNMENT_HOLIDAY_STATE_OPTIONS,
   GovernmentHolidayItem,
@@ -18,7 +18,6 @@ export default function ManageHolidaysPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [weeklyOffPolicy, setWeeklyOffPolicy] = useState<WeeklyOffPolicy>("sunday_only");
   const [govtYear, setGovtYear] = useState<number>(new Date().getFullYear());
   const [govtState, setGovtState] = useState<GovernmentHolidayState>("all_india");
   const [govtSourceUrl, setGovtSourceUrl] = useState("");
@@ -47,7 +46,6 @@ export default function ManageHolidaysPage() {
       });
       const result = (await response.json().catch(() => ({}))) as {
         holidays?: CompanyHoliday[];
-        weeklyOffPolicy?: WeeklyOffPolicy;
         error?: string;
       };
       if (ignore) return;
@@ -57,7 +55,6 @@ export default function ManageHolidaysPage() {
         return;
       }
       setRows(Array.isArray(result.holidays) ? result.holidays : []);
-      if (result.weeklyOffPolicy) setWeeklyOffPolicy(result.weeklyOffPolicy);
     }
 
     void loadHolidays();
@@ -218,13 +215,11 @@ export default function ManageHolidaysPage() {
       },
       body: JSON.stringify({
         holidays: rows,
-        weeklyOffPolicy,
       }),
     });
     const result = (await response.json().catch(() => ({}))) as {
       ok?: boolean;
       holidays?: CompanyHoliday[];
-      weeklyOffPolicy?: WeeklyOffPolicy;
       error?: string;
     };
     setSaving(false);
@@ -232,7 +227,6 @@ export default function ManageHolidaysPage() {
       return showToast(result.error || "Unable to save holidays.");
     }
     setRows(Array.isArray(result.holidays) ? result.holidays : []);
-    if (result.weeklyOffPolicy) setWeeklyOffPolicy(result.weeklyOffPolicy);
     showToast("Holiday calendar saved.");
   }
 
@@ -246,7 +240,7 @@ export default function ManageHolidaysPage() {
     <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Holiday Calendar</h1>
-        <p className="mt-2 text-sm text-zinc-600">Manage the company-wide holiday list and the shared weekly off calendar used across the app.</p>
+        <p className="mt-2 text-sm text-zinc-600">Manage the company-wide holiday list used across the app.</p>
       </div>
 
       {toast && (
@@ -256,32 +250,25 @@ export default function ManageHolidaysPage() {
       <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-base font-semibold text-slate-900">Add Holiday</h2>
-          <button
-            type="button"
-            onClick={handleSaveHolidays}
-            disabled={saving || loading}
-            className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {saving ? "Saving..." : "Save Holidays"}
-          </button>
-        </div>
-
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
-          <label className="grid gap-1.5">
-            <span className="text-sm text-slate-700">Weekly Off Policy</span>
-            <select
-              value={weeklyOffPolicy}
-              onChange={(e) => setWeeklyOffPolicy(e.target.value as WeeklyOffPolicy)}
-              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/company/settings/policies/holiday-weekly-off-policy"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
             >
-              <option value="sunday_only">{weeklyOffPolicyLabel("sunday_only")}</option>
-              <option value="saturday_sunday">{weeklyOffPolicyLabel("saturday_sunday")}</option>
-              <option value="second_fourth_saturday_sunday">{weeklyOffPolicyLabel("second_fourth_saturday_sunday")}</option>
-            </select>
-          </label>
+              Open Holiday / Weekly Off Policy
+            </Link>
+            <button
+              type="button"
+              onClick={handleSaveHolidays}
+              disabled={saving || loading}
+              className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-semibold text-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Saving..." : "Save Holidays"}
+            </button>
+          </div>
         </div>
 
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-slate-900">Government Holiday Suggestions</h3>
             <span className="text-xs text-slate-500">
