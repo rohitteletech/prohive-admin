@@ -65,8 +65,11 @@ export default function HolidayWeeklyOffPolicyPage() {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const holidayPunchConfigActive = draft.holidayPunchAllowed === "Yes";
+  const weeklyOffPunchConfigActive = draft.weeklyOffPunchAllowed === "Yes";
   const compOffSelected =
-    draft.holidayWorkedStatus === "Grant Comp Off" || draft.weeklyOffWorkedStatus === "Grant Comp Off";
+    (holidayPunchConfigActive && draft.holidayWorkedStatus === "Grant Comp Off") ||
+    (weeklyOffPunchConfigActive && draft.weeklyOffWorkedStatus === "Grant Comp Off");
 
   function update<K extends keyof HolidayPolicyState>(key: K, value: HolidayPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -353,6 +356,7 @@ export default function HolidayWeeklyOffPolicyPage() {
                 <Select
                   value={draft.holidayWorkedStatus}
                   onChange={(e) => update("holidayWorkedStatus", e.target.value as HolidayPolicyState["holidayWorkedStatus"])}
+                  disabled={!holidayPunchConfigActive}
                 >
                   <option value="Record Only">Record Only</option>
                   <option value="OT Only">OT Only</option>
@@ -365,6 +369,7 @@ export default function HolidayWeeklyOffPolicyPage() {
                 <Select
                   value={draft.weeklyOffWorkedStatus}
                   onChange={(e) => update("weeklyOffWorkedStatus", e.target.value as HolidayPolicyState["weeklyOffWorkedStatus"])}
+                  disabled={!weeklyOffPunchConfigActive}
                 >
                   <option value="Record Only">Record Only</option>
                   <option value="OT Only">OT Only</option>
@@ -377,8 +382,8 @@ export default function HolidayWeeklyOffPolicyPage() {
                 label="Comp Off Validity (Days)"
                 hint={
                   compOffSelected
-                    ? "Applied when Grant Comp Off is selected for Holiday or Weekly Off."
-                    : "Set automatically inactive until Grant Comp Off is selected above."
+                    ? "Applied when Grant Comp Off is selected for an allowed Holiday or Weekly Off punch."
+                    : "Inactive until punch is allowed and Grant Comp Off is selected above."
                 }
               >
                 <TextInput

@@ -132,6 +132,8 @@ export async function PUT(req: NextRequest) {
     : null;
 
   const configJson = {
+    holidayPunchAllowed: body.holidayPunchAllowed || "Yes",
+    weeklyOffPunchAllowed: body.weeklyOffPunchAllowed || "Yes",
     policyName: body.policyName || policy?.policyName || "Standard Holiday Policy",
     policyCode: body.policyCode || policy?.policyCode || "HOL-001",
     effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
@@ -140,16 +142,21 @@ export async function PUT(req: NextRequest) {
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     holidaySource: "Company",
     weeklyOffPattern: body.weeklyOffPattern || "Sunday Only",
-    holidayPunchAllowed: body.holidayPunchAllowed || "Yes",
-    weeklyOffPunchAllowed: body.weeklyOffPunchAllowed || "Yes",
-    holidayWorkedStatus: body.holidayWorkedStatus || "Grant Comp Off",
-    weeklyOffWorkedStatus: body.weeklyOffWorkedStatus || "Grant Comp Off",
-    compOffValidityDays: String(
-      body.holidayWorkedStatus === "Grant Comp Off" || body.weeklyOffWorkedStatus === "Grant Comp Off"
-        ? body.compOffValidityDays || "60"
-        : "0"
-    ),
+    holidayWorkedStatus:
+      (body.holidayPunchAllowed || "Yes") === "Yes"
+        ? body.holidayWorkedStatus || "Grant Comp Off"
+        : "Record Only",
+    weeklyOffWorkedStatus:
+      (body.weeklyOffPunchAllowed || "Yes") === "Yes"
+        ? body.weeklyOffWorkedStatus || "Grant Comp Off"
+        : "Record Only",
+    compOffValidityDays: "0",
   };
+
+  const compOffApplies =
+    (configJson.holidayPunchAllowed === "Yes" && configJson.holidayWorkedStatus === "Grant Comp Off") ||
+    (configJson.weeklyOffPunchAllowed === "Yes" && configJson.weeklyOffWorkedStatus === "Grant Comp Off");
+  configJson.compOffValidityDays = String(compOffApplies ? body.compOffValidityDays || "60" : "0");
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
