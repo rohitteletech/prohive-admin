@@ -23,6 +23,20 @@ type ManualReviewSummary = {
   manualReview: number;
 };
 
+type ManualReviewHistoryRow = {
+  id: string;
+  employeeId: string;
+  employee: string;
+  department: string;
+  workDate: string;
+  previousTreatment: string;
+  newTreatment: string;
+  actionType: string;
+  remark: string;
+  resolvedBy: string;
+  resolvedAt: string;
+};
+
 function readStoredCompanyId() {
   if (typeof window === "undefined") return "";
   try {
@@ -47,6 +61,7 @@ export default function ManualReviewsPage() {
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<ManualReviewRow[]>([]);
   const [summary, setSummary] = useState<ManualReviewSummary>({ total: 0, manualReview: 0 });
+  const [history, setHistory] = useState<ManualReviewHistoryRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -85,6 +100,7 @@ export default function ManualReviewsPage() {
         const json = (await response.json().catch(() => ({}))) as {
           rows?: ManualReviewRow[];
           summary?: ManualReviewSummary;
+          history?: ManualReviewHistoryRow[];
           error?: string;
         };
         if (!response.ok) {
@@ -94,6 +110,7 @@ export default function ManualReviewsPage() {
           const nextRows = Array.isArray(json.rows) ? json.rows : [];
           setRows(nextRows);
           setSummary(json.summary || { total: 0, manualReview: 0 });
+          setHistory(Array.isArray(json.history) ? json.history : []);
           setDecisionById((prev) => {
             const next = { ...prev };
             nextRows.forEach((row) => {
@@ -106,6 +123,7 @@ export default function ManualReviewsPage() {
         if (!ignore) {
           setRows([]);
           setSummary({ total: 0, manualReview: 0 });
+          setHistory([]);
           setError(err instanceof Error ? err.message : "Unable to load manual review queue.");
         }
       } finally {
@@ -150,12 +168,29 @@ export default function ManualReviewsPage() {
           workDate: row.localDate,
           resolutionTreatment,
           remark,
+          actionType: mode,
         }),
       });
       const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || !json.ok) throw new Error(json.error || "Unable to resolve manual review item.");
       setRows((prev) => prev.filter((item) => item.id !== row.id));
       setSummary((prev) => ({ ...prev, manualReview: Math.max(prev.manualReview - 1, 0), total: Math.max(prev.total - 1, 0) }));
+      setHistory((prev) => [
+        {
+          id: `${row.id}:${Date.now()}`,
+          employeeId: row.employeeId,
+          employee: row.employee,
+          department: row.department,
+          workDate: row.date,
+          previousTreatment: "Manual Review",
+          newTreatment: resolutionTreatment,
+          actionType: mode === "reject" ? "Rejected" : "Approved",
+          remark,
+          resolvedBy: "Current Admin",
+          resolvedAt: new Date().toISOString(),
+        },
+        ...prev,
+      ].slice(0, 100));
       showToast(mode === "reject" ? "Manual review rejected to Record Only." : "Manual review approved.");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Unable to resolve manual review item.");
@@ -317,6 +352,55 @@ export default function ManualReviewsPage() {
                 <tr>
                   <td colSpan={10} className="px-5 py-10 text-center text-[13px] text-slate-500">
                     No holiday or weekly-off manual review items found for the selected month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-4 w-full rounded-xl border border-slate-300 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
+          <h2 className="text-sm font-semibold text-slate-900">Action History</h2>
+          <span className="text-xs text-slate-500">{history.length} actions</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1180px] w-full table-fixed border-separate border-spacing-0 text-left">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Reviewed On</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Reviewed By</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Employee</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Department</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Work Date</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Action</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Previous</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Final</th>
+                <th className="px-3 py-2 font-semibold">Remark</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((row) => (
+                <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
+                  <td className="border-r border-slate-200 px-3 py-2">
+                    {row.resolvedAt ? new Date(row.resolvedAt).toLocaleString("en-GB") : "-"}
+                  </td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.resolvedBy || "-"}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.workDate}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.actionType}</td>
+                  <td className="border-r border-slate-200 px-3 py-2">{row.previousTreatment}</td>
+                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.newTreatment}</td>
+                  <td className="px-3 py-2">{row.remark || "-"}</td>
+                </tr>
+              ))}
+              {history.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="px-5 py-10 text-center text-[13px] text-slate-500">
+                    No review actions recorded for the selected month yet.
                   </td>
                 </tr>
               )}
