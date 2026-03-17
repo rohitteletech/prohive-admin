@@ -284,6 +284,10 @@ export default function NewShiftPolicyPage() {
     await loadShiftBridge();
   }
 
+  function saveExistingShiftPolicy() {
+    return saveShiftPolicy(draft.status === "Active" ? "Active" : "Draft");
+  }
+
   return (
     <PolicyPage
       badge="Shift Policy"
@@ -449,22 +453,35 @@ export default function NewShiftPolicyPage() {
             </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void saveShiftPolicy("Active")}
-                disabled={saving}
-                className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
-              >
-                {saving ? "Processing..." : "Enforce Policy"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void saveShiftPolicy("Draft")}
-                disabled={saving}
-                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
-              >
-                {saving ? "Processing..." : "Save as Draft"}
-              </button>
+              {isCreatingNew ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void saveShiftPolicy("Active")}
+                    disabled={saving}
+                    className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {saving ? "Processing..." : "Enforce Policy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveShiftPolicy("Draft")}
+                    disabled={saving}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    {saving ? "Processing..." : "Save as Draft"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void saveExistingShiftPolicy()}
+                  disabled={saving}
+                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {saving ? "Processing..." : "Save"}
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
