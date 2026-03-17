@@ -69,6 +69,147 @@ function normalizeLoginAccessRule(value: unknown) {
   return String(value || "").trim().toLowerCase() === "shift_time_only" ? "shift_time_only" : "any_time";
 }
 
+function normalizeWeeklyOffPolicy(value: unknown) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "saturday_sunday") return "saturday_sunday";
+  if (normalized === "second_fourth_saturday_sunday") return "second_fourth_saturday_sunday";
+  return "sunday_only";
+}
+
+function text(value: unknown, fallback = "") {
+  const normalized = String(value ?? "").trim();
+  return normalized || fallback;
+}
+
+function wholeNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;
+}
+
+function yesNo(value: unknown, fallback: "Yes" | "No" = "No") {
+  return String(value || "").trim() === "Yes" ? "Yes" : fallback;
+}
+
+type PolicyType = "shift" | "attendance" | "leave" | "holiday_weekoff" | "correction";
+type AssignmentLevel = "company" | "department" | "employee";
+
+type PolicyDefinition = {
+  id: string;
+  policyType: PolicyType;
+  isDefault: boolean;
+  effectiveFrom: string;
+  configJson: Record<string, unknown>;
+};
+
+type PolicyAssignment = {
+  policyType: PolicyType;
+  policyId: string;
+  assignmentLevel: AssignmentLevel;
+  targetId: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+  isActive: boolean;
+};
+
+function compareAssignmentPriority(level: AssignmentLevel) {
+  if (level === "employee") return 3;
+  if (level === "department") return 2;
+  return 1;
+}
+
+function isAssignmentEffective(
+  assignment: Pick<PolicyAssignment, "effectiveFrom" | "effectiveTo" | "isActive">,
+  onDate: string,
+) {
+  if (!assignment.isActive) return false;
+  if (assignment.effectiveFrom > onDate) return false;
+  if (assignment.effectiveTo && assignment.effectiveTo < onDate) return false;
+  return true;
+}
+
+function resolvePolicyForEmployee(params: {
+  policyType: PolicyType;
+  employeeId: string;
+  department?: string | null;
+  onDate: string;
+  assignments: PolicyAssignment[];
+  definitions: PolicyDefinition[];
+}) {
+  const applicable = params.assignments
+    .filter((assignment) => assignment.policyType === params.policyType)
+    .filter((assignment) => isAssignmentEffective(assignment, params.onDate))
+    .filter((assignment) => {
+      if (assignment.assignmentLevel === "employee") return assignment.targetId === params.employeeId;
+      if (assignment.assignmentLevel === "department") return Boolean(params.department) && assignment.targetId === params.department;
+      return true;
+    })
+    .sort((a, b) => compareAssignmentPriority(b.assignmentLevel) - compareAssignmentPriority(a.assignmentLevel));
+
+  const matched = applicable[0];
+  if (matched) {
+    return params.definitions.find((definition) => definition.id === matched.policyId) || null;
+  }
+  return params.definitions.find((definition) => definition.policyType === params.policyType && definition.isDefault) || null;
+}
+
+function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
+  shiftName?: string;
+  shiftType?: string;
+  shiftStartTime?: string;
+  shiftEndTime?: string;
+  loginAccessRule?: string;
+  earlyInAllowed?: number;
+  minimumWorkBeforePunchOut?: number;
+}) {
+  const config = (policy?.configJson || {}) as Record<string, unknown>;
+  return {
+    shiftName: text(config.shiftName, fallback?.shiftName || "General Shift"),
+    shiftType: text(config.shiftType, fallback?.shiftType || "General"),
+    shiftStartTime: text(config.shiftStartTime, fallback?.shiftStartTime || "09:00"),
+    shiftEndTime: text(config.shiftEndTime, fallback?.shiftEndTime || "18:00"),
+    loginAccessRule: normalizeLoginAccessRule(config.loginAccessRule || fallback?.loginAccessRule),
+    earlyInAllowed: wholeNumber(config.earlyInAllowed, fallback?.earlyInAllowed ?? 15),
+    minimumWorkBeforePunchOut: wholeNumber(config.minimumWorkBeforePunchOut, fallback?.minimumWorkBeforePunchOut ?? 60),
+  };
+}
+
+function resolveHolidayPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
+  weeklyOffPolicy?: unknown;
+  allowPunchOnHoliday?: boolean;
+  allowPunchOnWeeklyOff?: boolean;
+}) {
+  const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const weeklyOffPattern = text(config.weeklyOffPattern);
+  const weeklyOffPolicy =
+    weeklyOffPattern === "Saturday + Sunday"
+      ? "saturday_sunday"
+      : weeklyOffPattern === "2nd and 4th Saturday + Sunday" || weeklyOffPattern === "Alternate Saturday + Sunday"
+        ? "second_fourth_saturday_sunday"
+        : normalizeWeeklyOffPolicy(fallback?.weeklyOffPolicy);
+
+  return {
+    weeklyOffPolicy,
+    allowPunchOnHoliday:
+      yesNo(config.holidayPunchAllowed, fallback?.allowPunchOnHoliday === false ? "No" : "Yes") === "Yes",
+    allowPunchOnWeeklyOff:
+      yesNo(config.weeklyOffPunchAllowed, fallback?.allowPunchOnWeeklyOff === false ? "No" : "Yes") === "Yes",
+  };
+}
+
+function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
+  const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const action = text(
+    config.ifEmployeePunchesOnApprovedLeave,
+    text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Approval",
+  );
+  return {
+    ifEmployeePunchesOnApprovedLeave:
+      action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Approval"
+        ? action
+        : "Allow Punch and Send for Approval",
+  } as const;
+}
+
 function normalizeText(value: string | null | undefined) {
   return (value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -339,7 +480,7 @@ Deno.serve(async (req) => {
 
   const { data: employee, error: employeeError } = await supabase
     .from("employees")
-    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id,shift_name")
+    .select("id,company_id,full_name,status,mobile_app_status,attendance_mode,bound_device_id,shift_name,department")
     .eq("id", payload.employee_id)
     .eq("company_id", payload.company_id)
     .maybeSingle();
@@ -364,7 +505,7 @@ Deno.serve(async (req) => {
   const { data: company, error: companyError } = await supabase
     .from("companies")
     .select(
-      "id,name,office_lat,office_lon,office_radius_m,status,weekly_off_policy,allow_punch_on_holiday,allow_punch_on_weekly_off,login_access_rule"
+      "id,name,office_lat,office_lon,office_radius_m,status"
     )
     .eq("id", payload.company_id)
     .maybeSingle();
@@ -377,8 +518,78 @@ Deno.serve(async (req) => {
     return json({ code: "COMPANY_SUSPENDED", error: "Company is suspended." }, 403);
   }
 
+  const [policyDefinitionResult, policyAssignmentResult] = await Promise.all([
+    supabase
+      .from("company_policy_definitions")
+      .select("id,policy_type,is_default,effective_from,config_json")
+      .eq("company_id", payload.company_id)
+      .in("policy_type", ["shift", "holiday_weekoff", "leave"])
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("company_policy_assignments")
+      .select("policy_type,policy_id,assignment_level,target_id,effective_from,effective_to,is_active")
+      .eq("company_id", payload.company_id)
+      .in("policy_type", ["shift", "holiday_weekoff", "leave"])
+      .eq("is_active", true),
+  ]);
+
+  if (policyDefinitionResult.error) {
+    return json({ error: policyDefinitionResult.error.message || "Unable to load company policies." }, 500);
+  }
+  if (policyAssignmentResult.error) {
+    return json({ error: policyAssignmentResult.error.message || "Unable to load policy assignments." }, 500);
+  }
+
+  const policyDefinitions = ((policyDefinitionResult.data || []) as Array<Record<string, unknown>>).map((row) => ({
+    id: String(row.id || ""),
+    policyType: String(row.policy_type || "") as PolicyType,
+    isDefault: row.is_default === true,
+    effectiveFrom: String(row.effective_from || ""),
+    configJson: (row.config_json || {}) as Record<string, unknown>,
+  })) satisfies PolicyDefinition[];
+  const policyAssignments = ((policyAssignmentResult.data || []) as Array<Record<string, unknown>>).map((row) => ({
+    policyType: String(row.policy_type || "") as PolicyType,
+    policyId: String(row.policy_id || ""),
+    assignmentLevel: String(row.assignment_level || "company") as AssignmentLevel,
+    targetId: String(row.target_id || ""),
+    effectiveFrom: String(row.effective_from || ""),
+    effectiveTo: row.effective_to ? String(row.effective_to) : null,
+    isActive: row.is_active === true,
+  })) satisfies PolicyAssignment[];
+
   const currentPunchIso = toIsoFromMs(payload.device_time_ms) || new Date().toISOString();
   const punchDate = isoDateInTimeZone(currentPunchIso, payload.device_time_zone);
+  const resolvedShiftPolicy = resolvePolicyForEmployee({
+    policyType: "shift",
+    employeeId: payload.employee_id,
+    department: typeof employee.department === "string" ? employee.department : null,
+    onDate: punchDate,
+    assignments: policyAssignments,
+    definitions: policyDefinitions,
+  });
+  const resolvedHolidayPolicy = resolvePolicyForEmployee({
+    policyType: "holiday_weekoff",
+    employeeId: payload.employee_id,
+    department: typeof employee.department === "string" ? employee.department : null,
+    onDate: punchDate,
+    assignments: policyAssignments,
+    definitions: policyDefinitions,
+  });
+  const resolvedLeavePolicy = resolvePolicyForEmployee({
+    policyType: "leave",
+    employeeId: payload.employee_id,
+    department: typeof employee.department === "string" ? employee.department : null,
+    onDate: punchDate,
+    assignments: policyAssignments,
+    definitions: policyDefinitions,
+  });
+  const resolvedShift = resolveShiftPolicyRuntime(resolvedShiftPolicy, {
+    shiftName: String(employee.shift_name || "General"),
+    shiftType: String(employee.shift_name || "General"),
+  });
+  const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedHolidayPolicy);
+  const resolvedLeave = resolveLeavePolicyRuntime(resolvedLeavePolicy);
+
   const { data: leaveOnDate } = await supabase
     .from("employee_leave_requests")
     .select("id")
@@ -390,11 +601,22 @@ Deno.serve(async (req) => {
     .limit(1)
     .maybeSingle();
 
-  if (leaveOnDate?.id) {
+  const punchOnApprovedLeave = Boolean(leaveOnDate?.id);
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Block Punch") {
     return json(
       {
         code: "ON_APPROVED_LEAVE",
-        error: "You are on approved leave for this date. Punch is not allowed.",
+        error: "You have an approved leave today. Punch is blocked by company policy.",
+      },
+      409
+    );
+  }
+
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Keep Leave") {
+    return json(
+      {
+        code: "KEEP_APPROVED_LEAVE",
+        error: "You have an approved leave today. Your leave remains final for this date.",
       },
       409
     );
@@ -408,12 +630,12 @@ Deno.serve(async (req) => {
     .limit(1)
     .maybeSingle();
 
-  const weeklyOff = isWeeklyOffDate(punchDate, company.weekly_off_policy);
+  const weeklyOff = isWeeklyOffDate(punchDate, resolvedHoliday.weeklyOffPolicy);
   const isHoliday = Boolean(holidayOnDate?.id);
   const dayType = isHoliday ? "holiday" : weeklyOff ? "weekly_off" : "working_day";
   const isExtraWork = dayType !== "working_day";
-  const allowOnHoliday = company.allow_punch_on_holiday !== false;
-  const allowOnWeeklyOff = company.allow_punch_on_weekly_off !== false;
+  const allowOnHoliday = resolvedHoliday.allowPunchOnHoliday;
+  const allowOnWeeklyOff = resolvedHoliday.allowPunchOnWeeklyOff;
 
   if (isHoliday && !allowOnHoliday) {
     return json(
@@ -435,7 +657,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (payload.punch_type === "in" && normalizeLoginAccessRule(company.login_access_rule) === "shift_time_only") {
+  if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.loginAccessRule) === "shift_time_only") {
     const { data: shiftRows, error: shiftError } = await supabase
       .from("company_shift_definitions")
       .select("name,type,start_time,end_time,early_window_mins,active")
@@ -467,7 +689,15 @@ Deno.serve(async (req) => {
       { name: "Evening", type: "Late", startTime: "14:00", endTime: "22:00", earlyWindowMins: 15 },
     ];
 
-    const matchedShift = findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+    const matchedShift = resolvedShiftPolicy
+      ? {
+          name: resolvedShift.shiftName,
+          type: resolvedShift.shiftType,
+          startTime: resolvedShift.shiftStartTime,
+          endTime: resolvedShift.shiftEndTime,
+          earlyWindowMins: resolvedShift.earlyInAllowed,
+        }
+      : findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
     if (
       matchedShift &&
       !isPunchInAllowedByShiftWindow({
@@ -550,10 +780,19 @@ Deno.serve(async (req) => {
       { name: "Evening", type: "Late", startTime: "14:00", endTime: "22:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
     ];
 
-    const matchedShift = findMatchingShiftRule(
-      String(employee.shift_name || "General"),
-      effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows
-    );
+    const matchedShift = resolvedShiftPolicy
+      ? {
+          name: resolvedShift.shiftName,
+          type: resolvedShift.shiftType,
+          startTime: resolvedShift.shiftStartTime,
+          endTime: resolvedShift.shiftEndTime,
+          earlyWindowMins: resolvedShift.earlyInAllowed,
+          minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
+        }
+      : findMatchingShiftRule(
+          String(employee.shift_name || "General"),
+          effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows
+        );
     const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
     const workedMinutes = rawWorkedMinutes(lastPunchAt, currentPunchIso);
     const minWorkBeforeOut = Math.max(0, Math.floor(Number(matchedShift?.minWorkBeforeOutMins || 0)));
@@ -590,6 +829,17 @@ Deno.serve(async (req) => {
     return json(approval.body, approval.status);
   }
 
+  let approvalStatus = approval.approvalStatus;
+  let approvalReasonCodes = [...approval.approvalReasonCodes];
+  let noticeMessage: string | null = null;
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Approval") {
+    if (!approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) {
+      approvalReasonCodes.push("PUNCH_ON_APPROVED_LEAVE");
+    }
+    approvalStatus = "pending_approval";
+    noticeMessage = "You have an approved leave today. This punch has been sent for approval review.";
+  }
+
   const serverNowIso = new Date().toISOString();
   const deviceTimeIso = toIsoFromMs(payload.device_time_ms);
   const estimatedTimeIso = toIsoFromMs(payload.estimated_time_ms);
@@ -597,7 +847,7 @@ Deno.serve(async (req) => {
   const effectivePunchAt = chooseEffectivePunchAt({
     serverNowIso,
     isOffline: payload.is_offline,
-    approvalStatus: approval.approvalStatus,
+    approvalStatus,
     estimatedTimeIso,
     deviceTimeIso,
   });
@@ -634,9 +884,9 @@ Deno.serve(async (req) => {
     clock_drift_ms: payload.clock_drift_ms,
     server_received_at: serverNowIso,
     effective_punch_at: effectivePunchAt,
-    requires_approval: approval.approvalStatus === "pending_approval",
-    approval_status: approval.approvalStatus,
-    approval_reason_codes: approval.approvalReasonCodes,
+    requires_approval: approvalStatus === "pending_approval",
+    approval_status: approvalStatus,
+    approval_reason_codes: approvalReasonCodes,
     raw_payload: body,
   };
 
@@ -659,6 +909,7 @@ Deno.serve(async (req) => {
     approvalStatus: inserted.approval_status,
     effectivePunchAt: inserted.effective_punch_at,
     serverReceivedAt: inserted.server_received_at,
+    notice: noticeMessage,
   });
 });
 
