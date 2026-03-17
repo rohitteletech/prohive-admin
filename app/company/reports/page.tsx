@@ -37,6 +37,12 @@ type AttendancePreviewRow = {
   workHours: string;
   status: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
   nonWorkingDayTreatment?: string;
+  dayType: "Working Day" | "Holiday" | "Weekly Off";
+  payrollTreatment: string;
+  presentCount: string;
+  otEligible: "Yes" | "No";
+  compOffGranted: "Yes" | "No";
+  manualReviewRequired: "Yes" | "No";
 };
 
 type AttendanceSummary = {
@@ -1105,7 +1111,7 @@ export default function Page() {
 
               {selectedReport === "attendance" ? (
                     <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200 bg-white">
-                      <table className="min-w-[900px] w-full text-left text-sm">
+                      <table className="min-w-[1320px] w-full text-left text-sm">
                         <thead className="bg-slate-100 text-[11px] uppercase tracking-wide text-slate-500">
                           <tr>
                             <th className="px-3 py-3 font-semibold">Employee</th>
@@ -1116,12 +1122,18 @@ export default function Page() {
                             <th className="px-3 py-3 font-semibold">Check Out</th>
                             <th className="px-3 py-3 font-semibold">Work Hours</th>
                             <th className="px-3 py-3 font-semibold">Status</th>
+                            <th className="px-3 py-3 font-semibold">Day Type</th>
+                            <th className="px-3 py-3 font-semibold">Payroll Treatment</th>
+                            <th className="px-3 py-3 font-semibold">Present Count</th>
+                            <th className="px-3 py-3 font-semibold">OT Eligible</th>
+                            <th className="px-3 py-3 font-semibold">Comp Off Granted</th>
+                            <th className="px-3 py-3 font-semibold">Manual Review</th>
                           </tr>
                         </thead>
                         <tbody>
                           {!previewLoading && previewRows.length === 0 && !previewError && (
                             <tr>
-                              <td colSpan={8} className="px-4 py-10 text-center text-sm text-slate-500">
+                              <td colSpan={14} className="px-4 py-10 text-center text-sm text-slate-500">
                                 Generate preview to load attendance report rows.
                               </td>
                             </tr>
@@ -1150,6 +1162,16 @@ export default function Page() {
                                   {attendanceStatusLabel(row.status)}
                                 </span>
                               </td>
+                              <td className="px-3 py-3">{row.dayType}</td>
+                              <td className="px-3 py-3">
+                                <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-700">
+                                  {row.payrollTreatment}
+                                </span>
+                              </td>
+                              <td className="px-3 py-3 font-semibold text-slate-900">{row.presentCount}</td>
+                              <td className="px-3 py-3">{row.otEligible}</td>
+                              <td className="px-3 py-3">{row.compOffGranted}</td>
+                              <td className="px-3 py-3">{row.manualReviewRequired}</td>
                             </tr>
                           ))}
                         </tbody>

@@ -46,6 +46,12 @@ export type AttendanceReportRow = {
   workHours: string;
   status: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
   nonWorkingDayTreatment?: NonWorkingDayTreatment;
+  dayType: "Working Day" | "Holiday" | "Weekly Off";
+  payrollTreatment: string;
+  presentCount: string;
+  otEligible: "Yes" | "No";
+  compOffGranted: "Yes" | "No";
+  manualReviewRequired: "Yes" | "No";
 };
 
 type AttendanceReportRowWithLate = AttendanceReportRow & {
@@ -171,6 +177,20 @@ function buildQueryWindow(startDate: string, endDate: string) {
     fromIso: start.toISOString(),
     toIso: end.toISOString(),
   };
+}
+
+function presentCountForStatus(status: AttendanceReportRow["status"]) {
+  if (status === "present" || status === "late") return "1";
+  if (status === "half_day") return "0.5";
+  return "0";
+}
+
+function payrollTreatmentLabel(params: {
+  dayType: AttendanceReportRow["dayType"];
+  treatment?: NonWorkingDayTreatment;
+}) {
+  if (params.dayType === "Working Day") return "Normal Day";
+  return params.treatment || "Record Only";
 }
 
 function aggregateRows(params: {
@@ -346,6 +366,15 @@ function aggregateRows(params: {
         status: decision.status,
         lateMinutes: decision.lateMinutes,
         nonWorkingDayTreatment: treatmentLabel || undefined,
+        dayType: row.dayType === "holiday" ? "Holiday" : row.dayType === "weekly_off" ? "Weekly Off" : "Working Day",
+        payrollTreatment: payrollTreatmentLabel({
+          dayType: row.dayType === "holiday" ? "Holiday" : row.dayType === "weekly_off" ? "Weekly Off" : "Working Day",
+          treatment: treatmentLabel || undefined,
+        }),
+        presentCount: presentCountForStatus(decision.status),
+        otEligible: treatmentLabel === "OT Only" || treatmentLabel === "Present + OT" ? "Yes" : "No",
+        compOffGranted: treatmentLabel === "Grant Comp Off" ? "Yes" : "No",
+        manualReviewRequired: decision.status === "manual_review" ? "Yes" : "No",
       });
     }
   }
@@ -530,7 +559,22 @@ export async function getAttendanceReportData(params: {
 }
 
 export function toAttendanceCsv(rows: AttendanceReportRow[]) {
-  const headers = ["Employee", "Department", "Shift", "Date", "Check In", "Check Out", "Work Hours", "Status"];
+  const headers = [
+    "Employee",
+    "Department",
+    "Shift",
+    "Date",
+    "Check In",
+    "Check Out",
+    "Work Hours",
+    "Status",
+    "Day Type",
+    "Payroll Treatment",
+    "Present Count",
+    "OT Eligible",
+    "Comp Off Granted",
+    "Manual Review Required",
+  ];
   const escape = (value: string) => `"${String(value ?? "").replace(/"/g, "\"\"")}"`;
   const lines = [
     headers.map(escape).join(","),
@@ -544,6 +588,12 @@ export function toAttendanceCsv(rows: AttendanceReportRow[]) {
         row.checkOut,
         row.workHours,
         row.status,
+        row.dayType,
+        row.payrollTreatment,
+        row.presentCount,
+        row.otEligible,
+        row.compOffGranted,
+        row.manualReviewRequired,
       ].map(escape).join(",")
     ),
   ];
