@@ -21,6 +21,14 @@ function statusLabel(status: CorrectionStatus) {
   return "Pending";
 }
 
+function auditActionLabel(action: string) {
+  if (action === "submitted") return "Submitted";
+  if (action === "reviewed") return "Reviewed";
+  if (action === "auto_rejected") return "Auto Rejected";
+  if (action === "blocked_monthly_limit") return "Blocked Monthly Limit";
+  return action;
+}
+
 export default function Page() {
   const [todayIso] = useState(() => todayISOInIndia());
   const [search, setSearch] = useState("");
@@ -293,6 +301,53 @@ export default function Page() {
                 <tr>
                   <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
                     No correction requests match current filters.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
+          <h2 className="text-base font-semibold text-slate-900">Correction Action History</h2>
+          <span className="text-xs text-slate-500">Recent request audit trail</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="min-w-[1100px] w-full text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                <th className="px-5 py-3 font-semibold">Reviewed On</th>
+                <th className="px-5 py-3 font-semibold">Request ID</th>
+                <th className="px-5 py-3 font-semibold">Employee</th>
+                <th className="px-5 py-3 font-semibold">Action</th>
+                <th className="px-5 py-3 font-semibold">Old Status</th>
+                <th className="px-5 py-3 font-semibold">New Status</th>
+                <th className="px-5 py-3 font-semibold">Performed By</th>
+                <th className="px-5 py-3 font-semibold">Remark</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.flatMap((row) =>
+                (row.auditLogs || []).map((log) => (
+                  <tr key={log.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
+                    <td className="px-5 py-3">{log.createdAt ? new Date(log.createdAt).toLocaleString("en-GB") : "-"}</td>
+                    <td className="px-5 py-3 font-semibold text-slate-900">{row.id.slice(0, 8).toUpperCase()}</td>
+                    <td className="px-5 py-3">{row.employee}</td>
+                    <td className="px-5 py-3">{auditActionLabel(log.action)}</td>
+                    <td className="px-5 py-3">{log.oldStatus || "-"}</td>
+                    <td className="px-5 py-3">{log.newStatus || "-"}</td>
+                    <td className="px-5 py-3">{log.performedBy || "-"}</td>
+                    <td className="px-5 py-3">{log.remark || "-"}</td>
+                  </tr>
+                ))
+              )}
+              {!loading && filtered.flatMap((row) => row.auditLogs || []).length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-500">
+                    No correction action history available yet.
                   </td>
                 </tr>
               )}

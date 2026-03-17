@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveCorrectionPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { normalizeDateInputToIso } from "@/lib/dateTime";
+import { resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import {
   expirePendingCorrections,
   monthRangeForIsoDate,
@@ -10,6 +11,13 @@ import {
   validateCorrectionWindowWithPolicy,
 } from "@/lib/attendanceCorrections";
 import { getMobileSessionContext } from "@/lib/mobileSession";
+
+function clockToMinutes(value: string) {
+  const text = String(value || "").trim();
+  const match = text.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+  if (!match) return Number.NaN;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
 
 function normalizeTime(value: unknown) {
   const raw = String(value || "").trim();
@@ -60,9 +68,12 @@ export async function POST(req: NextRequest) {
     session.employee.company_id,
     session.employee.id,
     correctionDate,
-    ["correction"],
+    ["correction", "shift"],
   );
   const correctionPolicy = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
+  const shiftPolicy = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
+    shiftName: "General Shift",
+  });
   const initialStatus =
     !correctionPolicy.approvalRequired
       ? "approved"
@@ -118,10 +129,39 @@ export async function POST(req: NextRequest) {
   if (isMissingPunchRequest && !correctionPolicy.missingPunchCorrectionAllowed) {
     return NextResponse.json({ error: "Missing punch correction is not allowed by your assigned policy." }, { status: 403 });
   }
-  if (requestedCheckIn && existingCheckInTime && requestedCheckIn < existingCheckInTime && !correctionPolicy.latePunchRegularizationAllowed) {
+  const existingCheckInMinutes = clockToMinutes(existingCheckInTime);
+  const requestedCheckInMinutes = clockToMinutes(requestedCheckIn);
+  const shiftStartMinutes = clockToMinutes(String(shiftPolicy.shiftStartTime || ""));
+  const existingCheckOutMinutes = clockToMinutes(existingCheckOutTime);
+  const requestedCheckOutMinutes = clockToMinutes(requestedCheckOut);
+  const shiftEndMinutes = clockToMinutes(String(shiftPolicy.shiftEndTime || ""));
+  const graceMinutes = Number(shiftPolicy.gracePeriod || 0);
+
+  const isLatePunchRegularization =
+    requestedCheckIn &&
+    existingCheckInTime &&
+    Number.isFinite(requestedCheckInMinutes) &&
+    Number.isFinite(existingCheckInMinutes) &&
+    requestedCheckInMinutes < existingCheckInMinutes &&
+    (
+      !Number.isFinite(shiftStartMinutes) ||
+      existingCheckInMinutes > shiftStartMinutes + graceMinutes
+    );
+  const isEarlyGoRegularization =
+    requestedCheckOut &&
+    existingCheckOutTime &&
+    Number.isFinite(requestedCheckOutMinutes) &&
+    Number.isFinite(existingCheckOutMinutes) &&
+    requestedCheckOutMinutes > existingCheckOutMinutes &&
+    (
+      !Number.isFinite(shiftEndMinutes) ||
+      existingCheckOutMinutes < shiftEndMinutes
+    );
+
+  if (isLatePunchRegularization && !correctionPolicy.latePunchRegularizationAllowed) {
     return NextResponse.json({ error: "Late punch regularization is not allowed by your assigned policy." }, { status: 403 });
   }
-  if (requestedCheckOut && existingCheckOutTime && requestedCheckOut > existingCheckOutTime && !correctionPolicy.earlyGoRegularizationAllowed) {
+  if (isEarlyGoRegularization && !correctionPolicy.earlyGoRegularizationAllowed) {
     return NextResponse.json({ error: "Early go regularization is not allowed by your assigned policy." }, { status: 403 });
   }
 
@@ -141,13 +181,15 @@ export async function POST(req: NextRequest) {
   }
 
   const monthRange = monthRangeForIsoDate(correctionDate);
-  const { count, error: countError } = await session.admin
+  const monthlyLimitQuery = session.admin
     .from("employee_attendance_corrections")
     .select("id", { count: "exact", head: true })
     .eq("company_id", session.employee.company_id)
     .eq("employee_id", session.employee.id)
     .gte("correction_date", monthRange.start)
-    .lte("correction_date", monthRange.end);
+    .lte("correction_date", monthRange.end)
+    .in("status", ["pending", "pending_manager", "pending_hr", "approved"]);
+  const { count, error: countError } = await monthlyLimitQuery;
   if (countError) {
     return NextResponse.json({ error: countError.message || "Unable to validate monthly limit." }, { status: 400 });
   }

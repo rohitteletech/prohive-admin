@@ -19,6 +19,16 @@ export type CorrectionRow = {
   submittedTime: string;
   status: CorrectionStatus;
   adminRemark?: string;
+  auditLogs?: Array<{
+    id: string;
+    action: string;
+    oldStatus?: string;
+    newStatus?: string;
+    performedBy: string;
+    performedRole: string;
+    remark?: string;
+    createdAt: string;
+  }>;
 };
 
 function normalizeText(value: unknown) {
@@ -61,5 +71,17 @@ export function correctionRowFromDb(row: Record<string, unknown>): CorrectionRow
     submittedTime: Number.isNaN(submittedAt.getTime()) ? "" : formatDisplayTime(submittedAt),
     status,
     adminRemark: normalizeText(row.admin_remark),
+    auditLogs: Array.isArray(row.audit_logs)
+      ? (row.audit_logs as Array<Record<string, unknown>>).map((log) => ({
+          id: String(log.id || ""),
+          action: String(log.action || ""),
+          oldStatus: normalizeText(log.old_status),
+          newStatus: normalizeText(log.new_status),
+          performedBy: String(log.performed_by || ""),
+          performedRole: String(log.performed_role || ""),
+          remark: normalizeText(log.remark),
+          createdAt: String(log.created_at || ""),
+        }))
+      : [],
   };
 }

@@ -30,6 +30,29 @@ export async function GET(req: NextRequest) {
 
   const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
   const assignments = await listCompanyPolicyAssignments(context.admin, context.companyId);
+  const correctionIds = Array.isArray(data)
+    ? ((data as unknown as Array<Record<string, unknown>>).map((row) => String(row.id || "")).filter(Boolean))
+    : [];
+  const { data: auditRows, error: auditError } = correctionIds.length
+    ? await context.admin
+        .from("employee_attendance_correction_audit_logs")
+        .select("id,correction_id,action,old_status,new_status,performed_by,performed_role,remark,created_at")
+        .eq("company_id", context.companyId)
+        .in("correction_id", correctionIds)
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+  if (auditError) {
+    return NextResponse.json({ error: auditError.message || "Unable to load correction audit logs." }, { status: 400 });
+  }
+
+  const auditByCorrectionId = new Map<string, Array<Record<string, unknown>>>();
+  ((auditRows || []) as Array<Record<string, unknown>>).forEach((row) => {
+    const correctionId = String(row.correction_id || "");
+    if (!correctionId) return;
+    const bucket = auditByCorrectionId.get(correctionId) || [];
+    bucket.push(row);
+    auditByCorrectionId.set(correctionId, bucket);
+  });
 
   return NextResponse.json({
     rows: Array.isArray(data)
@@ -50,6 +73,7 @@ export async function GET(req: NextRequest) {
             policy_name: resolvedPolicy?.policyName || "Standard Correction Policy",
             policy_code: resolvedPolicy?.policyCode || "COR-001",
             approval_mode: runtime.approvalRequired ? runtime.approvalFlow : "Auto Approval",
+            audit_logs: auditByCorrectionId.get(String(source.id || "")) || [],
           });
         })
       : [],

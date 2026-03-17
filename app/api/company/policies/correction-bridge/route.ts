@@ -103,7 +103,10 @@ export async function PUT(req: NextRequest) {
     earlyGoRegularizationAllowed: body.earlyGoRegularizationAllowed || "Yes",
     correctionRequestWindow: body.correctionRequestWindow || "2",
     backdatedCorrectionAllowed: body.backdatedCorrectionAllowed || "No",
-    maximumBackdatedDays: body.maximumBackdatedDays || "2",
+    maximumBackdatedDays:
+      (body.backdatedCorrectionAllowed || "No") === "Yes"
+        ? body.maximumBackdatedDays || "2"
+        : "0",
     approvalRequired: body.approvalRequired || "Yes",
     approvalFlow: body.approvalFlow || "Manager + HR Approval",
     maximumRequestsPerMonth: body.maximumRequestsPerMonth || "3",

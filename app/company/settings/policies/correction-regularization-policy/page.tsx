@@ -11,6 +11,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { formatDisplayDateTime } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type CorrectionPolicyState = {
@@ -32,6 +33,7 @@ type CorrectionPolicyState = {
   approvalFlow: "Manager Approval" | "HR Approval" | "Manager + HR Approval";
   maximumRequestsPerMonth: string;
   reasonMandatory: "Yes" | "No";
+  createdOn?: string;
 };
 
 const initialState: CorrectionPolicyState = {
@@ -121,7 +123,7 @@ export default function CorrectionRegularizationPolicyPage() {
       headers: { authorization: `Bearer ${token}` },
     });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
-      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; createdAt?: string; configJson?: Record<string, unknown> }>;
     };
     const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
@@ -140,6 +142,7 @@ export default function CorrectionRegularizationPolicyPage() {
               nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
               status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+              createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
             } satisfies CorrectionPolicyState;
           })
         : [nextPolicy];
@@ -268,7 +271,7 @@ export default function CorrectionRegularizationPolicyPage() {
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
           createdBy: "Company Admin",
-          createdOn: "2026-03-13 08:20 AM",
+          createdOn: policy.createdOn || "",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
       />
@@ -374,12 +377,21 @@ export default function CorrectionRegularizationPolicyPage() {
                 </Select>
               </Field>
               <Field label="Maximum Backdated Days">
-                <TextInput value={draft.maximumBackdatedDays} onChange={(e) => update("maximumBackdatedDays", e.target.value)} />
+                <TextInput
+                  value={draft.maximumBackdatedDays}
+                  onChange={(e) => update("maximumBackdatedDays", e.target.value)}
+                  disabled={draft.backdatedCorrectionAllowed === "No"}
+                />
               </Field>
               <Field label="Maximum Requests Per Month">
                 <TextInput value={draft.maximumRequestsPerMonth} onChange={(e) => update("maximumRequestsPerMonth", e.target.value)} />
               </Field>
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {draft.backdatedCorrectionAllowed === "Yes"
+                ? "Employees can raise backdated corrections only within the configured maximum days."
+                : "Backdated correction is disabled, so maximum backdated days is inactive."}
+            </p>
           </PolicySection>
 
           <PolicySection
@@ -408,6 +420,11 @@ export default function CorrectionRegularizationPolicyPage() {
                 </Select>
               </Field>
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {draft.approvalRequired === "Yes"
+                ? "Requests will follow the selected approval workflow."
+                : "Requests will auto-approve when approval is not required."}
+            </p>
           </PolicySection>
 
           <PolicySection

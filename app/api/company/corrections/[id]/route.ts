@@ -131,7 +131,6 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     })
     .eq("company_id", context.companyId)
     .eq("id", id)
-    .eq("status", "pending")
     .in("status", ["pending", "pending_manager", "pending_hr"])
     .select("id,status")
     .maybeSingle();
