@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CompanyHoliday, HolidayType } from "@/lib/companyLeaves";
+import { formatDayName, formatDisplayDateShort } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   GOVERNMENT_HOLIDAY_STATE_OPTIONS,
@@ -338,11 +339,11 @@ export default function ManageHolidaysPage() {
             <table className="w-full min-w-[720px] text-left">
               <thead>
                 <tr className="border-b border-slate-200 text-[11px] uppercase tracking-wide text-slate-500">
-                  <th className="px-3 py-2 font-semibold">Keep</th>
                   <th className="px-3 py-2 font-semibold">Date</th>
-                  <th className="px-3 py-2 font-semibold">Holiday</th>
-                  <th className="px-3 py-2 font-semibold">Scope</th>
+                  <th className="px-3 py-2 font-semibold">Day</th>
+                  <th className="px-3 py-2 font-semibold">Holiday Name</th>
                   <th className="px-3 py-2 font-semibold">Type</th>
+                  <th className="px-3 py-2 font-semibold">Keep</th>
                 </tr>
               </thead>
               <tbody>
@@ -358,6 +359,13 @@ export default function ManageHolidaysPage() {
                   const alreadyAdded = existingKeys.has(dedupeKey);
                   return (
                     <tr key={row.key} className="border-b border-slate-200 text-sm text-slate-700 last:border-b-0">
+                      <td className="px-3 py-2">{formatDisplayDateShort(row.date)}</td>
+                      <td className="px-3 py-2 capitalize">{formatDayName(row.date)}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-semibold text-slate-900">{row.name}</div>
+                        {alreadyAdded && <div className="text-xs text-slate-500">Already added</div>}
+                      </td>
+                      <td className="px-3 py-2 capitalize">{row.type}</td>
                       <td className="px-3 py-2">
                         <input
                           type="checkbox"
@@ -366,13 +374,6 @@ export default function ManageHolidaysPage() {
                           onChange={(e) => toggleGovtSelection(row.key, e.target.checked)}
                         />
                       </td>
-                      <td className="px-3 py-2">{row.date}</td>
-                      <td className="px-3 py-2">
-                        <div className="font-semibold text-slate-900">{row.name}</div>
-                        {alreadyAdded && <div className="text-xs text-slate-500">Already added</div>}
-                      </td>
-                      <td className="px-3 py-2 capitalize">{row.scope}</td>
-                      <td className="px-3 py-2 capitalize">{row.type}</td>
                     </tr>
                   );
                 })}
@@ -449,17 +450,19 @@ export default function ManageHolidaysPage() {
         <div className="mt-4 overflow-x-auto">
           <table className="w-full min-w-[720px] text-left">
             <thead>
-              <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-3 font-semibold">Date</th>
-                <th className="px-4 py-3 font-semibold">Holiday</th>
-                <th className="px-4 py-3 font-semibold">Type</th>
-                <th className="px-4 py-3 font-semibold text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+                <tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3 font-semibold">Date</th>
+                  <th className="px-4 py-3 font-semibold">Day</th>
+                  <th className="px-4 py-3 font-semibold">Holiday Name</th>
+                  <th className="px-4 py-3 font-semibold">Type</th>
+                  <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
               {sortedRows.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
-                  <td className="px-4 py-3">{row.date}</td>
+                  <td className="px-4 py-3">{formatDisplayDateShort(row.date)}</td>
+                  <td className="px-4 py-3 capitalize">{formatDayName(row.date)}</td>
                   <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
                   <td className="px-4 py-3">
                     <span className={["rounded-full border px-2.5 py-1 text-xs font-semibold capitalize", typeBadge(row.type)].join(" ")}>
@@ -479,7 +482,7 @@ export default function ManageHolidaysPage() {
               ))}
               {!sortedRows.length && !loading && (
                 <tr>
-                  <td colSpan={4} className="px-4 py-10 text-center text-sm text-slate-500">
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-slate-500">
                     No holidays added yet.
                   </td>
                 </tr>

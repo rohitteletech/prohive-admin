@@ -87,6 +87,47 @@ export function formatDisplayDate(value: string | Date | null | undefined) {
   }).format(parsed);
 }
 
+export function formatDisplayDateShort(value: string | Date | null | undefined) {
+  if (!value) return "";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    const fallback = formatDisplayDate(value);
+    return fallback ? fallback.replace(/\s+/g, "-") : "";
+  }
+
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: INDIA_TIME_ZONE,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).formatToParts(parsed);
+
+  const day = lookupPart(parts, "day");
+  const month = lookupPart(parts, "month");
+  const year = lookupPart(parts, "year");
+  return [day, month, year].filter(Boolean).join("-");
+}
+
+export function formatDayName(value: string | Date | null | undefined) {
+  if (!value) return "";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    const isoMatch = String(value).match(ISO_DATE_RE);
+    if (!isoMatch) return "";
+    const reparsed = new Date(`${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}T00:00:00Z`);
+    if (Number.isNaN(reparsed.getTime())) return "";
+    return new Intl.DateTimeFormat("en-GB", {
+      timeZone: INDIA_TIME_ZONE,
+      weekday: "long",
+    }).format(reparsed);
+  }
+
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: INDIA_TIME_ZONE,
+    weekday: "long",
+  }).format(parsed);
+}
+
 export function formatDisplayTime(value: string | Date | null | undefined) {
   if (!value) return "";
   const parsed = value instanceof Date ? value : new Date(value);

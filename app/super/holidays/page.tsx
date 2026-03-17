@@ -6,6 +6,7 @@ import {
   GovernmentHolidayState,
 } from "@/lib/governmentHolidays";
 import { GovernmentTemplateHolidayRow } from "@/lib/governmentHolidayTemplates";
+import { formatDayName, formatDisplayDateShort } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ApiRow = GovernmentTemplateHolidayRow;
@@ -95,7 +96,15 @@ export default function SuperHolidayTemplatesPage() {
     if (!name) return showToast("Holiday name is required.");
     const exists = rows.some((row) => row.date === date && row.name.toLowerCase() === name.toLowerCase());
     if (exists) return showToast("Duplicate holiday row.");
-    setRows((prev) => [...prev, { ...draft, date, name }]);
+    setRows((prev) => [
+      ...prev,
+      {
+        ...draft,
+        date,
+        name,
+        scope: state === "all_india" ? "national" : "state",
+      },
+    ]);
     setDraft((prev) => ({ ...prev, date: "", name: "" }));
   }
 
@@ -173,19 +182,19 @@ export default function SuperHolidayTemplatesPage() {
       </div>
 
       <div style={{ marginTop: 14, border: "1px solid #e2e8f0", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "160px 1.6fr 120px 120px 90px", gap: 8, background: "#f8fafc", padding: "10px 12px", fontSize: 12, fontWeight: 700, color: "#475569" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "160px 140px 1.4fr 120px 90px", gap: 8, background: "#f8fafc", padding: "10px 12px", fontSize: 12, fontWeight: 700, color: "#475569" }}>
           <div>Date</div>
-          <div>Holiday</div>
+          <div>Day</div>
+          <div>Holiday Name</div>
           <div>Type</div>
-          <div>Scope</div>
           <div>Action</div>
         </div>
         {sortedRows.map((row, index) => (
-          <div key={`${row.date}-${row.name}-${index}`} style={{ display: "grid", gridTemplateColumns: "160px 1.6fr 120px 120px 90px", gap: 8, padding: "9px 12px", borderTop: "1px solid #e2e8f0", alignItems: "center", fontSize: 14 }}>
-            <div>{row.date}</div>
+          <div key={`${row.date}-${row.name}-${index}`} style={{ display: "grid", gridTemplateColumns: "160px 140px 1.4fr 120px 90px", gap: 8, padding: "9px 12px", borderTop: "1px solid #e2e8f0", alignItems: "center", fontSize: 14 }}>
+            <div>{formatDisplayDateShort(row.date)}</div>
+            <div style={{ textTransform: "capitalize" }}>{formatDayName(row.date)}</div>
             <div style={{ fontWeight: 600 }}>{row.name}</div>
             <div style={{ textTransform: "capitalize" }}>{row.type}</div>
-            <div style={{ textTransform: "capitalize" }}>{row.scope}</div>
             <div>
               <button type="button" onClick={() => removeRow(index)} style={{ border: "1px solid #fecaca", color: "#b91c1c", background: "#fff1f2", borderRadius: 8, fontSize: 12, padding: "5px 8px" }}>
                 Remove
@@ -202,7 +211,7 @@ export default function SuperHolidayTemplatesPage() {
 
       <div style={{ marginTop: 14, border: "1px solid #e2e8f0", borderRadius: 12, padding: 12 }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>Add Row</div>
-        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "160px 1.6fr 120px 120px 110px" }}>
+        <div style={{ display: "grid", gap: 10, gridTemplateColumns: "160px 1.6fr 120px 110px" }}>
           <input
             type="date"
             value={draft.date}
@@ -222,14 +231,6 @@ export default function SuperHolidayTemplatesPage() {
           >
             <option value="national">National</option>
             <option value="festival">Festival</option>
-          </select>
-          <select
-            value={draft.scope}
-            onChange={(e) => setDraft((prev) => ({ ...prev, scope: e.target.value === "state" ? "state" : "national" }))}
-            style={{ border: "1px solid #cbd5e1", borderRadius: 10, padding: "9px 10px" }}
-          >
-            <option value="national">National</option>
-            <option value="state">State</option>
           </select>
           <button type="button" onClick={addDraftRow} style={{ border: "1px solid #0f172a", background: "#0f172a", color: "white", borderRadius: 10, padding: "9px 10px", fontWeight: 700 }}>
             Add
