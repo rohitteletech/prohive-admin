@@ -11,34 +11,38 @@ type HolidayBridgePayload = {
   nextReviewDate?: string;
   status?: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy?: "Yes" | "No";
-  holidaySource?: "Company" | "Government" | "Mixed";
-  weeklyOffPattern?: "Sunday Only" | "Saturday + Sunday" | "Alternate Saturday + Sunday" | "Custom";
-  customWeeklyOffPattern?: string;
+  weeklyOffPattern?: "Sunday Only" | "Saturday + Sunday" | "2nd and 4th Saturday + Sunday";
   holidayPunchAllowed?: "Yes" | "No";
   weeklyOffPunchAllowed?: "Yes" | "No";
-  holidayWorkedStatus?: "Holiday Worked" | "Present" | "OT Only";
-  weeklyOffWorkedStatus?: "Weekly Off Worked" | "Present" | "OT Only";
+  holidayWorkedStatus?: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
+  weeklyOffWorkedStatus?: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
   compOffEnabled?: "Yes" | "No";
   compOffValidityDays?: string;
 };
 
+function normalizeWorkedDayTreatment(
+  value: unknown,
+  fallback: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review",
+) {
+  const text = String(value || "").trim();
+  if (text === "Record Only" || text === "OT Only" || text === "Grant Comp Off" || text === "Present + OT" || text === "Manual Review") {
+    return text;
+  }
+  if (text === "Holiday Worked" || text === "Weekly Off Worked") return "Grant Comp Off";
+  if (text === "Present") return "Present + OT";
+  return fallback;
+}
+
 function toNewWeeklyOffPattern(value: unknown): HolidayBridgePayload["weeklyOffPattern"] {
   const normalized = normalizeWeeklyOffPolicy(value);
   if (normalized === "saturday_sunday") return "Saturday + Sunday";
-  if (normalized === "second_fourth_saturday_sunday") return "Alternate Saturday + Sunday";
+  if (normalized === "second_fourth_saturday_sunday") return "2nd and 4th Saturday + Sunday";
   return "Sunday Only";
 }
 
 function toLegacyWeeklyOffPattern(value: HolidayBridgePayload["weeklyOffPattern"], customPattern: string) {
   if (value === "Saturday + Sunday") return "saturday_sunday";
-  if (value === "Alternate Saturday + Sunday") return "second_fourth_saturday_sunday";
-  if (value === "Custom") {
-    const text = customPattern.trim().toLowerCase();
-    if (text.includes("2nd") || text.includes("4th") || text.includes("second") || text.includes("fourth")) {
-      return "second_fourth_saturday_sunday";
-    }
-    if (text.includes("saturday")) return "saturday_sunday";
-  }
+  if (value === "2nd and 4th Saturday + Sunday") return "second_fourth_saturday_sunday";
   return "sunday_only";
 }
 
@@ -81,7 +85,6 @@ export async function GET(req: NextRequest) {
     }
 
     const config = (holidayPolicy.configJson || {}) as Record<string, unknown>;
-    const hasCompanyHolidays = Array.isArray(holidayResult.data) && holidayResult.data.length > 0;
 
     return NextResponse.json({
       policyId: holidayPolicy.id,
@@ -96,30 +99,18 @@ export async function GET(req: NextRequest) {
             ? "Archived"
             : "Draft",
       defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || holidayPolicy.isDefault === false) ? "No" : "Yes",
-      holidaySource:
-        config.holidaySource === "Company" || config.holidaySource === "Government" || config.holidaySource === "Mixed"
-          ? config.holidaySource
-          : hasCompanyHolidays
-            ? "Mixed"
-            : "Government",
       weeklyOffPattern:
         config.weeklyOffPattern === "Saturday + Sunday" ||
-        config.weeklyOffPattern === "Alternate Saturday + Sunday" ||
-        config.weeklyOffPattern === "Custom"
+        config.weeklyOffPattern === "2nd and 4th Saturday + Sunday"
           ? config.weeklyOffPattern
+          : config.weeklyOffPattern === "Alternate Saturday + Sunday"
+            ? "2nd and 4th Saturday + Sunday"
           : toNewWeeklyOffPattern(companyResult.data?.weekly_off_policy),
-      customWeeklyOffPattern: String(config.customWeeklyOffPattern || ""),
       holidayPunchAllowed: config.holidayPunchAllowed === "No" || companyResult.data?.allow_punch_on_holiday === false ? "No" : "Yes",
       weeklyOffPunchAllowed:
         config.weeklyOffPunchAllowed === "No" || companyResult.data?.allow_punch_on_weekly_off === false ? "No" : "Yes",
-      holidayWorkedStatus:
-        config.holidayWorkedStatus === "Present" || config.holidayWorkedStatus === "OT Only"
-          ? config.holidayWorkedStatus
-          : "Holiday Worked",
-      weeklyOffWorkedStatus:
-        config.weeklyOffWorkedStatus === "Present" || config.weeklyOffWorkedStatus === "OT Only"
-          ? config.weeklyOffWorkedStatus
-          : "Weekly Off Worked",
+      holidayWorkedStatus: normalizeWorkedDayTreatment(config.holidayWorkedStatus, "Grant Comp Off"),
+      weeklyOffWorkedStatus: normalizeWorkedDayTreatment(config.weeklyOffWorkedStatus, "Grant Comp Off"),
       compOffEnabled: config.compOffEnabled === "No" ? "No" : "Yes",
       compOffValidityDays: String(config.compOffValidityDays || "60"),
     } satisfies HolidayBridgePayload);
@@ -149,13 +140,12 @@ export async function PUT(req: NextRequest) {
     nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
     status: (body.status || "Draft").toLowerCase(),
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
-    holidaySource: body.holidaySource || "Mixed",
+    holidaySource: "Company",
     weeklyOffPattern: body.weeklyOffPattern || "Sunday Only",
-    customWeeklyOffPattern: body.customWeeklyOffPattern || "",
     holidayPunchAllowed: body.holidayPunchAllowed || "Yes",
     weeklyOffPunchAllowed: body.weeklyOffPunchAllowed || "Yes",
-    holidayWorkedStatus: body.holidayWorkedStatus || "Holiday Worked",
-    weeklyOffWorkedStatus: body.weeklyOffWorkedStatus || "Weekly Off Worked",
+    holidayWorkedStatus: body.holidayWorkedStatus || "Grant Comp Off",
+    weeklyOffWorkedStatus: body.weeklyOffWorkedStatus || "Grant Comp Off",
     compOffEnabled: body.compOffEnabled || "Yes",
     compOffValidityDays: String(body.compOffValidityDays || "60"),
   };
@@ -234,7 +224,7 @@ export async function PUT(req: NextRequest) {
   const { error: companyError } = await context.admin
     .from("companies")
     .update({
-      weekly_off_policy: toLegacyWeeklyOffPattern(configJson.weeklyOffPattern, configJson.customWeeklyOffPattern),
+      weekly_off_policy: toLegacyWeeklyOffPattern(configJson.weeklyOffPattern, ""),
       allow_punch_on_holiday: configJson.holidayPunchAllowed === "Yes",
       allow_punch_on_weekly_off: configJson.weeklyOffPunchAllowed === "Yes",
     })

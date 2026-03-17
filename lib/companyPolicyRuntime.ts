@@ -114,7 +114,7 @@ export function resolveHolidayPolicyRuntime(policy: PolicyDefinition | null, fal
   const weeklyOffPolicy =
     weeklyOffPattern === "Saturday + Sunday"
       ? "saturday_sunday"
-      : weeklyOffPattern === "Alternate Saturday + Sunday"
+      : weeklyOffPattern === "2nd and 4th Saturday + Sunday" || weeklyOffPattern === "Alternate Saturday + Sunday"
         ? "second_fourth_saturday_sunday"
         : weeklyOffPattern === "Custom"
           ? normalizeWeeklyOffPolicy(text(config.customWeeklyOffPattern))
@@ -126,6 +126,26 @@ export function resolveHolidayPolicyRuntime(policy: PolicyDefinition | null, fal
       yesNo(config.holidayPunchAllowed, fallback?.allowPunchOnHoliday === false ? "No" : "Yes") === "Yes",
     allowPunchOnWeeklyOff:
       yesNo(config.weeklyOffPunchAllowed, fallback?.allowPunchOnWeeklyOff === false ? "No" : "Yes") === "Yes",
+    holidayWorkedStatus:
+      text(config.holidayWorkedStatus) === "Record Only" ||
+      text(config.holidayWorkedStatus) === "OT Only" ||
+      text(config.holidayWorkedStatus) === "Grant Comp Off" ||
+      text(config.holidayWorkedStatus) === "Present + OT" ||
+      text(config.holidayWorkedStatus) === "Manual Review"
+        ? text(config.holidayWorkedStatus)
+        : text(config.holidayWorkedStatus) === "Present"
+          ? "Present + OT"
+          : "Grant Comp Off",
+    weeklyOffWorkedStatus:
+      text(config.weeklyOffWorkedStatus) === "Record Only" ||
+      text(config.weeklyOffWorkedStatus) === "OT Only" ||
+      text(config.weeklyOffWorkedStatus) === "Grant Comp Off" ||
+      text(config.weeklyOffWorkedStatus) === "Present + OT" ||
+      text(config.weeklyOffWorkedStatus) === "Manual Review"
+        ? text(config.weeklyOffWorkedStatus)
+        : text(config.weeklyOffWorkedStatus) === "Present"
+          ? "Present + OT"
+          : "Grant Comp Off",
   };
 }
 

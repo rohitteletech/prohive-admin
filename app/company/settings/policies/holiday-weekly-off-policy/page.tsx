@@ -21,13 +21,11 @@ type HolidayPolicyState = {
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy: "Yes" | "No";
-  holidaySource: "Company" | "Government" | "Mixed";
-  weeklyOffPattern: "Sunday Only" | "Saturday + Sunday" | "Alternate Saturday + Sunday" | "Custom";
-  customWeeklyOffPattern: string;
+  weeklyOffPattern: "Sunday Only" | "Saturday + Sunday" | "2nd and 4th Saturday + Sunday";
   holidayPunchAllowed: "Yes" | "No";
   weeklyOffPunchAllowed: "Yes" | "No";
-  holidayWorkedStatus: "Holiday Worked" | "Present" | "OT Only";
-  weeklyOffWorkedStatus: "Weekly Off Worked" | "Present" | "OT Only";
+  holidayWorkedStatus: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
+  weeklyOffWorkedStatus: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review";
   compOffEnabled: "Yes" | "No";
   compOffValidityDays: string;
 };
@@ -40,13 +38,11 @@ const initialState: HolidayPolicyState = {
   nextReviewDate: "2027-03-13",
   status: "Draft",
   defaultCompanyPolicy: "Yes",
-  holidaySource: "Mixed",
   weeklyOffPattern: "Sunday Only",
-  customWeeklyOffPattern: "",
   holidayPunchAllowed: "Yes",
   weeklyOffPunchAllowed: "Yes",
-  holidayWorkedStatus: "Holiday Worked",
-  weeklyOffWorkedStatus: "Weekly Off Worked",
+  holidayWorkedStatus: "Grant Comp Off",
+  weeklyOffWorkedStatus: "Grant Comp Off",
   compOffEnabled: "Yes",
   compOffValidityDays: "60",
 };
@@ -310,15 +306,11 @@ export default function HolidayWeeklyOffPolicyPage() {
 
           <PolicySection
             title="Holiday Calendar & Weekly Off Rules"
-            description="Define the source of company holidays and the standard weekly off pattern applicable under this policy."
+            description="Define the company holiday calendar behavior and the standard weekly off pattern applicable under this policy."
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Holiday Source">
-                <Select value={draft.holidaySource} onChange={(e) => update("holidaySource", e.target.value as HolidayPolicyState["holidaySource"])}>
-                  <option value="Company">Company Holidays</option>
-                  <option value="Government">Government Holidays</option>
-                  <option value="Mixed">Company + Government</option>
-                </Select>
+                <TextInput value="Company Holidays" readOnly />
               </Field>
               <Field label="Weekly Off Pattern">
                 <Select
@@ -327,19 +319,9 @@ export default function HolidayWeeklyOffPolicyPage() {
                 >
                   <option value="Sunday Only">Sunday Only</option>
                   <option value="Saturday + Sunday">Saturday + Sunday</option>
-                  <option value="Alternate Saturday + Sunday">Alternate Saturday + Sunday</option>
-                  <option value="Custom">Custom</option>
+                  <option value="2nd and 4th Saturday + Sunday">2nd and 4th Saturday + Sunday</option>
                 </Select>
               </Field>
-              {draft.weeklyOffPattern === "Custom" ? (
-                <Field label="Custom Weekly Off Pattern">
-                  <TextInput
-                    value={draft.customWeeklyOffPattern}
-                    onChange={(e) => update("customWeeklyOffPattern", e.target.value)}
-                    placeholder="Example: 2nd and 4th Saturday, Sunday"
-                  />
-                </Field>
-              ) : null}
             </div>
           </PolicySection>
 
@@ -371,9 +353,11 @@ export default function HolidayWeeklyOffPolicyPage() {
                   value={draft.holidayWorkedStatus}
                   onChange={(e) => update("holidayWorkedStatus", e.target.value as HolidayPolicyState["holidayWorkedStatus"])}
                 >
-                  <option value="Holiday Worked">Holiday Worked</option>
-                  <option value="Present">Present</option>
+                  <option value="Record Only">Record Only</option>
                   <option value="OT Only">OT Only</option>
+                  <option value="Grant Comp Off">Grant Comp Off</option>
+                  <option value="Present + OT">Present + OT</option>
+                  <option value="Manual Review">Manual Review</option>
                 </Select>
               </Field>
               <Field label="If Punched On Weekly Off">
@@ -381,9 +365,11 @@ export default function HolidayWeeklyOffPolicyPage() {
                   value={draft.weeklyOffWorkedStatus}
                   onChange={(e) => update("weeklyOffWorkedStatus", e.target.value as HolidayPolicyState["weeklyOffWorkedStatus"])}
                 >
-                  <option value="Weekly Off Worked">Weekly Off Worked</option>
-                  <option value="Present">Present</option>
+                  <option value="Record Only">Record Only</option>
                   <option value="OT Only">OT Only</option>
+                  <option value="Grant Comp Off">Grant Comp Off</option>
+                  <option value="Present + OT">Present + OT</option>
+                  <option value="Manual Review">Manual Review</option>
                 </Select>
               </Field>
             </div>
