@@ -72,6 +72,15 @@ export default function ManageHolidaysPage() {
     () => new Set(rows.map((r) => `${r.date}|${r.name.trim().toLowerCase()}`)),
     [rows]
   );
+  const selectableGovtKeys = useMemo(
+    () =>
+      govtSuggestions
+        .filter((row) => !existingKeys.has(`${row.date}|${row.name.trim().toLowerCase()}`))
+        .map((row) => row.key),
+    [existingKeys, govtSuggestions]
+  );
+  const formattedManualDate = date ? formatDisplayDateShort(date) : "";
+  const manualDayName = date ? formatDayName(date) : "";
 
   function showToast(message: string) {
     setToast(message);
@@ -138,10 +147,7 @@ export default function ManageHolidaysPage() {
       setSelectedGovtKeys([]);
       return;
     }
-    const selectable = govtSuggestions
-      .filter((row) => !existingKeys.has(`${row.date}|${row.name.trim().toLowerCase()}`))
-      .map((row) => row.key);
-    setSelectedGovtKeys(selectable);
+    setSelectedGovtKeys(selectableGovtKeys);
   }
 
   function handleAddSelectedGovtHolidays() {
@@ -284,6 +290,9 @@ export default function ManageHolidaysPage() {
               )}
             </span>
           </div>
+          <p className="mt-2 text-xs text-slate-500">
+            `Add Selected` only prepares rows in the holiday calendar below. Click `Save Holidays` to persist changes.
+          </p>
           <div className="mt-3 grid gap-3 md:grid-cols-4">
             <label className="grid gap-1.5">
               <span className="text-sm text-slate-700">Year</span>
@@ -314,21 +323,24 @@ export default function ManageHolidaysPage() {
               <button
                 type="button"
                 onClick={() => setAllGovtSelection(true)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                disabled={govtLoading || selectableGovtKeys.length === 0}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Select All
               </button>
               <button
                 type="button"
                 onClick={() => setAllGovtSelection(false)}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                disabled={selectedGovtKeys.length === 0}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Clear
               </button>
               <button
                 type="button"
                 onClick={handleAddSelectedGovtHolidays}
-                className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+                disabled={selectedGovtKeys.length === 0}
+                className="rounded-lg border border-slate-900 bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Add Selected
               </button>
@@ -398,9 +410,22 @@ export default function ManageHolidaysPage() {
               onChange={(e) => setDate(e.target.value)}
               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none"
             />
+            <span className="text-xs text-slate-500">
+              {formattedManualDate ? `Display: ${formattedManualDate}` : "Display: dd-MMM-yyyy"}
+            </span>
           </label>
 
-          <label className="grid gap-1.5 md:col-span-2">
+          <label className="grid gap-1.5">
+            <span className="text-sm text-slate-700">Day</span>
+            <input
+              value={manualDayName}
+              readOnly
+              placeholder="Auto from date"
+              className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-700 outline-none"
+            />
+          </label>
+
+          <label className="grid gap-1.5 md:col-span-1">
             <span className="text-sm text-slate-700">Holiday Name</span>
             <input
               value={name}

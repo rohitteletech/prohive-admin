@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   let selectedState = "";
   let setId = "";
   let source = {
-    name: "Super Admin Published Template",
+    name: "Server Published Template",
     url: "",
     mode: "published_template",
     lastUpdated: "",
@@ -51,7 +51,7 @@ export async function GET(req: NextRequest) {
       selectedState = String(setRow.state || candidate);
       setId = String(setRow.id);
       source = {
-        name: candidate === state ? "Super Admin Published Template" : "Super Admin Published Template (All India fallback)",
+        name: candidate === state ? "Server Published Template" : "Server Published Template (All India fallback)",
         url: "",
         mode: "published_template",
         lastUpdated: String(setRow.last_updated_at || ""),
