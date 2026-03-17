@@ -127,7 +127,7 @@ export async function getLatePenaltyReportData(params: {
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();
   const { fromIso, toIso } = buildQueryWindow(scope.startDate, scope.endDate);
 
-  const [eventsResult, shiftResult, companyResult] = await Promise.all([
+  const [eventsResult, shiftResult] = await Promise.all([
     params.admin
       .from("attendance_punch_events")
       .select("employee_id,punch_type,effective_punch_at,server_received_at,approval_status")
@@ -141,16 +141,10 @@ export async function getLatePenaltyReportData(params: {
       .select("name,type,start_time,end_time,grace_mins,active")
       .eq("company_id", params.companyId)
       .order("created_at", { ascending: true }),
-    params.admin
-      .from("companies")
-      .select("half_day_min_work_mins,late_penalty_enabled,late_penalty_up_to_mins,late_penalty_repeat_count,late_penalty_repeat_days,late_penalty_above_mins,late_penalty_above_days")
-      .eq("id", params.companyId)
-      .maybeSingle(),
   ]);
 
   if (eventsResult.error) return { ok: false as const, status: 400, error: eventsResult.error.message || "Unable to load attendance events." };
   if (shiftResult.error) return { ok: false as const, status: 400, error: shiftResult.error.message || "Unable to load shift rules." };
-  if (companyResult.error) return { ok: false as const, status: 400, error: companyResult.error.message || "Unable to load company rules." };
 
   const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
   const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
@@ -236,7 +230,6 @@ export async function getLatePenaltyReportData(params: {
     const shift = employee.shift_name?.trim() || "General";
     const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
       shiftName: shift,
-      halfDayMinWorkMins: Number(companyResult.data?.half_day_min_work_mins || 240),
     });
     const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null);
     const shiftConfig = resolvedPolicies?.resolved?.shift
@@ -257,7 +250,7 @@ export async function getLatePenaltyReportData(params: {
       shiftEnd: shiftConfig?.end || null,
       scheduledMinutes,
       graceMins: shiftConfig?.graceMins || resolvedShift.gracePeriod || 10,
-      halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins || Number(companyResult.data?.half_day_min_work_mins || 240),
+      halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
       policy: resolvedAttendance,
     });
 
@@ -280,12 +273,12 @@ export async function getLatePenaltyReportData(params: {
   const rows = Array.from(employeeLateMap.entries()).map(([employeeId, late]) => {
     const employee = employeesById.get(employeeId);
     const latePolicy = employeeRuleMap.get(employeeId) || {
-      enabled: companyResult.data?.late_penalty_enabled === true,
-      upToMins: Number(companyResult.data?.late_penalty_up_to_mins || 30),
-      repeatCount: Number(companyResult.data?.late_penalty_repeat_count || 3),
-      repeatDays: Number(companyResult.data?.late_penalty_repeat_days || 1),
-      aboveMins: Number(companyResult.data?.late_penalty_above_mins || 30),
-      aboveDays: Number(companyResult.data?.late_penalty_above_days || 0.5),
+      enabled: false,
+      upToMins: 30,
+      repeatCount: 3,
+      repeatDays: 1,
+      aboveMins: 30,
+      aboveDays: 0.5,
     };
     const totalLateCount = late.upTo + late.above;
     const repeatBlocks = Math.floor(late.upTo / Math.max(1, latePolicy.repeatCount + 1));
