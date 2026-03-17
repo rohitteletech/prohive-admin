@@ -18,7 +18,7 @@ export default function SuperHolidayTemplatesPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [published, setPublished] = useState(false);
-  const [sourceMode, setSourceMode] = useState<"default" | "database">("default");
+  const [sourceMode, setSourceMode] = useState<"default" | "database" | "official">("default");
   const [metaLine, setMetaLine] = useState("");
   const [draft, setDraft] = useState<ApiRow>({
     date: "",
@@ -26,6 +26,7 @@ export default function SuperHolidayTemplatesPage() {
     type: "festival",
     scope: "national",
   });
+  const [importing, setImporting] = useState(false);
 
   function showToast(message: string) {
     setToast(message);
@@ -102,6 +103,38 @@ export default function SuperHolidayTemplatesPage() {
 
   function removeRow(index: number) {
     setRows((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function importOfficialRows() {
+    const supabase = getSupabaseBrowserClient("super");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token;
+    if (!accessToken) return showToast("Super admin session missing. Please login again.");
+
+    setImporting(true);
+    const response = await fetch("/api/super/holiday-templates/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ year, state }),
+    });
+    const result = (await response.json().catch(() => ({}))) as {
+      ok?: boolean;
+      rows?: ApiRow[];
+      sourceMode?: "official";
+      error?: string;
+    };
+    setImporting(false);
+    if (!response.ok || !result.ok || !Array.isArray(result.rows)) {
+      return showToast(result.error || "Unable to import official holidays.");
+    }
+    setRows(result.rows);
+    setSourceMode("official");
+    setPublished(false);
+    setMetaLine("Loaded from official API. Review and save draft or publish template.");
+    showToast("Official holiday list loaded.");
   }
 
   async function saveTemplate(publish: boolean) {
@@ -239,6 +272,14 @@ export default function SuperHolidayTemplatesPage() {
       </div>
 
       <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+        <button
+          type="button"
+          onClick={importOfficialRows}
+          disabled={importing || loading || saving}
+          style={{ border: "1px solid #1d4ed8", background: "#eff6ff", color: "#1d4ed8", borderRadius: 10, padding: "10px 12px", fontWeight: 700 }}
+        >
+          {importing ? "Loading..." : "Load Official Holidays"}
+        </button>
         <button
           type="button"
           onClick={() => saveTemplate(false)}
