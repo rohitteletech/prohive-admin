@@ -551,7 +551,14 @@ export default function LeavePolicyPage() {
               <Field
                 label={
                   draft.backdatedLeaveAllowed === "Yes"
-                    ? "Backdated Leave Allowed (Allowed for 5 days)"
+                    ? (
+                        <span className="inline-flex items-center gap-2">
+                          <span>Backdated Leave Allowed</span>
+                          <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
+                            Allowed for 5 days
+                          </span>
+                        </span>
+                      )
                     : "Backdated Leave Allowed"
                 }
               >
@@ -578,8 +585,21 @@ export default function LeavePolicyPage() {
                   <option value="Block Punch">Block Punch</option>
                 </Select>
               </Field>
-              <Field label="Sandwich Leave">
-                <Select value={draft.sandwichLeave} onChange={(e) => updatePolicy("sandwichLeave", e.target.value as LeavePolicyState["sandwichLeave"])}>
+              <Field
+                label={
+                  <span className="inline-flex items-center gap-2">
+                    <span>Sandwich Leave</span>
+                    <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                      Feature under scope review
+                    </span>
+                  </span>
+                }
+              >
+                <Select
+                  value={draft.sandwichLeave}
+                  disabled
+                  className="cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500"
+                >
                   <option value="Enabled">Enabled</option>
                   <option value="Disabled">Disabled</option>
                 </Select>
