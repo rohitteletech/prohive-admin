@@ -137,6 +137,7 @@ export default function NewAttendancePolicyPage() {
     };
     const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
+      workforceCounts?: { byPolicyType?: { attendance?: Record<string, number> } };
     };
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
@@ -156,11 +157,7 @@ export default function NewAttendancePolicyPage() {
           })
         : [nextPolicy];
     setSavedPolicies(loadedPolicies);
-    const nextAssignedCounts = (assignmentsResult.assignments || []).reduce<Record<string, number>>((counts, assignment) => {
-      if (!assignment.isActive || !assignment.policyId) return counts;
-      counts[assignment.policyId] = (counts[assignment.policyId] || 0) + 1;
-      return counts;
-    }, {});
+    const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.attendance || {};
     setAssignedCounts(nextAssignedCounts);
     setIsCreatingNew(false);
     setLoading(false);

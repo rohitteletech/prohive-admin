@@ -95,6 +95,61 @@ export async function listCompanyAssignmentTargets(admin: SupabaseClient, compan
   };
 }
 
+export async function listCompanyPolicyWorkforceCounts(
+  admin: SupabaseClient,
+  companyId: string,
+  onDate: string,
+) {
+  const { data, error } = await admin
+    .from("employees")
+    .select("id,department,status")
+    .eq("company_id", companyId)
+    .order("full_name", { ascending: true });
+
+  if (error) {
+    throw new Error(error.message || "Unable to load employees for policy workforce counts.");
+  }
+
+  const employees = (Array.isArray(data) ? data : [])
+    .filter((row) => row && typeof row.id === "string")
+    .filter((row) => String(row.status || "").toLowerCase() === "active")
+    .map((row) => ({
+      id: String(row.id),
+      department: typeof row.department === "string" ? row.department : "",
+    }));
+
+  const definitions = await ensureCompanyPolicyDefinitions(admin, companyId, "system@policy.local");
+  const assignments = await listCompanyPolicyAssignments(admin, companyId);
+  const counts: Record<PolicyType, Record<string, number>> = {
+    shift: {},
+    attendance: {},
+    leave: {},
+    holiday_weekoff: {},
+    correction: {},
+  };
+
+  for (const employee of employees) {
+    const department = employee.department || "";
+    (["shift", "attendance", "leave", "holiday_weekoff", "correction"] as PolicyType[]).forEach((policyType) => {
+      const resolved = resolvePolicyForEmployee({
+        policyType,
+        employeeId: employee.id,
+        department,
+        onDate,
+        assignments,
+        definitions,
+      });
+      if (!resolved?.id) return;
+      counts[policyType][resolved.id] = (counts[policyType][resolved.id] || 0) + 1;
+    });
+  }
+
+  return {
+    activeEmployeeCount: employees.length,
+    byPolicyType: counts,
+  };
+}
+
 export function decorateAssignmentRows(
   assignments: PolicyAssignment[],
   definitions: PolicyDefinition[],

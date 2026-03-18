@@ -5,6 +5,7 @@ import {
   ensureCompanyPolicyDefinitions,
   listCompanyAssignmentTargets,
   listCompanyPolicyAssignments,
+  listCompanyPolicyWorkforceCounts,
   validateAssignmentLevel,
   validatePolicyType,
 } from "@/lib/companyPoliciesServer";
@@ -21,6 +22,11 @@ export async function GET(req: NextRequest) {
     const policies = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
     const assignments = await listCompanyPolicyAssignments(context.admin, context.companyId);
     const targets = await listCompanyAssignmentTargets(context.admin, context.companyId);
+    const workforceCounts = await listCompanyPolicyWorkforceCounts(
+      context.admin,
+      context.companyId,
+      new Date().toISOString().slice(0, 10),
+    );
     const targetLabels = Object.fromEntries([
       ...targets.departments.map((target) => [target.id, target.label] as const),
       ...targets.employees.map((target) => [target.id, target.label] as const),
@@ -41,6 +47,7 @@ export async function GET(req: NextRequest) {
       policies,
       defaultPolicies,
       assignments: decorateAssignmentRows(assignments, policies, targetLabels),
+      workforceCounts,
       targets: {
         company: [{ id: context.companyId, label: "Entire Company" }],
         departments: targets.departments,

@@ -223,6 +223,7 @@ export default function LeavePolicyPage() {
     };
     const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
+      workforceCounts?: { byPolicyType?: { leave?: Record<string, number> } };
     };
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
@@ -243,11 +244,7 @@ export default function LeavePolicyPage() {
           })
         : [nextPolicy];
     setSavedPolicies(loadedPolicies);
-    const nextAssignedCounts = (assignmentsResult.assignments || []).reduce<Record<string, number>>((counts, assignment) => {
-      if (!assignment.isActive || !assignment.policyId) return counts;
-      counts[assignment.policyId] = (counts[assignment.policyId] || 0) + 1;
-      return counts;
-    }, {});
+    const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.leave || {};
     setAssignedCounts(nextAssignedCounts);
     setSavedLeaveTypesByPolicy(
       Object.fromEntries(
