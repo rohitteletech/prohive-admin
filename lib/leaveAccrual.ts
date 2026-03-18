@@ -96,10 +96,12 @@ export async function fetchCompOffEarnedDays(params: {
 }) {
   const grantsOnHoliday = params.holidayWorkedStatus === "Grant Comp Off";
   const grantsOnWeeklyOff = params.weeklyOffWorkedStatus === "Grant Comp Off";
+  const mayResolveGrantOnHoliday = params.holidayWorkedStatus === "Manual Review";
+  const mayResolveGrantOnWeeklyOff = params.weeklyOffWorkedStatus === "Manual Review";
   const validityDays = Math.max(Number(params.compOffValidityDays || 0), 0);
   const currentYear = Number(String(params.asOfIsoDate || "").slice(0, 4));
 
-  if (!grantsOnHoliday && !grantsOnWeeklyOff) {
+  if (!grantsOnHoliday && !grantsOnWeeklyOff && !mayResolveGrantOnHoliday && !mayResolveGrantOnWeeklyOff) {
     return { earnedDates: new Set<string>(), earnedDays: 0, error: null as string | null };
   }
 
