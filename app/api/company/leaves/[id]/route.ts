@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { todayISOInIndia } from "@/lib/dateTime";
-import { computeLeaveEntitlement, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
+import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { computeLeaveEntitlement, fetchCompOffEarnedDays, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
 type Body = {
   status?: "approved" | "rejected";
@@ -9,6 +12,7 @@ type Body = {
 };
 
 type LeaveWorkflowStatus = "pending" | "pending_manager" | "pending_hr" | "approved" | "rejected";
+const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
 
 function normalizeOptional(value?: string) {
   const trimmed = (value || "").trim();
@@ -100,13 +104,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
 
   if (body.status === "approved" && nextApprovedStatus === "approved") {
     const year = Number(String(requestRow.from_date || "").slice(0, 4) || todayISOInIndia().slice(0, 4));
-    const [policyResult, usageResult, overrideResult, overlapResult] = await Promise.all([
-      context.admin
-        .from("company_leave_policies")
-        .select("annual_quota,carry_forward,accrual_mode,active")
-        .eq("company_id", context.companyId)
-        .eq("code", requestRow.leave_policy_code)
-        .maybeSingle(),
+    const [usageResult, overrideResult, overlapResult] = await Promise.all([
       fetchLeaveUsageForYear({
         admin: context.admin,
         companyId: context.companyId,
@@ -131,9 +129,6 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       }),
     ]);
 
-    if (policyResult.error || !policyResult.data?.active) {
-      return NextResponse.json({ error: policyResult.error?.message || "Leave policy is inactive or missing." }, { status: 400 });
-    }
     if (usageResult.error) return NextResponse.json({ error: usageResult.error }, { status: 400 });
     if (overrideResult.error) return NextResponse.json({ error: overrideResult.error }, { status: 400 });
     if (overlapResult.error) return NextResponse.json({ error: overlapResult.error }, { status: 400 });
@@ -143,20 +138,59 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       }, { status: 400 });
     }
 
-    const entitlement = computeLeaveEntitlement({
-      annualQuota: Number(policyResult.data.annual_quota || 0),
-      carryForward: Number(policyResult.data.carry_forward || 0),
-      accrualMode: normalizeAccrualMode(policyResult.data.accrual_mode),
-      overrideDays: overrideResult.overrideDays,
-      asOfIsoDate: todayISOInIndia(),
-    });
+    let accruedTotal = 0;
+
+    if (requestRow.leave_policy_code === VIRTUAL_COMP_OFF_CODE) {
+      const policyContext = await resolvePoliciesForEmployee(
+        context.admin,
+        context.companyId,
+        requestRow.employee_id,
+        todayISOInIndia(),
+        ["holiday_weekoff"],
+      );
+      const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+      const compOffEntitlement = await fetchCompOffEarnedDays({
+        admin: context.admin,
+        companyId: context.companyId,
+        employeeId: requestRow.employee_id,
+        asOfIsoDate: todayISOInIndia(),
+        weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
+        holidayWorkedStatus: resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment,
+        weeklyOffWorkedStatus: resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment,
+        compOffValidityDays: resolvedHoliday.compOffValidityDays,
+      });
+      if (compOffEntitlement.error) {
+        return NextResponse.json({ error: compOffEntitlement.error }, { status: 400 });
+      }
+      accruedTotal = roundLeaveDays(compOffEntitlement.earnedDays + overrideResult.overrideDays);
+    } else {
+      const { data: policyRow, error: policyError } = await context.admin
+        .from("company_leave_policies")
+        .select("annual_quota,carry_forward,accrual_mode,active")
+        .eq("company_id", context.companyId)
+        .eq("code", requestRow.leave_policy_code)
+        .maybeSingle();
+
+      if (policyError || !policyRow?.active) {
+        return NextResponse.json({ error: policyError?.message || "Leave policy is inactive or missing." }, { status: 400 });
+      }
+
+      const entitlement = computeLeaveEntitlement({
+        annualQuota: Number(policyRow.annual_quota || 0),
+        carryForward: Number(policyRow.carry_forward || 0),
+        accrualMode: normalizeAccrualMode(policyRow.accrual_mode),
+        overrideDays: overrideResult.overrideDays,
+        asOfIsoDate: todayISOInIndia(),
+      });
+      accruedTotal = entitlement.accruedTotal;
+    }
 
     // This request already exists in pending bucket, remove it once before approve validation.
     const approvingPaidDays = Number((requestRow.paid_days ?? requestRow.days) || 0);
     if (approvingPaidDays > 0) {
       const pendingExcludingCurrent = Math.max(roundLeaveDays(usageResult.pendingUsed - approvingPaidDays), 0);
       const availableForApproval = Math.max(
-        roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - pendingExcludingCurrent),
+        roundLeaveDays(accruedTotal - usageResult.approvedUsed - pendingExcludingCurrent),
         0
       );
       if (approvingPaidDays > availableForApproval) {
