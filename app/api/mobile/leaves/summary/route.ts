@@ -3,18 +3,21 @@ import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { computeLeaveEntitlement, fetchApprovedAttendanceDatesForYear, fetchCompOffEarnedDays, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, restoredDaysForLeaveRequest, roundLeaveDays } from "@/lib/leaveAccrual";
+import {
+  computeLeaveEntitlement,
+  fetchApprovedAttendanceDatesForCycle,
+  fetchCompOffEarnedDays,
+  fetchLeaveOverrideDays,
+  fetchLeaveUsageForCycle,
+  getLeaveCycleBounds,
+  normalizeAccrualMode,
+  restoredDaysForLeaveRequest,
+  roundLeaveDays,
+} from "@/lib/leaveAccrual";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
 const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
 const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
-
-function yearRange(year: number) {
-  return {
-    start: `${year}-01-01`,
-    end: `${year}-12-31`,
-  };
-}
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -32,9 +35,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
 
-  const currentYear = Number(todayISOInIndia().slice(0, 4));
   const today = todayISOInIndia();
-  const range = yearRange(currentYear);
   const policyContext = await resolvePoliciesForEmployee(
     session.admin,
     session.employee.company_id,
@@ -45,6 +46,7 @@ export async function POST(req: NextRequest) {
   const leavePolicyRuntime = resolveLeavePolicyRuntime(policyContext.resolved.leave);
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+  const cycleBounds = getLeaveCycleBounds(today, leavePolicyRuntime.leaveCycleType);
 
   const [policyResult, requestResult, holidayResult] = await Promise.all([
     session.admin
@@ -58,15 +60,15 @@ export async function POST(req: NextRequest) {
       .select("id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,leave_mode,reason,status,admin_remark,submitted_at")
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
-      .gte("from_date", range.start)
-      .lte("from_date", range.end)
+      .gte("from_date", cycleBounds.start)
+      .lte("from_date", cycleBounds.end)
       .order("submitted_at", { ascending: false }),
     session.admin
       .from("company_holidays")
       .select("id,holiday_date,name,type")
       .eq("company_id", session.employee.company_id)
-      .gte("holiday_date", range.start)
-      .lte("holiday_date", range.end)
+      .gte("holiday_date", cycleBounds.start)
+      .lte("holiday_date", cycleBounds.end)
       .order("holiday_date", { ascending: true }),
   ]);
 
@@ -127,12 +129,13 @@ export async function POST(req: NextRequest) {
   const usageEntries = await Promise.all(
     policyRows.map(async (row) => {
       const code = String(row.code || "");
-      const result = await fetchLeaveUsageForYear({
+      const result = await fetchLeaveUsageForCycle({
         admin: session.admin,
         companyId: session.employee.company_id,
         employeeId: session.employee.id,
         leavePolicyCode: code,
-        year: currentYear,
+        asOfIsoDate: today,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
       });
       return [code, result] as const;
     }),
@@ -152,7 +155,8 @@ export async function POST(req: NextRequest) {
         companyId: session.employee.company_id,
         employeeId: session.employee.id,
         leavePolicyCode: String(row.code || ""),
-        year: currentYear,
+        asOfIsoDate: today,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
       });
       return [String(row.code || ""), result] as const;
     })
@@ -167,16 +171,18 @@ export async function POST(req: NextRequest) {
     holidayWorkedStatus: resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment,
     weeklyOffWorkedStatus: resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment,
     compOffValidityDays: resolvedHoliday.compOffValidityDays,
+    leaveCycleType: leavePolicyRuntime.leaveCycleType,
   });
   if (compOffEntitlement.error) {
     return NextResponse.json({ error: compOffEntitlement.error }, { status: 400 });
   }
-  const compOffUsage = await fetchLeaveUsageForYear({
+  const compOffUsage = await fetchLeaveUsageForCycle({
     admin: session.admin,
     companyId: session.employee.company_id,
     employeeId: session.employee.id,
     leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
-    year: currentYear,
+    asOfIsoDate: today,
+    leaveCycleType: leavePolicyRuntime.leaveCycleType,
   });
   if (compOffUsage.error) {
     return NextResponse.json({ error: compOffUsage.error }, { status: 400 });
@@ -186,16 +192,18 @@ export async function POST(req: NextRequest) {
     companyId: session.employee.company_id,
     employeeId: session.employee.id,
     leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
-    year: currentYear,
+    asOfIsoDate: today,
+    leaveCycleType: leavePolicyRuntime.leaveCycleType,
   });
   if (compOffOverride.error) {
     return NextResponse.json({ error: compOffOverride.error }, { status: 400 });
   }
-  const attendanceDatesResult = await fetchApprovedAttendanceDatesForYear({
+  const attendanceDatesResult = await fetchApprovedAttendanceDatesForCycle({
     admin: session.admin,
     companyId: session.employee.company_id,
     employeeId: session.employee.id,
-    year: currentYear,
+    asOfIsoDate: today,
+    leaveCycleType: leavePolicyRuntime.leaveCycleType,
   });
   if (attendanceDatesResult.error) {
     return NextResponse.json({ error: attendanceDatesResult.error }, { status: 400 });
@@ -214,6 +222,7 @@ export async function POST(req: NextRequest) {
       accrualMode,
       overrideDays,
       asOfIsoDate: today,
+      leaveCycleType: leavePolicyRuntime.leaveCycleType,
     });
     const total = roundLeaveDays(annualQuota + carryForward + overrideDays);
     const remaining = Math.max(roundLeaveDays(entitlement.accruedTotal - usage.approvedUsed), 0);

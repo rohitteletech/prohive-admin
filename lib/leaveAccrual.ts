@@ -4,21 +4,56 @@ import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 import { fetchManualReviewResolutionMapForEmployee } from "@/lib/manualReviewResolutions";
 
 export type LeaveAccrualMode = "monthly" | "upfront";
+export type LeaveCycleType = "Calendar Year" | "Financial Year";
 
 export function normalizeAccrualMode(value: unknown): LeaveAccrualMode {
   return value === "upfront" ? "upfront" : "monthly";
 }
 
-export function monthsElapsedInYear(isoDate: string) {
+export function normalizeLeaveCycleType(value: unknown, fallback: LeaveCycleType = "Calendar Year"): LeaveCycleType {
+  return value === "Financial Year" || value === "Calendar Year" ? value : fallback;
+}
+
+export function getLeaveCycleBounds(asOfIsoDate: string, leaveCycleType: LeaveCycleType) {
+  const year = Number(String(asOfIsoDate || "").slice(0, 4));
+  const month = Number(String(asOfIsoDate || "").slice(5, 7));
+  const safeYear = Number.isFinite(year) ? year : new Date().getUTCFullYear();
+  const safeMonth = Number.isFinite(month) ? month : 1;
+
+  if (leaveCycleType === "Financial Year") {
+    const startYear = safeMonth >= 4 ? safeYear : safeYear - 1;
+    return {
+      start: `${startYear}-04-01`,
+      end: `${startYear + 1}-03-31`,
+      keyYear: startYear,
+    };
+  }
+
+  return {
+    start: `${safeYear}-01-01`,
+    end: `${safeYear}-12-31`,
+    keyYear: safeYear,
+  };
+}
+
+export function monthsElapsedInCycle(isoDate: string, leaveCycleType: LeaveCycleType) {
   const month = Number(String(isoDate || "").slice(5, 7));
   if (!Number.isFinite(month) || month < 1 || month > 12) return 12;
+  if (leaveCycleType === "Financial Year") {
+    return month >= 4 ? month - 3 : month + 9;
+  }
   return month;
 }
 
-export function accruedAnnualQuota(annualQuota: number, accrualMode: LeaveAccrualMode, asOfIsoDate: string) {
+export function accruedAnnualQuota(
+  annualQuota: number,
+  accrualMode: LeaveAccrualMode,
+  asOfIsoDate: string,
+  leaveCycleType: LeaveCycleType = "Calendar Year",
+) {
   const quota = Number.isFinite(annualQuota) ? Math.max(Number(annualQuota), 0) : 0;
   if (accrualMode === "upfront") return quota;
-  const elapsed = monthsElapsedInYear(asOfIsoDate);
+  const elapsed = monthsElapsedInCycle(asOfIsoDate, leaveCycleType);
   return Math.floor((quota * elapsed) / 12);
 }
 
@@ -84,6 +119,37 @@ export async function fetchApprovedAttendanceDatesForYear(params: {
   return { approvedAttendanceDates, error: null as string | null };
 }
 
+export async function fetchApprovedAttendanceDatesForCycle(params: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  asOfIsoDate: string;
+  leaveCycleType: LeaveCycleType;
+}) {
+  const bounds = getLeaveCycleBounds(params.asOfIsoDate, params.leaveCycleType);
+  const attendanceResult = await params.admin
+    .from("attendance_punch_events")
+    .select("effective_punch_at,server_received_at,approval_status")
+    .eq("company_id", params.companyId)
+    .eq("employee_id", params.employeeId)
+    .in("approval_status", ["auto_approved", "approved"])
+    .gte("server_received_at", `${bounds.start}T00:00:00.000Z`)
+    .lt("server_received_at", `${bounds.end}T23:59:59.999Z`);
+
+  if (attendanceResult.error) {
+    return { approvedAttendanceDates: new Set<string>(), error: attendanceResult.error.message || "Unable to load attendance overrides." };
+  }
+
+  const approvedAttendanceDates = new Set(
+    ((attendanceResult.data || []) as Array<{ effective_punch_at?: string | null; server_received_at?: string | null }>)
+      .map((row) => row.effective_punch_at || row.server_received_at || "")
+      .map((value) => (value ? isoDateInIndia(value) : ""))
+      .filter(Boolean),
+  );
+
+  return { approvedAttendanceDates, error: null as string | null };
+}
+
 export async function fetchCompOffEarnedDays(params: {
   admin: any;
   companyId: string;
@@ -93,13 +159,14 @@ export async function fetchCompOffEarnedDays(params: {
   holidayWorkedStatus: NonWorkingDayTreatment;
   weeklyOffWorkedStatus: NonWorkingDayTreatment;
   compOffValidityDays: number;
+  leaveCycleType?: LeaveCycleType;
 }) {
   const grantsOnHoliday = params.holidayWorkedStatus === "Grant Comp Off";
   const grantsOnWeeklyOff = params.weeklyOffWorkedStatus === "Grant Comp Off";
   const mayResolveGrantOnHoliday = params.holidayWorkedStatus === "Manual Review";
   const mayResolveGrantOnWeeklyOff = params.weeklyOffWorkedStatus === "Manual Review";
   const validityDays = Math.max(Number(params.compOffValidityDays || 0), 0);
-  const currentYear = Number(String(params.asOfIsoDate || "").slice(0, 4));
+  const leaveCycleType = normalizeLeaveCycleType(params.leaveCycleType, "Calendar Year");
 
   if (!grantsOnHoliday && !grantsOnWeeklyOff && !mayResolveGrantOnHoliday && !mayResolveGrantOnWeeklyOff) {
     return { earnedDates: new Set<string>(), earnedDays: 0, error: null as string | null };
@@ -108,7 +175,7 @@ export async function fetchCompOffEarnedDays(params: {
   const rangeStart =
     validityDays > 0
       ? addDaysToIsoDate(params.asOfIsoDate, -validityDays)
-      : `${Number.isFinite(currentYear) ? currentYear : new Date().getUTCFullYear()}-01-01`;
+      : getLeaveCycleBounds(params.asOfIsoDate, leaveCycleType).start;
   const rangeEnd = addDaysToIsoDate(params.asOfIsoDate, 1);
 
   const [attendanceResult, holidayResult] = await Promise.all([
@@ -210,8 +277,14 @@ export function computeLeaveEntitlement(params: {
   accrualMode: LeaveAccrualMode;
   overrideDays: number;
   asOfIsoDate: string;
+  leaveCycleType?: LeaveCycleType;
 }) {
-  const annualAccrued = accruedAnnualQuota(params.annualQuota, params.accrualMode, params.asOfIsoDate);
+  const annualAccrued = accruedAnnualQuota(
+    params.annualQuota,
+    params.accrualMode,
+    params.asOfIsoDate,
+    normalizeLeaveCycleType(params.leaveCycleType, "Calendar Year"),
+  );
   const carryForward = Number.isFinite(params.carryForward) ? Math.max(Number(params.carryForward), 0) : 0;
   const overrideDays = Number.isFinite(params.overrideDays) ? Number(params.overrideDays) : 0;
   const accruedTotal = roundLeaveDays(annualAccrued + carryForward + overrideDays);
@@ -223,15 +296,15 @@ export function computeLeaveEntitlement(params: {
   };
 }
 
-export async function fetchLeaveUsageForYear(params: {
+export async function fetchLeaveUsageForCycle(params: {
   admin: any;
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
-  year: number;
+  asOfIsoDate: string;
+  leaveCycleType: LeaveCycleType;
 }) {
-  const yearStart = `${params.year}-01-01`;
-  const yearNextStart = `${params.year + 1}-01-01`;
+  const bounds = getLeaveCycleBounds(params.asOfIsoDate, params.leaveCycleType);
   const [leaveUsageResult, attendanceDatesResult] = await Promise.all([
     params.admin
     .from("employee_leave_requests")
@@ -239,13 +312,14 @@ export async function fetchLeaveUsageForYear(params: {
     .eq("company_id", params.companyId)
     .eq("employee_id", params.employeeId)
     .eq("leave_policy_code", params.leavePolicyCode)
-    .gte("from_date", yearStart)
-    .lt("from_date", yearNextStart),
-    fetchApprovedAttendanceDatesForYear({
+    .gte("from_date", bounds.start)
+    .lte("from_date", bounds.end),
+    fetchApprovedAttendanceDatesForCycle({
       admin: params.admin,
       companyId: params.companyId,
       employeeId: params.employeeId,
-      year: params.year,
+      asOfIsoDate: params.asOfIsoDate,
+      leaveCycleType: params.leaveCycleType,
     }),
   ]);
   if (leaveUsageResult.error) {
@@ -273,16 +347,35 @@ export async function fetchLeaveOverrideDays(params: {
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
-  year: number;
+  asOfIsoDate: string;
+  leaveCycleType: LeaveCycleType;
 }) {
+  const bounds = getLeaveCycleBounds(params.asOfIsoDate, params.leaveCycleType);
   const { data, error } = await params.admin
     .from("employee_leave_balance_overrides")
     .select("extra_days")
     .eq("company_id", params.companyId)
     .eq("employee_id", params.employeeId)
     .eq("leave_policy_code", params.leavePolicyCode)
-    .eq("year", params.year)
+    .eq("year", bounds.keyYear)
     .maybeSingle();
   if (error) return { overrideDays: 0, error: error.message || "Unable to load leave overrides." };
   return { overrideDays: roundLeaveDays(Number(data?.extra_days || 0)), error: null as string | null };
+}
+
+export async function fetchLeaveUsageForYear(params: {
+  admin: any;
+  companyId: string;
+  employeeId: string;
+  leavePolicyCode: string;
+  year: number;
+}) {
+  return fetchLeaveUsageForCycle({
+    admin: params.admin,
+    companyId: params.companyId,
+    employeeId: params.employeeId,
+    leavePolicyCode: params.leavePolicyCode,
+    asOfIsoDate: `${params.year}-12-31`,
+    leaveCycleType: "Calendar Year",
+  });
 }

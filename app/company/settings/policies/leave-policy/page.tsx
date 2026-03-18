@@ -36,6 +36,7 @@ type LeavePolicyState = {
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy: "Yes" | "No";
+  leaveCycleType: "Calendar Year" | "Financial Year";
   approvalFlow: "manager" | "manager_hr" | "hr";
   noticePeriodDays: string;
   backdatedLeaveAllowed: "Yes" | "No";
@@ -51,6 +52,7 @@ const initialPolicyState: LeavePolicyState = {
   nextReviewDate: "2027-03-13",
   status: "Draft",
   defaultCompanyPolicy: "Yes",
+  leaveCycleType: "Calendar Year",
   approvalFlow: "manager_hr",
   noticePeriodDays: "1",
   backdatedLeaveAllowed: "No",
@@ -429,6 +431,15 @@ export default function LeavePolicyPage() {
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
+                </Select>
+              </Field>
+              <Field label="Leave Cycle">
+                <Select
+                  value={draft.leaveCycleType}
+                  onChange={(e) => updatePolicy("leaveCycleType", e.target.value as LeavePolicyState["leaveCycleType"])}
+                >
+                  <option value="Calendar Year">Calendar Year (Jan-Dec)</option>
+                  <option value="Financial Year">Financial Year (Apr-Mar)</option>
                 </Select>
               </Field>
             </div>

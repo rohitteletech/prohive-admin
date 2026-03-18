@@ -24,6 +24,7 @@ type LeaveBridgePayload = {
   nextReviewDate?: string;
   status?: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy?: "Yes" | "No";
+  leaveCycleType?: "Calendar Year" | "Financial Year";
   approvalFlow?: "manager" | "manager_hr" | "hr";
   noticePeriodDays?: string;
   backdatedLeaveAllowed?: "Yes" | "No";
@@ -124,6 +125,7 @@ export async function GET(req: NextRequest) {
             ? "Archived"
             : "Draft",
       defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || leavePolicy.isDefault === false) ? "No" : "Yes",
+      leaveCycleType: config.leaveCycleType === "Financial Year" ? "Financial Year" : "Calendar Year",
       approvalFlow:
         config.approvalFlow === "manager" || config.approvalFlow === "hr" || config.approvalFlow === "manager_hr"
           ? config.approvalFlow
@@ -167,6 +169,7 @@ export async function PUT(req: NextRequest) {
     nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
     status: (body.status || "Draft").toLowerCase(),
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
+    leaveCycleType: body.leaveCycleType === "Financial Year" ? "Financial Year" : "Calendar Year",
     approvalFlow: body.approvalFlow || "manager_hr",
     noticePeriodDays: body.noticePeriodDays || "1",
     backdatedLeaveAllowed: body.backdatedLeaveAllowed || "No",

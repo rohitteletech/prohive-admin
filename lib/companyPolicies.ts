@@ -214,7 +214,10 @@ export function resolvePolicyForEmployee(params: {
 
   const matched = applicable[0];
   if (matched) {
-    return eligibleDefinitions.find((definition) => definition.id === matched.policyId) || null;
+    const matchedDefinition = eligibleDefinitions.find((definition) => definition.id === matched.policyId);
+    if (matchedDefinition) {
+      return matchedDefinition;
+    }
   }
 
   return eligibleDefinitions.find((definition) => definition.isDefault) || null;

@@ -4,7 +4,7 @@ import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
   fetchLeaveOverrideDays,
-  fetchLeaveUsageForYear,
+  fetchLeaveUsageForCycle,
   normalizeAccrualMode,
   roundLeaveDays,
 } from "@/lib/leaveAccrual";
@@ -88,8 +88,6 @@ export async function getLeaveReportData(params: {
   const employeeQuery = String(params.input.employeeQuery || "").trim().toLowerCase();
   const departmentFilter = String(params.input.department || "all").trim().toLowerCase();
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();
-  const year = Number(scope.startDate.slice(0, 4));
-
   const [requestResult, policyResult] = await Promise.all([
     params.admin
       .from("employee_leave_requests")
@@ -136,10 +134,15 @@ export async function getLeaveReportData(params: {
     scope.startDate,
     ["leave"],
   );
+  const cycleAnchorDate = scope.startDate;
   const balanceCache = new Map<string, number>();
 
   async function getAvailableBalance(employeeId: string, leavePolicyCode: string) {
-    const cacheKey = `${employeeId}:${leavePolicyCode}:${year}`;
+    const leaveCycleType =
+      resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave?.configJson?.leaveCycleType === "Financial Year"
+        ? "Financial Year"
+        : "Calendar Year";
+    const cacheKey = `${employeeId}:${leavePolicyCode}:${cycleAnchorDate}:${leaveCycleType}`;
     if (balanceCache.has(cacheKey)) return balanceCache.get(cacheKey) || 0;
 
     const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null);
@@ -161,19 +164,21 @@ export async function getLeaveReportData(params: {
     }
 
     const [usageResult, overrideResult] = await Promise.all([
-      fetchLeaveUsageForYear({
+      fetchLeaveUsageForCycle({
         admin: params.admin,
         companyId: params.companyId,
         employeeId,
         leavePolicyCode,
-        year,
+        asOfIsoDate: cycleAnchorDate,
+        leaveCycleType,
       }),
       fetchLeaveOverrideDays({
         admin: params.admin,
         companyId: params.companyId,
         employeeId,
         leavePolicyCode,
-        year,
+        asOfIsoDate: cycleAnchorDate,
+        leaveCycleType,
       }),
     ]);
 
@@ -188,6 +193,7 @@ export async function getLeaveReportData(params: {
       accrualMode: normalizeAccrualMode(policy.accrual_mode),
       overrideDays: overrideResult.overrideDays,
       asOfIsoDate: todayISOInIndia(),
+      leaveCycleType,
     });
     const available = Math.max(roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - usageResult.pendingUsed), 0);
     balanceCache.set(cacheKey, available);

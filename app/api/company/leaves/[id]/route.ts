@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
-import { computeLeaveEntitlement, fetchCompOffEarnedDays, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime } from "@/lib/companyPolicyRuntime";
+import {
+  computeLeaveEntitlement,
+  fetchCompOffEarnedDays,
+  fetchLeaveOverrideDays,
+  fetchLeaveUsageForCycle,
+  normalizeAccrualMode,
+  roundLeaveDays,
+} from "@/lib/leaveAccrual";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
 type Body = {
@@ -103,21 +110,31 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const nextApprovedStatus: LeaveWorkflowStatus = "approved";
 
   if (body.status === "approved" && nextApprovedStatus === "approved") {
-    const year = Number(String(requestRow.from_date || "").slice(0, 4) || todayISOInIndia().slice(0, 4));
+    const policyContext = await resolvePoliciesForEmployee(
+      context.admin,
+      context.companyId,
+      requestRow.employee_id,
+      String(requestRow.from_date || todayISOInIndia()),
+      ["leave", "holiday_weekoff"],
+    );
+    const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+    const resolvedLeave = resolveLeavePolicyRuntime(policyContext.resolved.leave);
     const [usageResult, overrideResult, overlapResult] = await Promise.all([
-      fetchLeaveUsageForYear({
+      fetchLeaveUsageForCycle({
         admin: context.admin,
         companyId: context.companyId,
         employeeId: requestRow.employee_id,
         leavePolicyCode: requestRow.leave_policy_code,
-        year,
+        asOfIsoDate: String(requestRow.from_date || todayISOInIndia()),
+        leaveCycleType: resolvedLeave.leaveCycleType,
       }),
       fetchLeaveOverrideDays({
         admin: context.admin,
         companyId: context.companyId,
         employeeId: requestRow.employee_id,
         leavePolicyCode: requestRow.leave_policy_code,
-        year,
+        asOfIsoDate: String(requestRow.from_date || todayISOInIndia()),
+        leaveCycleType: resolvedLeave.leaveCycleType,
       }),
       findApprovedOverlap({
         admin: context.admin,
@@ -141,14 +158,6 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     let accruedTotal = 0;
 
     if (requestRow.leave_policy_code === VIRTUAL_COMP_OFF_CODE) {
-      const policyContext = await resolvePoliciesForEmployee(
-        context.admin,
-        context.companyId,
-        requestRow.employee_id,
-        todayISOInIndia(),
-        ["holiday_weekoff"],
-      );
-      const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
       const compOffEntitlement = await fetchCompOffEarnedDays({
         admin: context.admin,
         companyId: context.companyId,
@@ -158,6 +167,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
         holidayWorkedStatus: resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment,
         weeklyOffWorkedStatus: resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment,
         compOffValidityDays: resolvedHoliday.compOffValidityDays,
+        leaveCycleType: resolvedLeave.leaveCycleType,
       });
       if (compOffEntitlement.error) {
         return NextResponse.json({ error: compOffEntitlement.error }, { status: 400 });
@@ -181,6 +191,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
         accrualMode: normalizeAccrualMode(policyRow.accrual_mode),
         overrideDays: overrideResult.overrideDays,
         asOfIsoDate: todayISOInIndia(),
+        leaveCycleType: resolvedLeave.leaveCycleType,
       });
       accruedTotal = entitlement.accruedTotal;
     }

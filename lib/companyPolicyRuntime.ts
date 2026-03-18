@@ -199,6 +199,7 @@ export function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
     text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Approval",
   );
   return {
+    leaveCycleType: text(config.leaveCycleType, "Calendar Year") === "Financial Year" ? "Financial Year" : "Calendar Year",
     approvalFlow:
       text(config.approvalFlow) === "manager"
         ? "manager"

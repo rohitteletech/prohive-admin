@@ -2,7 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { computeLeaveEntitlement, fetchCompOffEarnedDays, fetchLeaveOverrideDays, fetchLeaveUsageForYear, normalizeAccrualMode, roundLeaveDays } from "@/lib/leaveAccrual";
+import {
+  computeLeaveEntitlement,
+  fetchCompOffEarnedDays,
+  fetchLeaveOverrideDays,
+  fetchLeaveUsageForCycle,
+  getLeaveCycleBounds,
+  normalizeAccrualMode,
+  roundLeaveDays,
+} from "@/lib/leaveAccrual";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
@@ -90,9 +98,6 @@ export async function POST(req: NextRequest) {
   if (!fromDate) return NextResponse.json({ error: "From date is required." }, { status: 400 });
   if (!toDate) return NextResponse.json({ error: "To date is required." }, { status: 400 });
   if (toDate < fromDate) return NextResponse.json({ error: "To date cannot be before from date." }, { status: 400 });
-  if (fromDate.slice(0, 4) !== toDate.slice(0, 4)) {
-    return NextResponse.json({ error: "Cross-year leave request is not allowed. Submit year-wise requests." }, { status: 400 });
-  }
   if (!reason) return NextResponse.json({ error: "Reason is required." }, { status: 400 });
 
   if (isHalfDay && fromDate !== toDate) {
@@ -130,6 +135,11 @@ export async function POST(req: NextRequest) {
   const leavePolicyRuntime = resolveLeavePolicyRuntime(policyContext.resolved.leave);
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+  const fromCycle = getLeaveCycleBounds(fromDate, leavePolicyRuntime.leaveCycleType);
+  const toCycle = getLeaveCycleBounds(toDate, leavePolicyRuntime.leaveCycleType);
+  if (fromCycle.start !== toCycle.start || fromCycle.end !== toCycle.end) {
+    return NextResponse.json({ error: "Cross-cycle leave request is not allowed. Submit cycle-wise requests." }, { status: 400 });
+  }
   const todayIso = todayISOInIndia();
   const initialStatus =
     leavePolicyRuntime.approvalFlow === "hr"
@@ -243,26 +253,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Please select a leave type before applying." }, { status: 400 });
   }
 
-  const currentYear = Number(fromDate.slice(0, 4));
   const selectingCompOff = selectedLeavePolicyCode === VIRTUAL_COMP_OFF_CODE;
 
   const availabilityByPolicy = await Promise.all(
     requestedPolicies.map(async (policy) => {
       const leavePolicyCode = String(policy.code || "");
       const [usageResult, overrideResult] = await Promise.all([
-        fetchLeaveUsageForYear({
+        fetchLeaveUsageForCycle({
           admin: session.admin,
           companyId: session.employee.company_id,
           employeeId: session.employee.id,
           leavePolicyCode,
-          year: currentYear,
+          asOfIsoDate: fromDate,
+          leaveCycleType: leavePolicyRuntime.leaveCycleType,
         }),
         fetchLeaveOverrideDays({
           admin: session.admin,
           companyId: session.employee.company_id,
           employeeId: session.employee.id,
           leavePolicyCode,
-          year: currentYear,
+          asOfIsoDate: fromDate,
+          leaveCycleType: leavePolicyRuntime.leaveCycleType,
         }),
       ]);
 
@@ -279,6 +290,7 @@ export async function POST(req: NextRequest) {
         accrualMode: normalizeAccrualMode(policy.accrual_mode),
         overrideDays: overrideResult.overrideDays,
         asOfIsoDate: todayIso,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
       });
       const availableNow = Math.max(roundLeaveDays(entitlement.accruedTotal - usageResult.approvedUsed - usageResult.pendingUsed), 0);
       return { policy, availableNow, error: null as string | null };
@@ -296,13 +308,15 @@ export async function POST(req: NextRequest) {
         holidayWorkedStatus: resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment,
         weeklyOffWorkedStatus: resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment,
         compOffValidityDays: resolvedHoliday.compOffValidityDays,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
       }),
-      fetchLeaveUsageForYear({
+      fetchLeaveUsageForCycle({
         admin: session.admin,
         companyId: session.employee.company_id,
         employeeId: session.employee.id,
         leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
-        year: currentYear,
+        asOfIsoDate: fromDate,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
       }),
     ]);
     const compOffOverride = await fetchLeaveOverrideDays({
@@ -310,7 +324,8 @@ export async function POST(req: NextRequest) {
       companyId: session.employee.company_id,
       employeeId: session.employee.id,
       leavePolicyCode: VIRTUAL_COMP_OFF_CODE,
-      year: currentYear,
+      asOfIsoDate: fromDate,
+      leaveCycleType: leavePolicyRuntime.leaveCycleType,
     });
 
     if (compOffEntitlement.error) {
