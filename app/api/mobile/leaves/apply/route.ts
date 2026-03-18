@@ -5,6 +5,7 @@ import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
   fetchCompOffEarnedDays,
+  fetchLeaveCarryForwardDays,
   fetchLeaveOverrideDays,
   fetchLeaveUsageForCycle,
   getLeaveCycleBounds,
@@ -283,10 +284,28 @@ export async function POST(req: NextRequest) {
       if (overrideResult.error) {
         return { policy, availableNow: 0, error: overrideResult.error };
       }
+      const carryForwardResult = await fetchLeaveCarryForwardDays({
+        admin: session.admin,
+        companyId: session.employee.company_id,
+        employeeId: session.employee.id,
+        leavePolicyCode,
+        policyEffectiveFrom: policyContext.resolved.leave?.effectiveFrom,
+        annualQuota: Number(policy.annual_quota || 0),
+        accrualMode: normalizeAccrualMode(policy.accrual_mode),
+        carryForwardAllowed: Number(policy.carry_forward || 0) > 0,
+        maximumCarryForwardDays: Number(policy.carry_forward || 0),
+        carryForwardExpiryDays:
+          resolvedLeaveTypes.find((leaveType) => leaveType.code === leavePolicyCode)?.carryForwardExpiryDays || 0,
+        asOfIsoDate: fromDate,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
+      });
+      if (carryForwardResult.error) {
+        return { policy, availableNow: 0, error: carryForwardResult.error };
+      }
 
       const entitlement = computeLeaveEntitlement({
         annualQuota: Number(policy.annual_quota || 0),
-        carryForward: Number(policy.carry_forward || 0),
+        carryForward: carryForwardResult.effectiveDays,
         accrualMode: normalizeAccrualMode(policy.accrual_mode),
         overrideDays: overrideResult.overrideDays,
         asOfIsoDate: todayIso,

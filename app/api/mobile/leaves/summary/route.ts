@@ -7,6 +7,7 @@ import {
   computeLeaveEntitlement,
   fetchApprovedAttendanceDatesForCycle,
   fetchCompOffEarnedDays,
+  fetchLeaveCarryForwardDays,
   fetchLeaveOverrideDays,
   fetchLeaveUsageForCycle,
   getLeaveCycleBounds,
@@ -162,6 +163,31 @@ export async function POST(req: NextRequest) {
     })
   );
   const overrideByCode = new Map(overrideEntries.map(([code, result]) => [code, result.overrideDays]));
+  const carryForwardEntries = await Promise.all(
+    policyRows.map(async (row) => {
+      const result = await fetchLeaveCarryForwardDays({
+        admin: session.admin,
+        companyId: session.employee.company_id,
+        employeeId: session.employee.id,
+        leavePolicyCode: String(row.code || ""),
+        policyEffectiveFrom: policyContext.resolved.leave?.effectiveFrom,
+        annualQuota: Number(row.annual_quota || 0),
+        accrualMode: normalizeAccrualMode(row.accrual_mode),
+        carryForwardAllowed: Number(row.carry_forward || 0) > 0,
+        maximumCarryForwardDays: Number(row.carry_forward || 0),
+        carryForwardExpiryDays:
+          resolvedLeaveTypes.find((leaveType) => leaveType.code === String(row.code || ""))?.carryForwardExpiryDays || 0,
+        asOfIsoDate: today,
+        leaveCycleType: leavePolicyRuntime.leaveCycleType,
+      });
+      return [String(row.code || ""), result] as const;
+    })
+  );
+  const carryForwardError = carryForwardEntries.find(([, result]) => result.error)?.[1].error;
+  if (carryForwardError) {
+    return NextResponse.json({ error: carryForwardError }, { status: 400 });
+  }
+  const carryForwardByCode = new Map(carryForwardEntries.map(([code, result]) => [code, result.effectiveDays]));
   const compOffEntitlement = await fetchCompOffEarnedDays({
     admin: session.admin,
     companyId: session.employee.company_id,
@@ -213,7 +239,7 @@ export async function POST(req: NextRequest) {
     const code = String(row.code || "");
     const usage = usageByCode.get(code) || { approvedUsed: 0, pendingUsed: 0 };
     const annualQuota = Number(row.annual_quota || 0);
-    const carryForward = Number(row.carry_forward || 0);
+    const carryForward = Number(carryForwardByCode.get(code) || 0);
     const accrualMode = normalizeAccrualMode(row.accrual_mode);
     const overrideDays = Number(overrideByCode.get(code) || 0);
     const entitlement = computeLeaveEntitlement({

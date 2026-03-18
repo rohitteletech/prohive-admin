@@ -3,6 +3,7 @@ import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
+  fetchLeaveCarryForwardDays,
   fetchLeaveOverrideDays,
   fetchLeaveUsageForCycle,
   normalizeAccrualMode,
@@ -186,10 +187,29 @@ export async function getLeaveReportData(params: {
       balanceCache.set(cacheKey, 0);
       return 0;
     }
+    const carryForwardResult = await fetchLeaveCarryForwardDays({
+      admin: params.admin,
+      companyId: params.companyId,
+      employeeId,
+      leavePolicyCode,
+      policyEffectiveFrom: resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave?.effectiveFrom,
+      annualQuota: Number(policy.annual_quota || 0),
+      accrualMode: normalizeAccrualMode(policy.accrual_mode),
+      carryForwardAllowed: Number(policy.carry_forward || 0) > 0,
+      maximumCarryForwardDays: Number(policy.carry_forward || 0),
+      carryForwardExpiryDays:
+        resolvedPolicy?.carryForwardExpiryDays || 0,
+      asOfIsoDate: cycleAnchorDate,
+      leaveCycleType,
+    });
+    if (carryForwardResult.error) {
+      balanceCache.set(cacheKey, 0);
+      return 0;
+    }
 
     const entitlement = computeLeaveEntitlement({
       annualQuota: Number(policy.annual_quota || 0),
-      carryForward: Number(policy.carry_forward || 0),
+      carryForward: carryForwardResult.effectiveDays,
       accrualMode: normalizeAccrualMode(policy.accrual_mode),
       overrideDays: overrideResult.overrideDays,
       asOfIsoDate: todayISOInIndia(),

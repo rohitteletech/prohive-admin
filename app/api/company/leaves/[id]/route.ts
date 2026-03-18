@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import {
   computeLeaveEntitlement,
   fetchCompOffEarnedDays,
+  fetchLeaveCarryForwardDays,
   fetchLeaveOverrideDays,
   fetchLeaveUsageForCycle,
   normalizeAccrualMode,
@@ -119,6 +120,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     );
     const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
     const resolvedLeave = resolveLeavePolicyRuntime(policyContext.resolved.leave);
+    const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
     const [usageResult, overrideResult, overlapResult] = await Promise.all([
       fetchLeaveUsageForCycle({
         admin: context.admin,
@@ -185,9 +187,28 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
         return NextResponse.json({ error: policyError?.message || "Leave policy is inactive or missing." }, { status: 400 });
       }
 
+      const resolvedLeaveType = resolvedLeaveTypes.find((row) => row.code === requestRow.leave_policy_code);
+      const carryForwardResult = await fetchLeaveCarryForwardDays({
+        admin: context.admin,
+        companyId: context.companyId,
+        employeeId: requestRow.employee_id,
+        leavePolicyCode: requestRow.leave_policy_code,
+        policyEffectiveFrom: policyContext.resolved.leave?.effectiveFrom,
+        annualQuota: Number(policyRow.annual_quota || 0),
+        accrualMode: normalizeAccrualMode(policyRow.accrual_mode),
+        carryForwardAllowed: Number(policyRow.carry_forward || 0) > 0,
+        maximumCarryForwardDays: Number(policyRow.carry_forward || 0),
+        carryForwardExpiryDays: resolvedLeaveType?.carryForwardExpiryDays || 0,
+        asOfIsoDate: String(requestRow.from_date || todayISOInIndia()),
+        leaveCycleType: resolvedLeave.leaveCycleType,
+      });
+      if (carryForwardResult.error) {
+        return NextResponse.json({ error: carryForwardResult.error }, { status: 400 });
+      }
+
       const entitlement = computeLeaveEntitlement({
         annualQuota: Number(policyRow.annual_quota || 0),
-        carryForward: Number(policyRow.carry_forward || 0),
+        carryForward: carryForwardResult.effectiveDays,
         accrualMode: normalizeAccrualMode(policyRow.accrual_mode),
         overrideDays: overrideResult.overrideDays,
         asOfIsoDate: todayISOInIndia(),
