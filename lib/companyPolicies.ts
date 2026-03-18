@@ -193,6 +193,15 @@ export function resolvePolicyForEmployee(params: {
   definitions: PolicyDefinition[];
 }) {
   const { policyType, employeeId, department, onDate, assignments, definitions } = params;
+  const eligibleDefinitions = definitions
+    .filter((definition) => definition.policyType === policyType)
+    .filter((definition) => definition.status === "active")
+    .filter((definition) => definition.effectiveFrom <= onDate)
+    .sort((a, b) => {
+      if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+      if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+      return b.createdAt.localeCompare(a.createdAt);
+    });
   const applicable = assignments
     .filter((assignment) => assignment.policyType === policyType)
     .filter((assignment) => isAssignmentEffective(assignment, onDate))
@@ -205,10 +214,10 @@ export function resolvePolicyForEmployee(params: {
 
   const matched = applicable[0];
   if (matched) {
-    return definitions.find((definition) => definition.id === matched.policyId) || null;
+    return eligibleDefinitions.find((definition) => definition.id === matched.policyId) || null;
   }
 
-  return definitions.find((definition) => definition.policyType === policyType && definition.isDefault) || null;
+  return eligibleDefinitions.find((definition) => definition.isDefault) || null;
 }
 
 export function labelPolicyType(value: PolicyType) {

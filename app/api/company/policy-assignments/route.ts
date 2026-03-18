@@ -22,10 +22,11 @@ export async function GET(req: NextRequest) {
     const policies = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
     const assignments = await listCompanyPolicyAssignments(context.admin, context.companyId);
     const targets = await listCompanyAssignmentTargets(context.admin, context.companyId);
+    const today = new Date().toISOString().slice(0, 10);
     const workforceCounts = await listCompanyPolicyWorkforceCounts(
       context.admin,
       context.companyId,
-      new Date().toISOString().slice(0, 10),
+      today,
     );
     const targetLabels = Object.fromEntries([
       ...targets.departments.map((target) => [target.id, target.label] as const),
@@ -34,6 +35,8 @@ export async function GET(req: NextRequest) {
     ]);
     const defaultPolicies = policies
       .filter((policy) => policy.isDefault)
+      .filter((policy) => policy.status === "active")
+      .filter((policy) => policy.effectiveFrom <= today)
       .map((policy) => ({
         id: policy.id,
         policyType: policy.policyType,
