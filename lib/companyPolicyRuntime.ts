@@ -19,7 +19,9 @@ function decimalNumber(value: unknown, fallback: number) {
 }
 
 function yesNo(value: unknown, fallback: "Yes" | "No" = "No") {
-  return String(value || "").trim() === "Yes" ? "Yes" : fallback;
+  const normalized = String(value ?? "").trim();
+  if (normalized === "Yes" || normalized === "No") return normalized;
+  return fallback;
 }
 
 function clockToMinutes(value: unknown, fallback: number) {
