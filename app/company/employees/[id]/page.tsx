@@ -41,7 +41,7 @@ type EmployeeModel = {
 
   // IDs (optional)
   pan?: string;
-  aadhaar_last4?: string; // store last4 only for demo display
+  aadhaar_number?: string;
   emergency_name?: string;
   emergency_mobile?: string;
 
@@ -78,9 +78,11 @@ function maskPan(pan?: string) {
   return pan.slice(0, 5) + "****" + pan.slice(-1);
 }
 
-function maskAadhaar(last4?: string) {
-  if (!last4) return "-";
-  return `XXXX-XXXX-${last4}`;
+function maskAadhaar(aadhaar?: string) {
+  if (!aadhaar) return "-";
+  const digits = aadhaar.replace(/\D/g, "");
+  if (digits.length !== 12) return aadhaar;
+  return `XXXX-XXXX-${digits.slice(-4)}`;
 }
 
 function formatDateTime(value?: string) {
@@ -161,7 +163,7 @@ export default function EmployeeDetailPage() {
       temp_address: "",
 
       pan: "",
-      aadhaar_last4: "",
+      aadhaar_number: "",
       emergency_name: "",
       emergency_mobile: "",
 
@@ -210,19 +212,22 @@ export default function EmployeeDetailPage() {
   async function saveEdit() {
     // Client-side validations (MVP)
     const nameOk = draft.full_name.trim().length >= 2;
-    const mobileOk = draft.mobile.trim().length >= 8;
+    const mobileOk = /^\d{10}$/.test(draft.mobile.trim());
     const genderOk = !!draft.gender;
     const desigOk = draft.designation.trim().length >= 2;
     const deptOk = (draft.department || "").trim().length >= 2;
     const joinOk = draft.joining_date?.trim().length === 10;
 
     if (!nameOk) return showToast("Name is required");
-    if (!mobileOk) return showToast("Mobile is required");
+    if (!mobileOk) return showToast("Mobile Number must be exactly 10 digits");
     if (!genderOk) return showToast("Gender is required");
     if (!desigOk) return showToast("Designation is required");
     if (!deptOk) return showToast("Department is required");
     if (!joinOk) return showToast("Joining date is required");
     if (draft.joining_date > todayISOInIndia()) return showToast("Joining date cannot be in the future");
+    if (draft.aadhaar_number && !/^\d{12}$/.test(draft.aadhaar_number)) {
+      return showToast("Aadhaar Number must be exactly 12 digits");
+    }
 
     if (draft.status === "inactive" && !draft.exit_date) {
       return showToast("Exit date required for Inactive employee");
@@ -259,7 +264,7 @@ export default function EmployeeDetailPage() {
         perm_address: draft.perm_address,
         temp_address: draft.temp_address,
         pan: draft.pan,
-        aadhaar_last4: draft.aadhaar_last4,
+        aadhaar_number: draft.aadhaar_number,
         emergency_name: draft.emergency_name,
         emergency_mobile: draft.emergency_mobile,
         employment_type: draft.employment_type,
@@ -377,7 +382,7 @@ export default function EmployeeDetailPage() {
           perm_address: employee.perm_address || "",
           temp_address: employee.temp_address || "",
           pan: employee.pan || "",
-          aadhaar_last4: employee.aadhaar_last4 || "",
+          aadhaar_number: employee.aadhaar_number || "",
           emergency_name: employee.emergency_name || "",
           emergency_mobile: employee.emergency_mobile || "",
           employment_type: employee.employment_type,
@@ -576,7 +581,9 @@ export default function EmployeeDetailPage() {
               label="Mobile Number *"
               value={data.mobile}
               editable={isEditing}
-              onChange={(v) => setField("mobile", v)}
+              onChange={(v) => setField("mobile", v.replace(/\D/g, "").slice(0, 10))}
+              inputMode="numeric"
+              maxLength={10}
             />
 
             <DragDropField
@@ -801,16 +808,14 @@ export default function EmployeeDetailPage() {
             />
 
             <Field
-              label="Aadhaar (Optional)"
-              value={isEditing ? data.aadhaar_last4 || "" : maskAadhaar(data.aadhaar_last4)}
+              label="Aadhaar Number (Optional)"
+              value={isEditing ? data.aadhaar_number || "" : maskAadhaar(data.aadhaar_number)}
               editable={isEditing}
-              onChange={(v) => setField("aadhaar_last4", v.replace(/\D/g, "").slice(0, 4))}
-              placeholder="Last 4 digits only"
-              helper={
-                isEditing
-                  ? "Store last 4 only (MVP). Full Aadhaar later with secure backend."
-                  : "Masked display for privacy."
-              }
+              onChange={(v) => setField("aadhaar_number", v.replace(/\D/g, "").slice(0, 12))}
+              placeholder="123412341234"
+              helper={isEditing ? "Enter full 12-digit Aadhaar number." : "Masked display for privacy."}
+              inputMode="numeric"
+              maxLength={12}
             />
 
             <Field
@@ -1018,6 +1023,8 @@ function Field({
   onChange,
   placeholder,
   helper,
+  inputMode,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -1025,6 +1032,8 @@ function Field({
   onChange: (v: string) => void;
   placeholder?: string;
   helper?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  maxLength?: number;
 }) {
   return (
     <div>
@@ -1038,6 +1047,8 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          inputMode={inputMode}
+          maxLength={maxLength}
           className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
         />
       )}

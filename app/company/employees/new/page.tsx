@@ -30,12 +30,16 @@ type EmployeeDraft = {
   perm_address: string;
   temp_address: string;
   pan: string;
-  aadhaar_last4: string;
+  aadhaar_number: string;
   emergency_name: string;
   emergency_mobile: string;
   employment_type: EmploymentType | "";
   attendance_mode: "office_only" | "field_staff";
 };
+
+function normalizeMobileInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 10);
+}
 
 const DESIGNATION_OPTIONS = [
   "Software Engineer",
@@ -93,7 +97,7 @@ export default function NewEmployeePage() {
     perm_address: "",
     temp_address: "",
     pan: "",
-    aadhaar_last4: "",
+    aadhaar_number: "",
     emergency_name: "",
     emergency_mobile: "",
     employment_type: "",
@@ -144,7 +148,7 @@ export default function NewEmployeePage() {
   function validate() {
     if (form.full_name.trim().length < 2) return "Full Name is required";
     if (!form.gender) return "Gender is required";
-    if (form.mobile.trim().length < 8) return "Mobile is required";
+    if (!/^\d{10}$/.test(form.mobile.trim())) return "Mobile Number must be exactly 10 digits";
     if (form.department.trim().length < 2) return "Department is required";
     if (form.designation.trim().length < 2) return "Designation is required";
     if (!form.joining_date) return "Joining Date is required";
@@ -165,7 +169,9 @@ export default function NewEmployeePage() {
     ) {
       return "Mobile already exists";
     }
-    if (form.aadhaar_last4 && form.aadhaar_last4.length !== 4) return "Aadhaar must be last 4 digits";
+    if (form.aadhaar_number && !/^\d{12}$/.test(form.aadhaar_number)) {
+      return "Aadhaar Number must be exactly 12 digits";
+    }
     return null;
   }
 
@@ -224,7 +230,7 @@ export default function NewEmployeePage() {
       perm_address: form.perm_address.trim() || undefined,
       temp_address: form.temp_address.trim() || undefined,
       pan: form.pan.trim().toUpperCase() || undefined,
-      aadhaar_last4: form.aadhaar_last4.trim() || undefined,
+      aadhaar_number: form.aadhaar_number.trim() || undefined,
       emergency_name: form.emergency_name.trim() || undefined,
       emergency_mobile: form.emergency_mobile.trim() || undefined,
       employment_type: form.employment_type || undefined,
@@ -321,9 +327,11 @@ export default function NewEmployeePage() {
             <Input
               label="Mobile Number *"
               value={form.mobile}
-              onChange={(v) => setField("mobile", v)}
+              onChange={(v) => setField("mobile", normalizeMobileInput(v))}
               autoComplete="off"
               error={fieldErrors.mobile}
+              inputMode="numeric"
+              maxLength={10}
             />
             <DragDropPicker
               label="Department *"
@@ -436,11 +444,13 @@ export default function NewEmployeePage() {
               autoComplete="off"
             />
             <Input
-              label="Aadhaar Last 4 (Optional)"
-              value={form.aadhaar_last4}
-              onChange={(v) => setField("aadhaar_last4", v.replace(/\D/g, "").slice(0, 4))}
-              placeholder="1234"
+              label="Aadhaar Number (Optional)"
+              value={form.aadhaar_number}
+              onChange={(v) => setField("aadhaar_number", v.replace(/\D/g, "").slice(0, 12))}
+              placeholder="123412341234"
               autoComplete="off"
+              inputMode="numeric"
+              maxLength={12}
             />
             <Input
               label="Emergency Contact Name (Optional)"
@@ -503,6 +513,8 @@ function Input({
   placeholder,
   autoComplete,
   error,
+  inputMode,
+  maxLength,
 }: {
   label: string;
   value: string;
@@ -510,6 +522,8 @@ function Input({
   placeholder?: string;
   autoComplete?: string;
   error?: string;
+  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+  maxLength?: number;
 }) {
   return (
     <div>
@@ -519,6 +533,8 @@ function Input({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         autoComplete={autoComplete ?? "off"}
+        inputMode={inputMode}
+        maxLength={maxLength}
         className={[
           "w-full rounded-2xl px-4 py-3 text-sm text-zinc-900 outline-none transition focus:shadow-sm",
           error

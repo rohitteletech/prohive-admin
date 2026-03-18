@@ -21,7 +21,7 @@ export type CompanyEmployee = {
   perm_address?: string;
   temp_address?: string;
   pan?: string;
-  aadhaar_last4?: string;
+  aadhaar_number?: string;
   emergency_name?: string;
   emergency_mobile?: string;
   employment_type?: EmploymentType;
@@ -70,7 +70,7 @@ type EmployeeDbRow = {
   perm_address: string | null;
   temp_address: string | null;
   pan: string | null;
-  aadhaar_last4: string | null;
+  aadhaar_number: string | null;
   emergency_name: string | null;
   emergency_mobile: string | null;
   employment_type: EmploymentType | null;
@@ -102,7 +102,7 @@ type EmployeeUpsertInput = {
   perm_address?: string | null;
   temp_address?: string | null;
   pan?: string | null;
-  aadhaar_last4?: string | null;
+  aadhaar_number?: string | null;
   emergency_name?: string | null;
   emergency_mobile?: string | null;
   employment_type?: EmploymentType | null;
@@ -148,7 +148,7 @@ function toEmployee(row: EmployeeDbRow): CompanyEmployee {
     perm_address: normalizeOptional(row.perm_address),
     temp_address: normalizeOptional(row.temp_address),
     pan: normalizeOptional(row.pan),
-    aadhaar_last4: normalizeOptional(row.aadhaar_last4),
+    aadhaar_number: normalizeOptional(row.aadhaar_number),
     emergency_name: normalizeOptional(row.emergency_name),
     emergency_mobile: normalizeOptional(row.emergency_mobile),
     employment_type: row.employment_type || undefined,
@@ -209,7 +209,7 @@ export async function loadCompanyEmployeesSupabase() {
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .select(
-      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_last4,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
+      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
       + ",attendance_mode"
     )
     .eq("company_id", companyId)
@@ -234,7 +234,7 @@ export async function getCompanyEmployeeByIdSupabase(id: string) {
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .select(
-      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_last4,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
+      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
       + ",attendance_mode"
     )
     .eq("company_id", companyId)
@@ -280,7 +280,7 @@ export async function upsertCompanyEmployeeSupabase(next: CompanyEmployee) {
     perm_address: normalizeOptional(next.perm_address) || null,
     temp_address: normalizeOptional(next.temp_address) || null,
     pan: normalizeOptional(next.pan) || null,
-    aadhaar_last4: normalizeOptional(next.aadhaar_last4) || null,
+    aadhaar_number: normalizeOptional(next.aadhaar_number) || null,
     emergency_name: normalizeOptional(next.emergency_name) || null,
     emergency_mobile: normalizeOptional(next.emergency_mobile) || null,
     employment_type: next.employment_type || null,
@@ -326,7 +326,7 @@ export async function resetCompanyEmployeeDeviceBindingSupabase(id: string) {
     .eq("company_id", companyId)
     .eq("id", id)
     .select(
-      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_last4,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
+      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
       + ",attendance_mode"
     )
     .maybeSingle();

@@ -61,6 +61,15 @@ export function saveCompanyShifts(rows: CompanyShift[]) {
 
 export function loadActiveShiftNames() {
   const shifts = loadCompanyShifts();
-  const names = shifts.filter((s) => s.active).map((s) => s.name.trim()).filter(Boolean);
-  return names;
+  const seen = new Set<string>();
+  return shifts
+    .filter((s) => s.active)
+    .map((s) => s.name.trim())
+    .filter((name) => {
+      if (!name) return false;
+      const key = name.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }

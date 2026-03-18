@@ -123,7 +123,7 @@ create table if not exists public.employees (
   perm_address text,
   temp_address text,
   pan text,
-  aadhaar_last4 text,
+  aadhaar_number text,
   emergency_name text,
   emergency_mobile text,
   employment_type text check (employment_type in ('full_time', 'contract', 'intern')),

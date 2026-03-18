@@ -16,7 +16,7 @@ type Body = {
   perm_address?: string;
   temp_address?: string;
   pan?: string;
-  aadhaar_last4?: string;
+  aadhaar_number?: string;
   emergency_name?: string;
   emergency_mobile?: string;
   employment_type?: "full_time" | "contract" | "intern";
@@ -27,6 +27,10 @@ type Body = {
 function normalizeOptional(value?: string) {
   const trimmed = (value || "").trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeMobile(value?: string) {
+  return String(value || "").replace(/\D/g, "").slice(0, 10);
 }
 
 function duplicateErrorKey(error: unknown) {
@@ -52,19 +56,26 @@ export async function POST(req: NextRequest) {
 
   const full_name = (body.full_name || "").trim();
   const employee_code = (body.employee_code || "").trim().toUpperCase();
-  const mobile = (body.mobile || "").trim();
+  const mobile = normalizeMobile(body.mobile);
   const designation = (body.designation || "").trim();
   const joined_on = (body.joined_on || "").trim();
   const gender = body.gender;
+  const aadhaar_number = String(body.aadhaar_number || "").replace(/\D/g, "").slice(0, 12);
 
   if (!full_name) return NextResponse.json({ error: "Full Name is required." }, { status: 400 });
   if (!employee_code) return NextResponse.json({ error: "Employee Code is required." }, { status: 400 });
   if (!mobile) return NextResponse.json({ error: "Mobile is required." }, { status: 400 });
+  if (!/^\d{10}$/.test(mobile)) {
+    return NextResponse.json({ error: "Mobile Number must be exactly 10 digits." }, { status: 400 });
+  }
   if (gender !== "male" && gender !== "female" && gender !== "other") {
     return NextResponse.json({ error: "Gender is required." }, { status: 400 });
   }
   if (!designation) return NextResponse.json({ error: "Designation is required." }, { status: 400 });
   if (!joined_on) return NextResponse.json({ error: "Joining Date is required." }, { status: 400 });
+  if (aadhaar_number && !/^\d{12}$/.test(aadhaar_number)) {
+    return NextResponse.json({ error: "Aadhaar Number must be exactly 12 digits." }, { status: 400 });
+  }
   const { data: duplicate } = await context.admin
     .from("employees")
     .select("id")
@@ -100,7 +111,7 @@ export async function POST(req: NextRequest) {
     perm_address: normalizeOptional(body.perm_address),
     temp_address: normalizeOptional(body.temp_address),
     pan: normalizeOptional(body.pan),
-    aadhaar_last4: normalizeOptional(body.aadhaar_last4),
+    aadhaar_number: aadhaar_number || null,
     emergency_name: normalizeOptional(body.emergency_name),
     emergency_mobile: normalizeOptional(body.emergency_mobile),
     employment_type: body.employment_type || null,
