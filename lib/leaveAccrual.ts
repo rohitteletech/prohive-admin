@@ -97,12 +97,16 @@ export async function fetchCompOffEarnedDays(params: {
   const grantsOnHoliday = params.holidayWorkedStatus === "Grant Comp Off";
   const grantsOnWeeklyOff = params.weeklyOffWorkedStatus === "Grant Comp Off";
   const validityDays = Math.max(Number(params.compOffValidityDays || 0), 0);
+  const currentYear = Number(String(params.asOfIsoDate || "").slice(0, 4));
 
-  if ((!grantsOnHoliday && !grantsOnWeeklyOff) || validityDays <= 0) {
+  if (!grantsOnHoliday && !grantsOnWeeklyOff) {
     return { earnedDates: new Set<string>(), earnedDays: 0, error: null as string | null };
   }
 
-  const rangeStart = addDaysToIsoDate(params.asOfIsoDate, -validityDays);
+  const rangeStart =
+    validityDays > 0
+      ? addDaysToIsoDate(params.asOfIsoDate, -validityDays)
+      : `${Number.isFinite(currentYear) ? currentYear : new Date().getUTCFullYear()}-01-01`;
   const rangeEnd = addDaysToIsoDate(params.asOfIsoDate, 1);
 
   const [attendanceResult, holidayResult] = await Promise.all([
