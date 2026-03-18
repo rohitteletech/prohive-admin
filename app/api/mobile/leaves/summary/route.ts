@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
     id: string;
     name: string;
     code: string;
+    halfDayAllowed?: boolean;
     annual_quota: number;
     carry_forward: number;
     accrual_mode: "monthly" | "upfront" | null;
@@ -111,6 +112,7 @@ export async function POST(req: NextRequest) {
         id: leaveType.id,
         name: leaveType.name,
         code: leaveType.code,
+        halfDayAllowed: leaveType.halfDayAllowed,
         annual_quota: leaveType.annualQuota,
         carry_forward:
           leaveType.carryForwardAllowed
@@ -220,6 +222,7 @@ export async function POST(req: NextRequest) {
       id: row.id,
       code,
       name: String(row.name || ""),
+      halfDayAllowed: typeof row.halfDayAllowed === "boolean" ? row.halfDayAllowed : true,
       annualQuota,
       carryForward,
       accrualMode,
@@ -251,6 +254,7 @@ export async function POST(req: NextRequest) {
       id: "virtual-comp-off",
       code: VIRTUAL_COMP_OFF_CODE,
       name: "Comp Off",
+      halfDayAllowed: false,
       annualQuota: 0,
       carryForward: 0,
       accrualMode: "upfront" as const,
