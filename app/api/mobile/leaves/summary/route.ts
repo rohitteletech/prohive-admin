@@ -48,6 +48,17 @@ export async function POST(req: NextRequest) {
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const cycleBounds = getLeaveCycleBounds(today, leavePolicyRuntime.leaveCycleType);
+  const previousCycleEndDate = new Date(`${cycleBounds.start}T00:00:00.000Z`);
+  previousCycleEndDate.setUTCDate(previousCycleEndDate.getUTCDate() - 1);
+  const previousCycleEnd = previousCycleEndDate.toISOString().slice(0, 10);
+  const previousPolicyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    previousCycleEnd,
+    ["leave"],
+  );
+  const previousResolvedLeaveTypes = resolveLeaveTypesRuntime(previousPolicyContext.resolved.leave);
 
   const [policyResult, requestResult, holidayResult] = await Promise.all([
     session.admin
@@ -170,9 +181,15 @@ export async function POST(req: NextRequest) {
         companyId: session.employee.company_id,
         employeeId: session.employee.id,
         leavePolicyCode: String(row.code || ""),
-        policyEffectiveFrom: policyContext.resolved.leave?.effectiveFrom,
-        annualQuota: Number(row.annual_quota || 0),
-        accrualMode: normalizeAccrualMode(row.accrual_mode),
+        previousCycleLeavePolicyCode:
+          previousResolvedLeaveTypes.find((leaveType) => leaveType.code === String(row.code || ""))?.code || "",
+        previousCyclePolicyEffectiveFrom: previousPolicyContext.resolved.leave?.effectiveFrom,
+        previousCycleAnnualQuota:
+          previousResolvedLeaveTypes.find((leaveType) => leaveType.code === String(row.code || ""))?.annualQuota ?? 0,
+        previousCycleAccrualMode:
+          previousResolvedLeaveTypes.find((leaveType) => leaveType.code === String(row.code || ""))?.accrualRule === "Yearly Upfront"
+            ? "upfront"
+            : "monthly",
         carryForwardAllowed: Number(row.carry_forward || 0) > 0,
         maximumCarryForwardDays: Number(row.carry_forward || 0),
         carryForwardExpiryDays:

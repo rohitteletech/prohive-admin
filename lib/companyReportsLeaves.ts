@@ -4,6 +4,7 @@ import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
   fetchLeaveCarryForwardDays,
+  getLeaveCycleBounds,
   fetchLeaveOverrideDays,
   fetchLeaveUsageForCycle,
   normalizeAccrualMode,
@@ -145,8 +146,22 @@ export async function getLeaveReportData(params: {
         : "Calendar Year";
     const cacheKey = `${employeeId}:${leavePolicyCode}:${cycleAnchorDate}:${leaveCycleType}`;
     if (balanceCache.has(cacheKey)) return balanceCache.get(cacheKey) || 0;
+    const currentCycleBounds = getLeaveCycleBounds(cycleAnchorDate, leaveCycleType);
+    const previousCycleEndDate = new Date(`${currentCycleBounds.start}T00:00:00.000Z`);
+    previousCycleEndDate.setUTCDate(previousCycleEndDate.getUTCDate() - 1);
+    const previousCycleEnd = previousCycleEndDate.toISOString().slice(0, 10);
 
     const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null);
+    const previousResolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
+      params.admin as never,
+      params.companyId,
+      [{ id: employeeId, department: resolvedPoliciesByEmployee.get(employeeId)?.department || "" }],
+      previousCycleEnd,
+      ["leave"],
+    );
+    const previousResolvedLeaveTypes = resolveLeaveTypesRuntime(
+      previousResolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null,
+    );
     const resolvedPolicy = resolvedLeaveTypes.find((row) => row.code === leavePolicyCode);
     const policy =
       resolvedPolicy
@@ -192,9 +207,13 @@ export async function getLeaveReportData(params: {
       companyId: params.companyId,
       employeeId,
       leavePolicyCode,
-      policyEffectiveFrom: resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave?.effectiveFrom,
-      annualQuota: Number(policy.annual_quota || 0),
-      accrualMode: normalizeAccrualMode(policy.accrual_mode),
+      previousCycleLeavePolicyCode: previousResolvedLeaveTypes.find((row) => row.code === leavePolicyCode)?.code || "",
+      previousCyclePolicyEffectiveFrom: previousResolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave?.effectiveFrom,
+      previousCycleAnnualQuota: previousResolvedLeaveTypes.find((row) => row.code === leavePolicyCode)?.annualQuota ?? 0,
+      previousCycleAccrualMode:
+        previousResolvedLeaveTypes.find((row) => row.code === leavePolicyCode)?.accrualRule === "Yearly Upfront"
+          ? "upfront"
+          : "monthly",
       carryForwardAllowed: Number(policy.carry_forward || 0) > 0,
       maximumCarryForwardDays: Number(policy.carry_forward || 0),
       carryForwardExpiryDays:

@@ -449,9 +449,10 @@ export async function fetchLeaveCarryForwardDays(params: {
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
-  policyEffectiveFrom?: string;
-  annualQuota: number;
-  accrualMode: LeaveAccrualMode;
+  previousCycleLeavePolicyCode?: string;
+  previousCyclePolicyEffectiveFrom?: string;
+  previousCycleAnnualQuota?: number;
+  previousCycleAccrualMode?: LeaveAccrualMode;
   carryForwardAllowed: boolean;
   maximumCarryForwardDays: number;
   carryForwardExpiryDays: number;
@@ -481,7 +482,27 @@ export async function fetchLeaveCarryForwardDays(params: {
       error: "Unable to determine previous leave cycle.",
     };
   }
-  if (params.policyEffectiveFrom && params.policyEffectiveFrom > previousCycleEnd) {
+  if (!params.previousCycleLeavePolicyCode) {
+    return {
+      grantedDays: 0,
+      effectiveDays: 0,
+      expiredDays: 0,
+      previousCycleUnused: 0,
+      expiryDate: "",
+      error: null as string | null,
+    };
+  }
+  if (params.previousCyclePolicyEffectiveFrom && params.previousCyclePolicyEffectiveFrom > previousCycleEnd) {
+    return {
+      grantedDays: 0,
+      effectiveDays: 0,
+      expiredDays: 0,
+      previousCycleUnused: 0,
+      expiryDate: "",
+      error: null as string | null,
+    };
+  }
+  if (!Number.isFinite(params.previousCycleAnnualQuota) || !params.previousCycleAccrualMode) {
     return {
       grantedDays: 0,
       effectiveDays: 0,
@@ -497,7 +518,7 @@ export async function fetchLeaveCarryForwardDays(params: {
       admin: params.admin,
       companyId: params.companyId,
       employeeId: params.employeeId,
-      leavePolicyCode: params.leavePolicyCode,
+      leavePolicyCode: params.previousCycleLeavePolicyCode,
       asOfIsoDate: previousCycleEnd,
       leaveCycleType: params.leaveCycleType,
     }),
@@ -505,7 +526,7 @@ export async function fetchLeaveCarryForwardDays(params: {
       admin: params.admin,
       companyId: params.companyId,
       employeeId: params.employeeId,
-      leavePolicyCode: params.leavePolicyCode,
+      leavePolicyCode: params.previousCycleLeavePolicyCode,
       asOfIsoDate: previousCycleEnd,
       leaveCycleType: params.leaveCycleType,
     }),
@@ -533,9 +554,9 @@ export async function fetchLeaveCarryForwardDays(params: {
   }
 
   const previousEntitlement = computeLeaveEntitlement({
-    annualQuota: params.annualQuota,
+    annualQuota: Number(params.previousCycleAnnualQuota || 0),
     carryForward: 0,
-    accrualMode: params.accrualMode,
+    accrualMode: params.previousCycleAccrualMode,
     overrideDays: previousOverride.overrideDays,
     asOfIsoDate: previousCycleEnd,
     leaveCycleType: params.leaveCycleType,

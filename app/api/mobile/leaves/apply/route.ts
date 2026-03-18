@@ -136,6 +136,18 @@ export async function POST(req: NextRequest) {
   const leavePolicyRuntime = resolveLeavePolicyRuntime(policyContext.resolved.leave);
   const resolvedLeaveTypes = resolveLeaveTypesRuntime(policyContext.resolved.leave);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+  const currentCycleBounds = getLeaveCycleBounds(fromDate, leavePolicyRuntime.leaveCycleType);
+  const previousCycleEndDate = new Date(`${currentCycleBounds.start}T00:00:00.000Z`);
+  previousCycleEndDate.setUTCDate(previousCycleEndDate.getUTCDate() - 1);
+  const previousCycleEnd = previousCycleEndDate.toISOString().slice(0, 10);
+  const previousPolicyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    previousCycleEnd,
+    ["leave"],
+  );
+  const previousResolvedLeaveTypes = resolveLeaveTypesRuntime(previousPolicyContext.resolved.leave);
   const fromCycle = getLeaveCycleBounds(fromDate, leavePolicyRuntime.leaveCycleType);
   const toCycle = getLeaveCycleBounds(toDate, leavePolicyRuntime.leaveCycleType);
   if (fromCycle.start !== toCycle.start || fromCycle.end !== toCycle.end) {
@@ -289,9 +301,15 @@ export async function POST(req: NextRequest) {
         companyId: session.employee.company_id,
         employeeId: session.employee.id,
         leavePolicyCode,
-        policyEffectiveFrom: policyContext.resolved.leave?.effectiveFrom,
-        annualQuota: Number(policy.annual_quota || 0),
-        accrualMode: normalizeAccrualMode(policy.accrual_mode),
+        previousCycleLeavePolicyCode:
+          previousResolvedLeaveTypes.find((leaveType) => leaveType.code === leavePolicyCode)?.code || "",
+        previousCyclePolicyEffectiveFrom: previousPolicyContext.resolved.leave?.effectiveFrom,
+        previousCycleAnnualQuota:
+          previousResolvedLeaveTypes.find((leaveType) => leaveType.code === leavePolicyCode)?.annualQuota ?? 0,
+        previousCycleAccrualMode:
+          previousResolvedLeaveTypes.find((leaveType) => leaveType.code === leavePolicyCode)?.accrualRule === "Yearly Upfront"
+            ? "upfront"
+            : "monthly",
         carryForwardAllowed: Number(policy.carry_forward || 0) > 0,
         maximumCarryForwardDays: Number(policy.carry_forward || 0),
         carryForwardExpiryDays:
