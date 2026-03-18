@@ -548,7 +548,13 @@ export default function LeavePolicyPage() {
               <Field label="Notice Period for Leave Application (Days)">
                 <TextInput value={draft.noticePeriodDays} onChange={(e) => updatePolicy("noticePeriodDays", e.target.value)} />
               </Field>
-              <Field label="Backdated Leave Allowed">
+              <Field
+                label={
+                  draft.backdatedLeaveAllowed === "Yes"
+                    ? "Backdated Leave Allowed (Allowed for 5 days)"
+                    : "Backdated Leave Allowed"
+                }
+              >
                 <Select
                   value={draft.backdatedLeaveAllowed}
                   onChange={(e) => updatePolicy("backdatedLeaveAllowed", e.target.value as LeavePolicyState["backdatedLeaveAllowed"])}
