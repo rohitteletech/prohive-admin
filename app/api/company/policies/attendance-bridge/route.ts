@@ -51,7 +51,6 @@ function clockToMinutes(value: unknown, fallback: number) {
 
 function normalizeAttendancePenaltyDayValue(value: unknown, fallback: number) {
   const normalized = normalizePenaltyDayValue(value, fallback);
-  if (normalized >= 1) return "1";
   if (normalized >= 0.5) return "0.5";
   return "0";
 }

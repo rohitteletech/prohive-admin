@@ -76,6 +76,10 @@ function createNewPolicyDraft(): AttendancePolicyState {
   };
 }
 
+function normalizePenaltySelection(value: unknown): "0.5" | "0" {
+  return String(value || "").trim() === "0" ? "0" : "0.5";
+}
+
 export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
@@ -166,6 +170,10 @@ export default function NewAttendancePolicyPage() {
     const nextPolicy = {
       ...initialState,
       ...result,
+      penaltyForRepeatLate: normalizePenaltySelection(result.penaltyForRepeatLate),
+      penaltyForLateAboveLimit: normalizePenaltySelection(result.penaltyForLateAboveLimit),
+      penaltyForRepeatEarlyGo: normalizePenaltySelection(result.penaltyForRepeatEarlyGo),
+      penaltyForEarlyGoAboveLimit: normalizePenaltySelection(result.penaltyForEarlyGoAboveLimit),
       latePunchAboveMinutes: String(result.latePunchUpToMinutes || result.latePunchAboveMinutes || initialState.latePunchUpToMinutes),
       earlyGoAboveMinutes: String(result.earlyGoUpToMinutes || result.earlyGoAboveMinutes || initialState.earlyGoUpToMinutes),
     };
@@ -467,7 +475,6 @@ export default function NewAttendancePolicyPage() {
                   onChange={(e) => update("penaltyForRepeatLate", e.target.value as AttendancePolicyState["penaltyForRepeatLate"])}
                   disabled={draft.latePunchRule === "flag_only"}
                 >
-                  <option value="1">1.0</option>
                   <option value="0.5">0.5</option>
                   <option value="0">0</option>
                 </Select>
@@ -484,7 +491,6 @@ export default function NewAttendancePolicyPage() {
                   onChange={(e) => update("penaltyForLateAboveLimit", e.target.value as AttendancePolicyState["penaltyForLateAboveLimit"])}
                   disabled={draft.latePunchRule === "flag_only"}
                 >
-                  <option value="1">1.0</option>
                   <option value="0.5">0.5</option>
                   <option value="0">0</option>
                 </Select>
@@ -523,7 +529,6 @@ export default function NewAttendancePolicyPage() {
                   onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value as AttendancePolicyState["penaltyForRepeatEarlyGo"])}
                   disabled={draft.earlyGoRule === "flag_only"}
                 >
-                  <option value="1">1.0</option>
                   <option value="0.5">0.5</option>
                   <option value="0">0</option>
                 </Select>
@@ -540,7 +545,6 @@ export default function NewAttendancePolicyPage() {
                   onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value as AttendancePolicyState["penaltyForEarlyGoAboveLimit"])}
                   disabled={draft.earlyGoRule === "flag_only"}
                 >
-                  <option value="1">1.0</option>
                   <option value="0.5">0.5</option>
                   <option value="0">0</option>
                 </Select>
