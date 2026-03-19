@@ -46,6 +46,14 @@ function isValidIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function parseWholeNumberInRange(value: unknown, min: number, max: number) {
+  const normalized = String(value ?? "").trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
+
 function comparePolicyPriority(
   a: { effectiveFrom: string; updatedAt: string; createdAt: string },
   b: { effectiveFrom: string; updatedAt: string; createdAt: string }
@@ -187,6 +195,7 @@ export async function PUT(req: NextRequest) {
   const policyCode = String(body.policyCode || policy?.policyCode || "").trim();
   const effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || "").trim();
   const nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || "").trim();
+  const existingConfig = ((policy?.configJson || {}) as Record<string, unknown>);
 
   if (!policyName) {
     return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
@@ -213,6 +222,36 @@ export async function PUT(req: NextRequest) {
   const requestedDefaultCompanyPolicy =
     String(body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No")).trim() === "Yes" ? "Yes" : "No";
   const normalizedDefaultCompanyPolicy = normalizedStatus === "active" && requestedDefaultCompanyPolicy === "Yes" ? "Yes" : "No";
+  const normalizedLatePunchRule =
+    String(body.latePunchRule || existingConfig.latePunchRule || "enforce_penalty").trim() === "flag_only"
+      ? "flag_only"
+      : "enforce_penalty";
+  const normalizedEarlyGoRule =
+    String(body.earlyGoRule || existingConfig.earlyGoRule || "flag_only").trim() === "enforce_penalty"
+      ? "enforce_penalty"
+      : "flag_only";
+  const latePunchUpToMinutesValue = body.latePunchUpToMinutes ?? existingConfig.latePunchUpToMinutes;
+  const repeatLateDaysInMonthValue = body.repeatLateDaysInMonth ?? existingConfig.repeatLateDaysInMonth;
+  const earlyGoUpToMinutesValue = body.earlyGoUpToMinutes ?? existingConfig.earlyGoUpToMinutes;
+  const repeatEarlyGoDaysInMonthValue = body.repeatEarlyGoDaysInMonth ?? existingConfig.repeatEarlyGoDaysInMonth;
+
+  if (normalizedLatePunchRule === "enforce_penalty") {
+    if (parseWholeNumberInRange(latePunchUpToMinutesValue, 0, 180) === null) {
+      return NextResponse.json({ error: "Late Arrival Up To (mins) must be between 0 and 180 when late punch penalty is enabled." }, { status: 400 });
+    }
+    if (parseWholeNumberInRange(repeatLateDaysInMonthValue, 1, 31) === null) {
+      return NextResponse.json({ error: "Repeat Late Count In Month must be between 1 and 31 when late punch penalty is enabled." }, { status: 400 });
+    }
+  }
+
+  if (normalizedEarlyGoRule === "enforce_penalty") {
+    if (parseWholeNumberInRange(earlyGoUpToMinutesValue, 0, 180) === null) {
+      return NextResponse.json({ error: "Early Go Up To (mins) must be between 0 and 180 when early go penalty is enabled." }, { status: 400 });
+    }
+    if (parseWholeNumberInRange(repeatEarlyGoDaysInMonthValue, 1, 31) === null) {
+      return NextResponse.json({ error: "Repeat Early Go Count In Month must be between 1 and 31 when early go penalty is enabled." }, { status: 400 });
+    }
+  }
 
   const configJson = {
     policyName: policyName || "Standard Attendance Policy",
@@ -224,8 +263,8 @@ export async function PUT(req: NextRequest) {
     presentTrigger: body.presentTrigger || "punch_in_out",
     singlePunchHandling: body.singlePunchHandling || "absent",
     extraHoursCountingRule: body.extraHoursCountingRule || "count",
-    latePunchRule: body.latePunchRule || "enforce_penalty",
-    earlyGoRule: body.earlyGoRule || "flag_only",
+    latePunchRule: normalizedLatePunchRule,
+    earlyGoRule: normalizedEarlyGoRule,
     presentDaysFormula: body.presentDaysFormula || "full_plus_half",
     halfDayValue: body.halfDayValue || "0.5",
     latePunchPenaltyEnabled:

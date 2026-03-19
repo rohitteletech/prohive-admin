@@ -79,6 +79,13 @@ function normalizePenaltySelection(value: unknown): "0.5" | "0" {
   return String(value || "").trim() === "0" ? "0" : "0.5";
 }
 
+function isWholeNumberInRange(value: string, min: number, max: number) {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return false;
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) && parsed >= min && parsed <= max;
+}
+
 function validateAttendancePolicyDraft(draft: AttendancePolicyState) {
   const policyName = draft.policyName.trim();
   const policyCode = draft.policyCode.trim();
@@ -90,6 +97,20 @@ function validateAttendancePolicyDraft(draft: AttendancePolicyState) {
   if (!effectiveFrom) return "Effective From date is required.";
   if (!nextReviewDate) return "Next Review Date is required.";
   if (nextReviewDate < effectiveFrom) return "Next Review Date cannot be earlier than Effective From date.";
+
+  if (draft.latePunchRule === "enforce_penalty") {
+    if (!draft.latePunchUpToMinutes.trim()) return "Late Arrival Up To (mins) is required when late punch penalty is enabled.";
+    if (!isWholeNumberInRange(draft.latePunchUpToMinutes, 0, 180)) return "Late Arrival Up To (mins) must be between 0 and 180.";
+    if (!draft.repeatLateDaysInMonth.trim()) return "Repeat Late Count In Month is required when late punch penalty is enabled.";
+    if (!isWholeNumberInRange(draft.repeatLateDaysInMonth, 1, 31)) return "Repeat Late Count In Month must be between 1 and 31.";
+  }
+
+  if (draft.earlyGoRule === "enforce_penalty") {
+    if (!draft.earlyGoUpToMinutes.trim()) return "Early Go Up To (mins) is required when early go penalty is enabled.";
+    if (!isWholeNumberInRange(draft.earlyGoUpToMinutes, 0, 180)) return "Early Go Up To (mins) must be between 0 and 180.";
+    if (!draft.repeatEarlyGoDaysInMonth.trim()) return "Repeat Early Go Count In Month is required when early go penalty is enabled.";
+    if (!isWholeNumberInRange(draft.repeatEarlyGoDaysInMonth, 1, 31)) return "Repeat Early Go Count In Month must be between 1 and 31.";
+  }
 
   return null;
 }
