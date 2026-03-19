@@ -216,20 +216,20 @@ export function PolicyRegisterSection({
         </button>
       </div>
 
-      <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
-        <table className="min-w-[1120px] w-full text-left text-sm">
-          <thead className="bg-slate-100 text-[11px] uppercase tracking-[0.12em] text-slate-600">
+      <div className="mt-4 rounded-2xl border border-slate-200">
+        <table className="w-full table-fixed text-left text-sm">
+          <thead className="bg-slate-100 text-[10px] uppercase tracking-[0.08em] text-slate-600 sm:text-[11px]">
             <tr>
-              <th className="px-4 py-3 font-semibold">Policy Name</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Assigned Workforce</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Policy Code</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Effective From</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Next Review Date</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Status</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Created By</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Created On</th>
-              <th className="px-4 py-3 font-semibold whitespace-nowrap">Default Company Policy</th>
-              <th className="px-4 py-3 font-semibold text-right whitespace-nowrap">Actions</th>
+              <th className="px-3 py-3 font-semibold">Policy Name</th>
+              <th className="px-3 py-3 font-semibold">Assigned Workforce</th>
+              <th className="px-3 py-3 font-semibold">Policy Code</th>
+              <th className="px-3 py-3 font-semibold">Effective From</th>
+              <th className="px-3 py-3 font-semibold">Next Review Date</th>
+              <th className="px-3 py-3 font-semibold">Status</th>
+              <th className="px-3 py-3 font-semibold">Created By</th>
+              <th className="px-3 py-3 font-semibold">Created On</th>
+              <th className="px-3 py-3 font-semibold">Default Company Policy</th>
+              <th className="px-3 py-3 font-semibold text-right">Actions</th>
             </tr>
           </thead>
           <tbody className="bg-white text-slate-800">
@@ -242,21 +242,21 @@ export function PolicyRegisterSection({
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="border-t border-slate-200">
-                  <td className="min-w-[200px] px-4 py-3 font-semibold">{row.name}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.assignedWorkforce || "0"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.policyCode || "-"}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.effectiveFrom}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.reviewDueOn}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-3 py-3 font-semibold break-words">{row.name}</td>
+                  <td className="px-3 py-3">{row.assignedWorkforce || "0"}</td>
+                  <td className="px-3 py-3 break-words">{row.policyCode || "-"}</td>
+                  <td className="px-3 py-3 break-words">{row.effectiveFrom}</td>
+                  <td className="px-3 py-3 break-words">{row.reviewDueOn}</td>
+                  <td className="px-3 py-3">
                     <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800">
                       {row.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.createdBy}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.createdOn}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">{row.defaultPolicy}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex justify-end gap-2 whitespace-nowrap">
+                  <td className="px-3 py-3 break-words">{row.createdBy}</td>
+                  <td className="px-3 py-3 break-words">{row.createdOn}</td>
+                  <td className="px-3 py-3 break-words">{row.defaultPolicy}</td>
+                  <td className="px-3 py-3 text-right">
+                    <div className="flex justify-end gap-2">
                       <button
                         type="button"
                         onClick={() => onEdit(row.id)}
