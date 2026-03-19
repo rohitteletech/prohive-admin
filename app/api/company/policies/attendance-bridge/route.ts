@@ -49,6 +49,13 @@ function clockToMinutes(value: unknown, fallback: number) {
   return Math.max(0, hours * 60 + minutes);
 }
 
+function normalizeAttendancePenaltyDayValue(value: unknown, fallback: number) {
+  const normalized = normalizePenaltyDayValue(value, fallback);
+  if (normalized >= 1) return "1";
+  if (normalized >= 0.5) return "0.5";
+  return "0";
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -93,16 +100,16 @@ export async function GET(req: NextRequest) {
       presentDaysFormula: config.presentDaysFormula === "full_only" ? "full_only" : "full_plus_half",
       halfDayValue: config.halfDayValue === "1.0" ? "1.0" : "0.5",
       latePunchPenaltyEnabled: config.latePunchPenaltyEnabled === "No" ? "No" : "Yes",
-      latePunchUpToMinutes: String(config.latePunchUpToMinutes || "60"),
-      repeatLateDaysInMonth: String(config.repeatLateDaysInMonth || "3"),
-      penaltyForRepeatLate: String(config.penaltyForRepeatLate || "1"),
-      latePunchAboveMinutes: String(config.latePunchUpToMinutes || config.latePunchAboveMinutes || "60"),
-      penaltyForLateAboveLimit: String(config.penaltyForLateAboveLimit || "0.5"),
-      earlyGoUpToMinutes: String(config.earlyGoUpToMinutes || "30"),
-      repeatEarlyGoDaysInMonth: String(config.repeatEarlyGoDaysInMonth || "3"),
-      penaltyForRepeatEarlyGo: String(config.penaltyForRepeatEarlyGo || "1"),
-      earlyGoAboveMinutes: String(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes || "30"),
-      penaltyForEarlyGoAboveLimit: String(config.penaltyForEarlyGoAboveLimit || "0.5"),
+      latePunchUpToMinutes: String(normalizeLatePenaltyMinutes(config.latePunchUpToMinutes, 60)),
+      repeatLateDaysInMonth: String(normalizeLatePenaltyCount(config.repeatLateDaysInMonth, 3)),
+      penaltyForRepeatLate: normalizeAttendancePenaltyDayValue(config.penaltyForRepeatLate, 1),
+      latePunchAboveMinutes: String(normalizeLatePenaltyMinutes(config.latePunchUpToMinutes || config.latePunchAboveMinutes, 60)),
+      penaltyForLateAboveLimit: normalizeAttendancePenaltyDayValue(config.penaltyForLateAboveLimit, 0.5),
+      earlyGoUpToMinutes: String(normalizeLatePenaltyMinutes(config.earlyGoUpToMinutes, 30)),
+      repeatEarlyGoDaysInMonth: String(normalizeLatePenaltyCount(config.repeatEarlyGoDaysInMonth, 3)),
+      penaltyForRepeatEarlyGo: normalizeAttendancePenaltyDayValue(config.penaltyForRepeatEarlyGo, 1),
+      earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes, 30)),
+      penaltyForEarlyGoAboveLimit: normalizeAttendancePenaltyDayValue(config.penaltyForEarlyGoAboveLimit, 0.5),
     } satisfies AttendanceBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load attendance policy bridge." }, { status: 400 });
@@ -141,16 +148,16 @@ export async function PUT(req: NextRequest) {
       (body.latePunchRule || "enforce_penalty") === "enforce_penalty"
         ? "Yes"
         : "No",
-    latePunchUpToMinutes: String(body.latePunchUpToMinutes || "60"),
-    repeatLateDaysInMonth: String(body.repeatLateDaysInMonth || "3"),
-    penaltyForRepeatLate: String(body.penaltyForRepeatLate || "1"),
-    latePunchAboveMinutes: String(body.latePunchUpToMinutes || body.latePunchAboveMinutes || "60"),
-    penaltyForLateAboveLimit: String(body.penaltyForLateAboveLimit || "0.5"),
-    earlyGoUpToMinutes: String(body.earlyGoUpToMinutes || "30"),
-    repeatEarlyGoDaysInMonth: String(body.repeatEarlyGoDaysInMonth || "3"),
-    penaltyForRepeatEarlyGo: String(body.penaltyForRepeatEarlyGo || "1"),
-    earlyGoAboveMinutes: String(body.earlyGoUpToMinutes || body.earlyGoAboveMinutes || "30"),
-    penaltyForEarlyGoAboveLimit: String(body.penaltyForEarlyGoAboveLimit || "0.5"),
+    latePunchUpToMinutes: String(normalizeLatePenaltyMinutes(body.latePunchUpToMinutes, 60)),
+    repeatLateDaysInMonth: String(normalizeLatePenaltyCount(body.repeatLateDaysInMonth, 3)),
+    penaltyForRepeatLate: normalizeAttendancePenaltyDayValue(body.penaltyForRepeatLate, 1),
+    latePunchAboveMinutes: String(normalizeLatePenaltyMinutes(body.latePunchUpToMinutes || body.latePunchAboveMinutes, 60)),
+    penaltyForLateAboveLimit: normalizeAttendancePenaltyDayValue(body.penaltyForLateAboveLimit, 0.5),
+    earlyGoUpToMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes, 30)),
+    repeatEarlyGoDaysInMonth: String(normalizeLatePenaltyCount(body.repeatEarlyGoDaysInMonth, 3)),
+    penaltyForRepeatEarlyGo: normalizeAttendancePenaltyDayValue(body.penaltyForRepeatEarlyGo, 1),
+    earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes || body.earlyGoAboveMinutes, 30)),
+    penaltyForEarlyGoAboveLimit: normalizeAttendancePenaltyDayValue(body.penaltyForEarlyGoAboveLimit, 0.5),
   };
 
   if (configJson.status === "active") {

@@ -109,6 +109,21 @@ export default function NewAttendancePolicyPage() {
     });
   }
 
+  function digitsOnly(value: string, maxDigits = 3) {
+    return value.replace(/\D/g, "").slice(0, maxDigits);
+  }
+
+  function updateMinutesField(
+    key: "latePunchUpToMinutes" | "latePunchAboveMinutes" | "earlyGoUpToMinutes" | "earlyGoAboveMinutes",
+    value: string
+  ) {
+    update(key, digitsOnly(value, 3) as AttendancePolicyState[typeof key]);
+  }
+
+  function updateCountField(key: "repeatLateDaysInMonth" | "repeatEarlyGoDaysInMonth", value: string) {
+    update(key, digitsOnly(value, 2) as AttendancePolicyState[typeof key]);
+  }
+
   function notify(message: string) {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
@@ -425,23 +440,29 @@ export default function NewAttendancePolicyPage() {
               <Field label="Late Arrival Up To (mins)">
                 <TextInput
                   value={draft.latePunchUpToMinutes}
-                  onChange={(e) => update("latePunchUpToMinutes", e.target.value)}
+                  onChange={(e) => updateMinutesField("latePunchUpToMinutes", e.target.value)}
+                  inputMode="numeric"
                   disabled={draft.latePunchRule === "flag_only"}
                 />
               </Field>
               <Field label="Repeat Late Count In Month">
                 <TextInput
                   value={draft.repeatLateDaysInMonth}
-                  onChange={(e) => update("repeatLateDaysInMonth", e.target.value)}
+                  onChange={(e) => updateCountField("repeatLateDaysInMonth", e.target.value)}
+                  inputMode="numeric"
                   disabled={draft.latePunchRule === "flag_only"}
                 />
               </Field>
               <Field label="Attendance Value After Repeat Late">
-                <TextInput
+                <Select
                   value={draft.penaltyForRepeatLate}
-                  onChange={(e) => update("penaltyForRepeatLate", e.target.value)}
+                  onChange={(e) => update("penaltyForRepeatLate", e.target.value as AttendancePolicyState["penaltyForRepeatLate"])}
                   disabled={draft.latePunchRule === "flag_only"}
-                />
+                >
+                  <option value="1">1.0</option>
+                  <option value="0.5">0.5</option>
+                  <option value="0">0</option>
+                </Select>
               </Field>
               <Field label="Late Arrival Above (mins)">
                 <TextInput
@@ -450,11 +471,15 @@ export default function NewAttendancePolicyPage() {
                 />
               </Field>
               <Field label="Attendance Value After Late Above Limit">
-                <TextInput
+                <Select
                   value={draft.penaltyForLateAboveLimit}
-                  onChange={(e) => update("penaltyForLateAboveLimit", e.target.value)}
+                  onChange={(e) => update("penaltyForLateAboveLimit", e.target.value as AttendancePolicyState["penaltyForLateAboveLimit"])}
                   disabled={draft.latePunchRule === "flag_only"}
-                />
+                >
+                  <option value="1">1.0</option>
+                  <option value="0.5">0.5</option>
+                  <option value="0">0</option>
+                </Select>
               </Field>
             </div>
 
@@ -471,23 +496,29 @@ export default function NewAttendancePolicyPage() {
               <Field label="Early Go Up To (mins)">
                 <TextInput
                   value={draft.earlyGoUpToMinutes}
-                  onChange={(e) => update("earlyGoUpToMinutes", e.target.value)}
+                  onChange={(e) => updateMinutesField("earlyGoUpToMinutes", e.target.value)}
+                  inputMode="numeric"
                   disabled={draft.earlyGoRule === "flag_only"}
                 />
               </Field>
               <Field label="Repeat Early Go Count In Month">
                 <TextInput
                   value={draft.repeatEarlyGoDaysInMonth}
-                  onChange={(e) => update("repeatEarlyGoDaysInMonth", e.target.value)}
+                  onChange={(e) => updateCountField("repeatEarlyGoDaysInMonth", e.target.value)}
+                  inputMode="numeric"
                   disabled={draft.earlyGoRule === "flag_only"}
                 />
               </Field>
               <Field label="Attendance Value After Repeat Early Go">
-                <TextInput
+                <Select
                   value={draft.penaltyForRepeatEarlyGo}
-                  onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value)}
+                  onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value as AttendancePolicyState["penaltyForRepeatEarlyGo"])}
                   disabled={draft.earlyGoRule === "flag_only"}
-                />
+                >
+                  <option value="1">1.0</option>
+                  <option value="0.5">0.5</option>
+                  <option value="0">0</option>
+                </Select>
               </Field>
               <Field label="Early Go Above (mins)">
                 <TextInput
@@ -496,11 +527,15 @@ export default function NewAttendancePolicyPage() {
                 />
               </Field>
               <Field label="Attendance Value After Early Go Above Limit">
-                <TextInput
+                <Select
                   value={draft.penaltyForEarlyGoAboveLimit}
-                  onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value)}
+                  onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value as AttendancePolicyState["penaltyForEarlyGoAboveLimit"])}
                   disabled={draft.earlyGoRule === "flag_only"}
-                />
+                >
+                  <option value="1">1.0</option>
+                  <option value="0.5">0.5</option>
+                  <option value="0">0</option>
+                </Select>
               </Field>
             </div>
 
