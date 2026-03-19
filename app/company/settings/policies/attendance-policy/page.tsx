@@ -22,7 +22,7 @@ type AttendancePolicyState = {
   status: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy: "Yes" | "No";
   presentTrigger: "punch_in" | "punch_in_out";
-  singlePunchHandling: "incomplete_punch" | "half_day" | "absent";
+  singlePunchHandling: "present" | "absent";
   extraHoursCountingRule: "count" | "ignore";
   latePunchRule: "flag_only" | "enforce_penalty";
   earlyGoRule: "flag_only" | "enforce_penalty";
@@ -49,7 +49,7 @@ const initialState: AttendancePolicyState = {
   status: "Draft",
   defaultCompanyPolicy: "Yes",
   presentTrigger: "punch_in_out",
-  singlePunchHandling: "incomplete_punch",
+  singlePunchHandling: "absent",
   extraHoursCountingRule: "count",
   latePunchRule: "enforce_penalty",
   earlyGoRule: "flag_only",
@@ -347,8 +347,7 @@ export default function NewAttendancePolicyPage() {
                   value={draft.singlePunchHandling}
                   onChange={(e) => update("singlePunchHandling", e.target.value as AttendancePolicyState["singlePunchHandling"])}
                 >
-                  <option value="incomplete_punch">Incomplete Punch</option>
-                  <option value="half_day">Half Day</option>
+                  <option value="present">Present</option>
                   <option value="absent">Absent</option>
                 </Select>
               </Field>

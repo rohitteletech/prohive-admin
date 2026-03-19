@@ -16,7 +16,7 @@ type AttendanceBridgePayload = {
   status?: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy?: "Yes" | "No";
   presentTrigger?: "punch_in" | "punch_in_out";
-  singlePunchHandling?: "incomplete_punch" | "half_day" | "absent";
+  singlePunchHandling?: "present" | "absent";
   extraHoursCountingRule?: "count" | "ignore";
   latePunchRule?: "flag_only" | "enforce_penalty";
   earlyGoRule?: "flag_only" | "enforce_penalty";
@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
             : "Draft",
       defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || attendancePolicy.isDefault === false) ? "No" : "Yes",
       presentTrigger: config.presentTrigger === "punch_in" ? "punch_in" : "punch_in_out",
-      singlePunchHandling: config.singlePunchHandling === "half_day" || config.singlePunchHandling === "absent" ? config.singlePunchHandling : "incomplete_punch",
+      singlePunchHandling: config.singlePunchHandling === "present" ? "present" : "absent",
       extraHoursCountingRule:
         config.extraHoursCountingRule === "ignore"
           ? "ignore"
@@ -131,7 +131,7 @@ export async function PUT(req: NextRequest) {
     status: (body.status || "Draft").toLowerCase(),
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     presentTrigger: body.presentTrigger || "punch_in_out",
-    singlePunchHandling: body.singlePunchHandling || "incomplete_punch",
+    singlePunchHandling: body.singlePunchHandling || "absent",
     extraHoursCountingRule: body.extraHoursCountingRule || "count",
     latePunchRule: body.latePunchRule || "enforce_penalty",
     earlyGoRule: body.earlyGoRule || "flag_only",
