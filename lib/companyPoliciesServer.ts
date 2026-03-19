@@ -30,7 +30,7 @@ export async function ensureCompanyPolicyDefinitions(admin: SupabaseClient, comp
 
   if (missing.length > 0) {
     const { error: insertError } = await admin.from("company_policy_definitions").insert(missing);
-    if (insertError) {
+    if (insertError && insertError.code !== "23505") {
       throw new Error(insertError.message || "Unable to seed default company policies.");
     }
   }

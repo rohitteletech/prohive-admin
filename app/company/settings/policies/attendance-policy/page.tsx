@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { createAttendancePolicyGovernanceDates, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR, DEFAULT_ATTENDANCE_POLICY_CODE, DEFAULT_ATTENDANCE_POLICY_NAME } from "@/lib/attendancePolicyDefaults";
+import { formatDisplayDateTime } from "@/lib/dateTime";
 import {
   Field,
   PolicyPage,
@@ -37,38 +39,43 @@ type AttendancePolicyState = {
   penaltyForRepeatEarlyGo: string;
   earlyGoAboveMinutes: string;
   penaltyForEarlyGoAboveLimit: string;
+  createdBy?: string;
+  createdAt?: string;
 };
 
-const initialState: AttendancePolicyState = {
-  policyId: "",
-  policyName: "Standard Attendance Policy",
-  policyCode: "ATT-001",
-  effectiveFrom: "2026-03-13",
-  nextReviewDate: "2027-03-13",
-  status: "Draft",
-  defaultCompanyPolicy: "Yes",
-  presentTrigger: "punch_in_out",
-  singlePunchHandling: "absent",
-  extraHoursCountingRule: "count",
-  latePunchRule: "enforce_penalty",
-  earlyGoRule: "flag_only",
-  presentDaysFormula: "full_plus_half",
-  halfDayValue: "0.5",
-  latePunchUpToMinutes: "60",
-  repeatLateDaysInMonth: "3",
-  penaltyForRepeatLate: "0.5",
-  latePunchAboveMinutes: "60",
-  penaltyForLateAboveLimit: "0.5",
-  earlyGoUpToMinutes: "30",
-  repeatEarlyGoDaysInMonth: "3",
-  penaltyForRepeatEarlyGo: "0.5",
-  earlyGoAboveMinutes: "30",
-  penaltyForEarlyGoAboveLimit: "0.5",
-};
+function createInitialAttendancePolicyState(): AttendancePolicyState {
+  const { effectiveFrom, nextReviewDate } = createAttendancePolicyGovernanceDates();
+  return {
+    policyId: "",
+    policyName: DEFAULT_ATTENDANCE_POLICY_NAME,
+    policyCode: DEFAULT_ATTENDANCE_POLICY_CODE,
+    effectiveFrom,
+    nextReviewDate,
+    status: "Draft",
+    defaultCompanyPolicy: "Yes",
+    presentTrigger: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.presentTrigger,
+    singlePunchHandling: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.singlePunchHandling,
+    extraHoursCountingRule: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.extraHoursCountingRule,
+    latePunchRule: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.latePunchRule,
+    earlyGoRule: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.earlyGoRule,
+    presentDaysFormula: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.presentDaysFormula,
+    halfDayValue: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.halfDayValue,
+    latePunchUpToMinutes: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.latePunchUpToMinutes,
+    repeatLateDaysInMonth: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.repeatLateDaysInMonth,
+    penaltyForRepeatLate: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForRepeatLate,
+    latePunchAboveMinutes: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.latePunchAboveMinutes,
+    penaltyForLateAboveLimit: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForLateAboveLimit,
+    earlyGoUpToMinutes: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.earlyGoUpToMinutes,
+    repeatEarlyGoDaysInMonth: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.repeatEarlyGoDaysInMonth,
+    penaltyForRepeatEarlyGo: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForRepeatEarlyGo,
+    earlyGoAboveMinutes: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.earlyGoAboveMinutes,
+    penaltyForEarlyGoAboveLimit: DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForEarlyGoAboveLimit,
+  };
+}
 
 function createNewPolicyDraft(): AttendancePolicyState {
   return {
-    ...initialState,
+    ...createInitialAttendancePolicyState(),
     policyName: "",
     policyCode: "",
     defaultCompanyPolicy: "No",
@@ -117,7 +124,7 @@ function validateAttendancePolicyDraft(draft: AttendancePolicyState) {
 
 export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
-  const [draft, setDraft] = useState(initialState);
+  const [draft, setDraft] = useState<AttendancePolicyState>(() => createInitialAttendancePolicyState());
   const [savedPolicies, setSavedPolicies] = useState<AttendancePolicyState[]>([]);
   const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
   const [showForm, setShowForm] = useState(false);
@@ -198,15 +205,16 @@ export default function NewAttendancePolicyPage() {
       return;
     }
 
+    const baseState = createInitialAttendancePolicyState();
     const nextPolicy = {
-      ...initialState,
+      ...baseState,
       ...result,
       penaltyForRepeatLate: normalizePenaltySelection(result.penaltyForRepeatLate),
       penaltyForLateAboveLimit: normalizePenaltySelection(result.penaltyForLateAboveLimit),
       penaltyForRepeatEarlyGo: normalizePenaltySelection(result.penaltyForRepeatEarlyGo),
       penaltyForEarlyGoAboveLimit: normalizePenaltySelection(result.penaltyForEarlyGoAboveLimit),
-      latePunchAboveMinutes: String(result.latePunchUpToMinutes || result.latePunchAboveMinutes || initialState.latePunchUpToMinutes),
-      earlyGoAboveMinutes: String(result.earlyGoUpToMinutes || result.earlyGoAboveMinutes || initialState.earlyGoUpToMinutes),
+      latePunchAboveMinutes: String(result.latePunchUpToMinutes || result.latePunchAboveMinutes || baseState.latePunchUpToMinutes),
+      earlyGoAboveMinutes: String(result.earlyGoUpToMinutes || result.earlyGoAboveMinutes || baseState.earlyGoUpToMinutes),
     };
     setDraft(nextPolicy);
     const policiesResponse = await fetch("/api/company/policies?policy_type=attendance", {
@@ -216,7 +224,18 @@ export default function NewAttendancePolicyPage() {
       headers: { authorization: `Bearer ${token}` },
     });
     const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
-      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; configJson?: Record<string, unknown> }>;
+      policies?: Array<{
+        id: string;
+        policyName: string;
+        policyCode: string;
+        effectiveFrom: string;
+        nextReviewDate: string;
+        status: string;
+        isDefault: boolean;
+        createdBy?: string;
+        createdAt?: string;
+        configJson?: Record<string, unknown>;
+      }>;
     };
     const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
@@ -227,17 +246,19 @@ export default function NewAttendancePolicyPage() {
         ? policiesResult.policies.map((policy) => {
             const config = (policy.configJson || {}) as Partial<AttendancePolicyState>;
             return {
-              ...initialState,
+              ...baseState,
               ...config,
               policyId: policy.id,
               policyName: String(config.policyName || policy.policyName || ""),
               policyCode: String(config.policyCode || policy.policyCode || ""),
-              effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
-              nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
+              effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || baseState.effectiveFrom),
+              nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || baseState.nextReviewDate),
               status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
               defaultCompanyPolicy: policy.status === "active" && policy.isDefault ? "Yes" : "No",
-              latePunchAboveMinutes: String(config.latePunchUpToMinutes || config.latePunchAboveMinutes || initialState.latePunchUpToMinutes),
-              earlyGoAboveMinutes: String(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes || initialState.earlyGoUpToMinutes),
+              latePunchAboveMinutes: String(config.latePunchUpToMinutes || config.latePunchAboveMinutes || baseState.latePunchUpToMinutes),
+              earlyGoAboveMinutes: String(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes || baseState.earlyGoUpToMinutes),
+              createdBy: String(policy.createdBy || ""),
+              createdAt: String(policy.createdAt || ""),
             } satisfies AttendancePolicyState;
           })
         : [nextPolicy];
@@ -380,8 +401,8 @@ export default function NewAttendancePolicyPage() {
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
-          createdBy: "Company Admin",
-          createdOn: "2026-03-13 08:05 AM",
+          createdBy: policy.createdBy || "Company Admin",
+          createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
       />

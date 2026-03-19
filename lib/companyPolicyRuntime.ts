@@ -1,5 +1,6 @@
 import { PolicyDefinition } from "@/lib/companyPolicies";
 import type { AttendanceStatusPenaltyRuntime } from "@/lib/attendancePolicy";
+import { DEFAULT_ATTENDANCE_POLICY_BEHAVIOR } from "@/lib/attendancePolicyDefaults";
 import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
@@ -78,32 +79,50 @@ export function resolveAttendancePolicyRuntime(policy: PolicyDefinition | null, 
   extraHoursPolicy: string;
 } {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
-  const latePunchRule = text(config.latePunchRule, "flag_only") === "enforce_penalty" ? "enforce_penalty" : "flag_only";
-  const earlyGoRule = text(config.earlyGoRule, "flag_only") === "enforce_penalty" ? "enforce_penalty" : "flag_only";
+  const latePunchRule =
+    text(config.latePunchRule, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.latePunchRule) === "enforce_penalty"
+      ? "enforce_penalty"
+      : "flag_only";
+  const earlyGoRule =
+    text(config.earlyGoRule, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.earlyGoRule) === "enforce_penalty"
+      ? "enforce_penalty"
+      : "flag_only";
   return {
     extraHoursPolicy: normalizeExtraHoursPolicy(
       config.extraHoursCountingRule === "ignore"
         ? "no"
         : config.extraHoursCountingRule === "count"
           ? "yes"
-          : fallback?.extraHoursCountingRule,
+          : fallback?.extraHoursCountingRule === "ignore"
+            ? "no"
+            : fallback?.extraHoursCountingRule === "count"
+              ? "yes"
+              : "yes",
     ),
-    presentTrigger: text(config.presentTrigger, "punch_in_out"),
-    singlePunchHandling: text(config.singlePunchHandling, "absent") === "present" ? "present" : "absent",
-    presentDaysFormula: text(config.presentDaysFormula, "full_plus_half") === "full_only" ? "full_only" : "full_plus_half",
+    presentTrigger: text(config.presentTrigger, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.presentTrigger),
+    singlePunchHandling:
+      text(config.singlePunchHandling, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.singlePunchHandling) === "present" ? "present" : "absent",
+    presentDaysFormula:
+      text(config.presentDaysFormula, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.presentDaysFormula) === "full_only"
+        ? "full_only"
+        : "full_plus_half",
     latePunchRule,
     earlyGoRule,
-    halfDayValue: text(config.halfDayValue, "0.5") === "1.0" ? 1 : 0.5,
-    latePunchUpToMinutes: wholeNumber(config.latePunchUpToMinutes, 60),
-    repeatLateDaysInMonth: wholeNumber(config.repeatLateDaysInMonth, 3),
-    dayCountForRepeatLate: decimalNumber(config.penaltyForRepeatLate, 0.5),
-    latePunchAboveMinutes: wholeNumber(config.latePunchAboveMinutes, 60),
-    dayCountForLateAboveLimit: decimalNumber(config.penaltyForLateAboveLimit, 0.5),
-    earlyGoUpToMinutes: wholeNumber(config.earlyGoUpToMinutes, 30),
-    repeatEarlyGoDaysInMonth: wholeNumber(config.repeatEarlyGoDaysInMonth, 3),
-    dayCountForRepeatEarlyGo: decimalNumber(config.penaltyForRepeatEarlyGo, 0.5),
-    earlyGoAboveMinutes: wholeNumber(config.earlyGoAboveMinutes, 60),
-    dayCountForEarlyGoAboveLimit: decimalNumber(config.penaltyForEarlyGoAboveLimit, 0.5),
+    halfDayValue: text(config.halfDayValue, DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.halfDayValue) === "1.0" ? 1 : 0.5,
+    latePunchUpToMinutes: wholeNumber(config.latePunchUpToMinutes, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.latePunchUpToMinutes)),
+    repeatLateDaysInMonth: wholeNumber(config.repeatLateDaysInMonth, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.repeatLateDaysInMonth)),
+    dayCountForRepeatLate: decimalNumber(config.penaltyForRepeatLate, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForRepeatLate)),
+    latePunchAboveMinutes: wholeNumber(config.latePunchAboveMinutes, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.latePunchAboveMinutes)),
+    dayCountForLateAboveLimit:
+      decimalNumber(config.penaltyForLateAboveLimit, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForLateAboveLimit)),
+    earlyGoUpToMinutes: wholeNumber(config.earlyGoUpToMinutes, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.earlyGoUpToMinutes)),
+    repeatEarlyGoDaysInMonth:
+      wholeNumber(config.repeatEarlyGoDaysInMonth, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.repeatEarlyGoDaysInMonth)),
+    dayCountForRepeatEarlyGo:
+      decimalNumber(config.penaltyForRepeatEarlyGo, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForRepeatEarlyGo)),
+    earlyGoAboveMinutes: wholeNumber(config.earlyGoAboveMinutes, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.earlyGoAboveMinutes)),
+    dayCountForEarlyGoAboveLimit:
+      decimalNumber(config.penaltyForEarlyGoAboveLimit, Number(DEFAULT_ATTENDANCE_POLICY_BEHAVIOR.penaltyForEarlyGoAboveLimit)),
   };
 }
 

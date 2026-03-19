@@ -51,6 +51,21 @@ export function todayISOInIndia() {
   return `${lookupPart(parts, "year")}-${lookupPart(parts, "month")}-${lookupPart(parts, "day")}`;
 }
 
+export function addYearsToIsoDate(value: string, years: number) {
+  const match = String(value || "").match(ISO_DATE_RE);
+  if (!match) return "";
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const offsetYears = Number.isFinite(years) ? Math.trunc(years) : 0;
+  const targetYear = year + offsetYears;
+  const maxDay = new Date(Date.UTC(targetYear, month, 0)).getUTCDate();
+  const targetDay = Math.min(day, maxDay);
+
+  return `${String(targetYear).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
+}
+
 export function formatDisplayDate(value: string | Date | null | undefined) {
   if (!value) return "";
   const parsed = value instanceof Date ? value : new Date(value);

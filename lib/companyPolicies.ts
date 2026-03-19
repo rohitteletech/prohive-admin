@@ -1,3 +1,5 @@
+import { createAttendancePolicyGovernanceDates, createDefaultAttendancePolicyConfig } from "@/lib/attendancePolicyDefaults";
+
 export type PolicyType = "shift" | "attendance" | "leave" | "holiday_weekoff" | "correction";
 export type PolicyStatus = "draft" | "active" | "archived";
 export type AssignmentLevel = "company" | "department" | "employee";
@@ -100,8 +102,7 @@ export function policyAssignmentFromDb(row: PolicyAssignmentDbRow): PolicyAssign
 }
 
 export function defaultPolicyDefinitions(companyId: string, createdBy: string): Omit<PolicyDefinitionDbRow, "created_at" | "updated_at">[] {
-  const today = "2026-03-13";
-  const nextReview = "2027-03-13";
+  const { effectiveFrom: today, nextReviewDate: nextReview } = createAttendancePolicyGovernanceDates();
   return [
     {
       id: crypto.randomUUID(),
@@ -126,7 +127,12 @@ export function defaultPolicyDefinitions(companyId: string, createdBy: string): 
       is_default: true,
       effective_from: today,
       next_review_date: nextReview,
-      config_json: {},
+      config_json: createDefaultAttendancePolicyConfig({
+        effectiveFrom: today,
+        nextReviewDate: nextReview,
+        status: "active",
+        defaultCompanyPolicy: "Yes",
+      }),
       created_by: createdBy,
     },
     {

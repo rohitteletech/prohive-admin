@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { createDefaultAttendancePolicyConfig } from "@/lib/attendancePolicyDefaults";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 import { todayISOInIndia } from "@/lib/dateTime";
@@ -138,9 +139,17 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Attendance policy definition not found." }, { status: 404 });
     }
 
-    const config = (attendancePolicy.configJson || {}) as Record<string, unknown>;
-
-    const normalizedStatus = String(config.status || attendancePolicy.status || "draft").toLowerCase();
+    const rawConfig = (attendancePolicy.configJson || {}) as Record<string, unknown>;
+    const normalizedStatus = String(rawConfig.status || attendancePolicy.status || "draft").toLowerCase();
+    const config = {
+      ...createDefaultAttendancePolicyConfig({
+        effectiveFrom: String(attendancePolicy.effectiveFrom || ""),
+        nextReviewDate: String(attendancePolicy.nextReviewDate || ""),
+        status: normalizedStatus === "active" ? "active" : normalizedStatus === "archived" ? "archived" : "draft",
+        defaultCompanyPolicy: attendancePolicy.isDefault ? "Yes" : "No",
+      }),
+      ...rawConfig,
+    } as Record<string, unknown>;
 
     return NextResponse.json({
       policyId: attendancePolicy.id,
@@ -195,7 +204,21 @@ export async function PUT(req: NextRequest) {
   const policyCode = String(body.policyCode || policy?.policyCode || "").trim();
   const effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || "").trim();
   const nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || "").trim();
-  const existingConfig = ((policy?.configJson || {}) as Record<string, unknown>);
+  const existingPolicyStatus =
+    String(policy?.status || "").trim().toLowerCase() === "active"
+      ? "active"
+      : String(policy?.status || "").trim().toLowerCase() === "archived"
+        ? "archived"
+        : "draft";
+  const existingConfig = {
+    ...createDefaultAttendancePolicyConfig({
+      effectiveFrom: effectiveFrom || String(policy?.effectiveFrom || ""),
+      nextReviewDate: nextReviewDate || String(policy?.nextReviewDate || ""),
+      status: existingPolicyStatus,
+      defaultCompanyPolicy: policy?.isDefault ? "Yes" : "No",
+    }),
+    ...((policy?.configJson || {}) as Record<string, unknown>),
+  } as Record<string, unknown>;
 
   if (!policyName) {
     return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
@@ -254,33 +277,55 @@ export async function PUT(req: NextRequest) {
   }
 
   const configJson = {
-    policyName: policyName || "Standard Attendance Policy",
-    policyCode: policyCode || "ATT-001",
+    ...createDefaultAttendancePolicyConfig({
+      policyName,
+      policyCode,
+      effectiveFrom,
+      nextReviewDate,
+      status: normalizedStatus,
+      defaultCompanyPolicy: normalizedDefaultCompanyPolicy,
+    }),
+    policyName,
+    policyCode,
     effectiveFrom,
     nextReviewDate,
     status: normalizedStatus,
     defaultCompanyPolicy: normalizedDefaultCompanyPolicy,
-    presentTrigger: body.presentTrigger || "punch_in_out",
-    singlePunchHandling: body.singlePunchHandling || "absent",
-    extraHoursCountingRule: body.extraHoursCountingRule || "count",
+    presentTrigger: body.presentTrigger || String(existingConfig.presentTrigger || "punch_in_out"),
+    singlePunchHandling: body.singlePunchHandling || String(existingConfig.singlePunchHandling || "absent"),
+    extraHoursCountingRule: body.extraHoursCountingRule || String(existingConfig.extraHoursCountingRule || "count"),
     latePunchRule: normalizedLatePunchRule,
     earlyGoRule: normalizedEarlyGoRule,
-    presentDaysFormula: body.presentDaysFormula || "full_plus_half",
-    halfDayValue: body.halfDayValue || "0.5",
+    presentDaysFormula: body.presentDaysFormula || String(existingConfig.presentDaysFormula || "full_plus_half"),
+    halfDayValue: body.halfDayValue || String(existingConfig.halfDayValue || "0.5"),
     latePunchPenaltyEnabled:
-      (body.latePunchRule || "enforce_penalty") === "enforce_penalty"
+      (body.latePunchRule || String(existingConfig.latePunchRule || "enforce_penalty")) === "enforce_penalty"
         ? "Yes"
         : "No",
-    latePunchUpToMinutes: String(normalizeLatePenaltyMinutes(body.latePunchUpToMinutes, 60)),
-    repeatLateDaysInMonth: String(normalizeLatePenaltyCount(body.repeatLateDaysInMonth, 3)),
-    penaltyForRepeatLate: normalizeAttendancePenaltyDayValue(body.penaltyForRepeatLate, 0.5),
-    latePunchAboveMinutes: String(normalizeLatePenaltyMinutes(body.latePunchUpToMinutes || body.latePunchAboveMinutes, 60)),
-    penaltyForLateAboveLimit: normalizeAttendancePenaltyDayValue(body.penaltyForLateAboveLimit, 0.5),
-    earlyGoUpToMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes, 30)),
-    repeatEarlyGoDaysInMonth: String(normalizeLatePenaltyCount(body.repeatEarlyGoDaysInMonth, 3)),
-    penaltyForRepeatEarlyGo: normalizeAttendancePenaltyDayValue(body.penaltyForRepeatEarlyGo, 0.5),
-    earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes || body.earlyGoAboveMinutes, 30)),
-    penaltyForEarlyGoAboveLimit: normalizeAttendancePenaltyDayValue(body.penaltyForEarlyGoAboveLimit, 0.5),
+    latePunchUpToMinutes: String(normalizeLatePenaltyMinutes(body.latePunchUpToMinutes ?? existingConfig.latePunchUpToMinutes, 60)),
+    repeatLateDaysInMonth: String(normalizeLatePenaltyCount(body.repeatLateDaysInMonth ?? existingConfig.repeatLateDaysInMonth, 3)),
+    penaltyForRepeatLate: normalizeAttendancePenaltyDayValue(body.penaltyForRepeatLate ?? existingConfig.penaltyForRepeatLate, 0.5),
+    latePunchAboveMinutes: String(
+      normalizeLatePenaltyMinutes(
+        body.latePunchUpToMinutes ?? body.latePunchAboveMinutes ?? existingConfig.latePunchUpToMinutes ?? existingConfig.latePunchAboveMinutes,
+        60
+      )
+    ),
+    penaltyForLateAboveLimit:
+      normalizeAttendancePenaltyDayValue(body.penaltyForLateAboveLimit ?? existingConfig.penaltyForLateAboveLimit, 0.5),
+    earlyGoUpToMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes ?? existingConfig.earlyGoUpToMinutes, 30)),
+    repeatEarlyGoDaysInMonth:
+      String(normalizeLatePenaltyCount(body.repeatEarlyGoDaysInMonth ?? existingConfig.repeatEarlyGoDaysInMonth, 3)),
+    penaltyForRepeatEarlyGo:
+      normalizeAttendancePenaltyDayValue(body.penaltyForRepeatEarlyGo ?? existingConfig.penaltyForRepeatEarlyGo, 0.5),
+    earlyGoAboveMinutes: String(
+      normalizeLatePenaltyMinutes(
+        body.earlyGoUpToMinutes ?? body.earlyGoAboveMinutes ?? existingConfig.earlyGoUpToMinutes ?? existingConfig.earlyGoAboveMinutes,
+        30
+      )
+    ),
+    penaltyForEarlyGoAboveLimit:
+      normalizeAttendancePenaltyDayValue(body.penaltyForEarlyGoAboveLimit ?? existingConfig.penaltyForEarlyGoAboveLimit, 0.5),
   };
   const today = todayISOInIndia();
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
