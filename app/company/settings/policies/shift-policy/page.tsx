@@ -446,8 +446,20 @@ export default function NewShiftPolicyPage() {
                 </Select>
               </Field>
               <Field
-                label="Early In Allowed (mins)"
-                hint={draft.loginAccessRule === "any_time" ? "Not applicable when login is allowed at any time." : undefined}
+                label={
+                  <span className="inline-flex items-center gap-2">
+                    <span>Early In Allowed (mins)</span>
+                    {draft.loginAccessRule === "any_time" ? (
+                      <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        Not applicable for this login rule
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                        Applied before shift start
+                      </span>
+                    )}
+                  </span>
+                }
               >
                 <TextInput
                   value={draft.loginAccessRule === "any_time" ? "0" : draft.earlyInAllowed}
