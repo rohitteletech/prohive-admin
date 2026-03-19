@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
 
   const timeZone = normalizeTimeZone(body.timeZone || INDIA_TIME_ZONE);
   const today = currentDateInTimeZone(timeZone);
+  const monthStart = `${today.slice(0, 7)}-01`;
   const { fromIso, toIso } = buildMonthWindow(today);
   const policyContext = await resolvePoliciesForEmployee(
     session.admin,
@@ -97,11 +98,10 @@ export async function POST(req: NextRequest) {
       .order("server_received_at", { ascending: false }),
     session.admin
       .from("company_holidays")
-      .select("id")
+      .select("holiday_date")
       .eq("company_id", session.employee.company_id)
-      .eq("holiday_date", today)
-      .limit(1)
-      .maybeSingle(),
+      .gte("holiday_date", monthStart)
+      .lte("holiday_date", today),
   ]);
 
   if (employeeResult.error) {
@@ -126,6 +126,7 @@ export async function POST(req: NextRequest) {
     server_received_at: string;
     approval_status: "auto_approved" | "pending_approval" | "approved" | "rejected";
   }>;
+  const holidayDates = new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date));
 
   const events = [...recentEvents].reverse().filter((row) => {
     const punchAt = row.effective_punch_at || row.server_received_at;
@@ -224,10 +225,16 @@ export async function POST(req: NextRequest) {
   }
   const orderedDates = Array.from(groupedByDate.keys()).sort();
   for (const localDate of orderedDates) {
-    if (localDate > today) continue;
+    if (localDate >= today) continue;
     const bucket = groupedByDate.get(localDate) || [];
     const firstInForDay = bucket.find((row) => row.punch_type === "in") || null;
     const lastOutForDay = [...bucket].reverse().find((row) => row.punch_type === "out") || null;
+    const dayType =
+      holidayDates.has(localDate)
+        ? "holiday"
+        : isWeeklyOffDate(localDate, resolvedHoliday.weeklyOffPolicy)
+          ? "weekly_off"
+          : null;
     const metrics = buildAttendanceMetrics({
       checkInIso: firstInForDay?.effective_punch_at || firstInForDay?.server_received_at || null,
       checkOutIso: lastOutForDay?.effective_punch_at || lastOutForDay?.server_received_at || null,
@@ -238,12 +245,14 @@ export async function POST(req: NextRequest) {
       graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
       halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
     });
-    const qualifiesLateWithinLimit =
+    const countsTowardLateCycle =
+      dayType === null &&
       metrics.lateMinutes > 0 && metrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
-    const qualifiesEarlyWithinLimit =
+    const countsTowardEarlyCycle =
+      dayType === null &&
       metrics.earlyGoMinutes > 0 && metrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
-    if (qualifiesLateWithinLimit) lateCycleCount += 1;
-    if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
+    if (countsTowardLateCycle) lateCycleCount += 1;
+    if (countsTowardEarlyCycle) earlyCycleCount += 1;
     const decision = buildDailyAttendanceDecision({
       checkInIso: firstInForDay?.effective_punch_at || firstInForDay?.server_received_at || null,
       checkOutIso: lastOutForDay?.effective_punch_at || lastOutForDay?.server_received_at || null,
@@ -254,22 +263,24 @@ export async function POST(req: NextRequest) {
       graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
       halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
       policy: resolvedAttendance,
-      lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
-      earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+      lateCycleOccurrenceCount: countsTowardLateCycle ? lateCycleCount : 0,
+      earlyGoCycleOccurrenceCount: countsTowardEarlyCycle ? earlyCycleCount : 0,
     });
     if (decision.resetLateCycle) lateCycleCount = 0;
     if (decision.resetEarlyGoCycle) earlyCycleCount = 0;
   }
-  const qualifiesLateWithinLimit =
-    todayMetrics.lateMinutes > 0 && todayMetrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
-  const qualifiesEarlyWithinLimit =
-    todayMetrics.earlyGoMinutes > 0 && todayMetrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
   const todayDayType =
-    holidayResult.data?.id
+    holidayDates.has(today)
       ? "holiday"
       : isWeeklyOffDate(today, resolvedHoliday.weeklyOffPolicy)
         ? "weekly_off"
         : null;
+  const countsTowardLateCycle =
+    todayDayType === null &&
+    todayMetrics.lateMinutes > 0 && todayMetrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
+  const countsTowardEarlyCycle =
+    todayDayType === null &&
+    todayMetrics.earlyGoMinutes > 0 && todayMetrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
   const { decision: attendanceDecision, treatmentLabel } = applyNonWorkingDayTreatment({
     decision: buildDailyAttendanceDecision({
       checkInIso: checkInAt,
@@ -281,8 +292,8 @@ export async function POST(req: NextRequest) {
       graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
       halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
       policy: resolvedAttendance,
-      lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
-      earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+      lateCycleOccurrenceCount: countsTowardLateCycle ? lateCycleCount + 1 : 0,
+      earlyGoCycleOccurrenceCount: countsTowardEarlyCycle ? earlyCycleCount + 1 : 0,
     }),
     dayType: (checkInAt || checkOutAt) ? todayDayType : null,
     treatment:

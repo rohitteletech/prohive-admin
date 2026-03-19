@@ -368,12 +368,14 @@ function aggregateRows(params: {
     let lateCycleCount = 0;
     let earlyCycleCount = 0;
     for (const row of bucket) {
-      const qualifiesLateWithinLimit =
+      const countsTowardLateCycle =
+        row.dayType === null &&
         row.metrics.lateMinutes > 0 && row.metrics.lateMinutes <= row.attendancePolicy.latePunchUpToMinutes;
-      const qualifiesEarlyWithinLimit =
+      const countsTowardEarlyCycle =
+        row.dayType === null &&
         row.metrics.earlyGoMinutes > 0 && row.metrics.earlyGoMinutes <= row.attendancePolicy.earlyGoUpToMinutes;
-      if (qualifiesLateWithinLimit) lateCycleCount += 1;
-      if (qualifiesEarlyWithinLimit) earlyCycleCount += 1;
+      if (countsTowardLateCycle) lateCycleCount += 1;
+      if (countsTowardEarlyCycle) earlyCycleCount += 1;
 
       const baseDecision = buildDailyAttendanceDecision({
         checkInIso: row.checkInIso,
@@ -385,8 +387,8 @@ function aggregateRows(params: {
         graceMins: row.graceMins,
         halfDayMinWorkMins: row.halfDayMinWorkMins,
         policy: row.attendancePolicy,
-        lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
-        earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
+        lateCycleOccurrenceCount: countsTowardLateCycle ? lateCycleCount : 0,
+        earlyGoCycleOccurrenceCount: countsTowardEarlyCycle ? earlyCycleCount : 0,
       });
       const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
         decision: baseDecision,
@@ -431,7 +433,7 @@ function aggregateRows(params: {
   }
 
   const penalty = calculateMonthlyLatePenalty(
-    rows.map((row) => row.lateMinutes || 0),
+    rows.filter((row) => row.dayType === "Working Day").map((row) => row.lateMinutes || 0),
     rows[0]?.latePenaltyPolicy || {
       enabled: false,
       upToMins: 30,
@@ -577,7 +579,7 @@ export async function getAttendanceReportData(params: {
     return matchesEmployee && matchesDepartment && matchesStatus;
   });
   const filteredPenalty = calculateMonthlyLatePenalty(
-    filteredRows.map((row) => row.lateMinutes),
+    filteredRows.filter((row) => row.dayType === "Working Day").map((row) => row.lateMinutes),
     filteredRows[0]?.latePenaltyPolicy || {
       enabled: false,
       upToMins: 30,
