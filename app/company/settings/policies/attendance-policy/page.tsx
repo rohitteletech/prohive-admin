@@ -342,7 +342,7 @@ export default function NewAttendancePolicyPage() {
                   <option value="punch_in_out">Punch In + Punch Out</option>
                 </Select>
               </Field>
-              <Field label="Single Punch Handling">
+              <Field label="Missed Punch Out Case">
                 <Select
                   value={draft.singlePunchHandling}
                   onChange={(e) => update("singlePunchHandling", e.target.value as AttendancePolicyState["singlePunchHandling"])}
