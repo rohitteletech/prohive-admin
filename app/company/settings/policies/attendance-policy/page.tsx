@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Field,
   PolicyPage,
@@ -80,6 +79,21 @@ function normalizePenaltySelection(value: unknown): "0.5" | "0" {
   return String(value || "").trim() === "0" ? "0" : "0.5";
 }
 
+function validateAttendancePolicyDraft(draft: AttendancePolicyState) {
+  const policyName = draft.policyName.trim();
+  const policyCode = draft.policyCode.trim();
+  const effectiveFrom = draft.effectiveFrom.trim();
+  const nextReviewDate = draft.nextReviewDate.trim();
+
+  if (!policyName) return "Policy Name is required.";
+  if (!policyCode) return "Policy Code is required.";
+  if (!effectiveFrom) return "Effective From date is required.";
+  if (!nextReviewDate) return "Next Review Date is required.";
+  if (nextReviewDate < effectiveFrom) return "Next Review Date cannot be earlier than Effective From date.";
+
+  return null;
+}
+
 export default function NewAttendancePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
@@ -113,10 +127,6 @@ export default function NewAttendancePolicyPage() {
     });
   }
 
-  function digitsOnly(value: string, maxDigits = 3) {
-    return value.replace(/\D/g, "").slice(0, maxDigits);
-  }
-
   function clampNumericText(value: string, max: number) {
     const digits = value.replace(/\D/g, "");
     if (!digits) return "";
@@ -134,23 +144,23 @@ export default function NewAttendancePolicyPage() {
     update(key, clampNumericText(value, 31) as AttendancePolicyState[typeof key]);
   }
 
-  function notify(message: string) {
+  const notify = useCallback((message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(null), 1800);
-  }
+  }, []);
 
   function showSuccess(message: string) {
     setSuccessMessage(message);
     window.setTimeout(() => setSuccessMessage(null), 1800);
   }
 
-  async function accessToken() {
+  const accessToken = useCallback(async () => {
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
     return sessionResult?.data.session?.access_token || "";
-  }
+  }, []);
 
-  async function loadAttendanceBridge() {
+  const loadAttendanceBridge = useCallback(async () => {
     const token = await accessToken();
     if (!token) {
       setLoading(false);
@@ -215,11 +225,15 @@ export default function NewAttendancePolicyPage() {
     setAssignedCounts(nextAssignedCounts);
     setIsCreatingNew(false);
     setLoading(false);
-  }
+  }, [accessToken, notify]);
 
   useEffect(() => {
-    void loadAttendanceBridge();
-  }, []);
+    const timeoutId = window.setTimeout(() => {
+      void loadAttendanceBridge();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [loadAttendanceBridge]);
 
   function openNewForm() {
     setDraft(createNewPolicyDraft());
@@ -256,6 +270,9 @@ export default function NewAttendancePolicyPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
+    const validationError = validateAttendancePolicyDraft(draft);
+    if (validationError) return notify(validationError);
+
     const creating = !draft.policyId;
     setSaving(true);
     const response = await fetch("/api/company/policies/attendance-bridge", {
@@ -266,6 +283,10 @@ export default function NewAttendancePolicyPage() {
       },
       body: JSON.stringify({
         ...draft,
+        policyName: draft.policyName.trim(),
+        policyCode: draft.policyCode.trim(),
+        effectiveFrom: draft.effectiveFrom.trim(),
+        nextReviewDate: draft.nextReviewDate.trim(),
         status: targetStatus,
         latePunchPenaltyEnabled: draft.latePunchRule === "enforce_penalty" ? "Yes" : "No",
       }),

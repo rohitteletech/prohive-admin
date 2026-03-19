@@ -35,24 +35,14 @@ type AttendanceBridgePayload = {
   penaltyForEarlyGoAboveLimit?: string;
 };
 
-function minutesToClock(value: number, fallback = "00:00") {
-  if (!Number.isFinite(value) || value < 0) return fallback;
-  const hours = Math.floor(value / 60);
-  const minutes = Math.floor(value % 60);
-  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
-}
-
-function clockToMinutes(value: unknown, fallback: number) {
-  const text = String(value || "").trim();
-  const [hours, minutes] = text.split(":").map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
-  return Math.max(0, hours * 60 + minutes);
-}
-
 function normalizeAttendancePenaltyDayValue(value: unknown, fallback: number) {
   const normalized = normalizePenaltyDayValue(value, fallback);
   if (normalized >= 0.5) return "0.5";
   return "0";
+}
+
+function isValidIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 export async function GET(req: NextRequest) {
@@ -128,12 +118,32 @@ export async function PUT(req: NextRequest) {
   const policy = body.policyId
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "attendance")
     : null;
+  const policyName = String(body.policyName || policy?.policyName || "").trim();
+  const policyCode = String(body.policyCode || policy?.policyCode || "").trim();
+  const effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || "").trim();
+  const nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || "").trim();
+
+  if (!policyName) {
+    return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
+  }
+  if (!policyCode) {
+    return NextResponse.json({ error: "Policy Code is required." }, { status: 400 });
+  }
+  if (!effectiveFrom || !isValidIsoDate(effectiveFrom)) {
+    return NextResponse.json({ error: "Valid Effective From date is required." }, { status: 400 });
+  }
+  if (!nextReviewDate || !isValidIsoDate(nextReviewDate)) {
+    return NextResponse.json({ error: "Valid Next Review Date is required." }, { status: 400 });
+  }
+  if (nextReviewDate < effectiveFrom) {
+    return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
+  }
 
   const configJson = {
-    policyName: body.policyName || policy?.policyName || "Standard Attendance Policy",
-    policyCode: body.policyCode || policy?.policyCode || "ATT-001",
-    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
-    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
+    policyName: policyName || "Standard Attendance Policy",
+    policyCode: policyCode || "ATT-001",
+    effectiveFrom,
+    nextReviewDate,
     status: (body.status || "Draft").toLowerCase(),
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     presentTrigger: body.presentTrigger || "punch_in_out",
