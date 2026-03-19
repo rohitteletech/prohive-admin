@@ -150,11 +150,12 @@ function aggregateRows(
   events.forEach((event) => {
     const punchAt = event.effective_punch_at || event.server_received_at;
     if (!punchAt) return;
-    if (isoDateInTimeZone(punchAt, timeZone) !== selectedDate) return;
+    const localDate = isoDateInTimeZone(punchAt, timeZone);
+    if (localDate > selectedDate) return;
     const employee = employeesById.get(event.employee_id);
     if (!employee?.id || employee.status === "inactive") return;
 
-    const key = `${employee.id}:${selectedDate}`;
+    const key = `${employee.id}:${localDate}`;
     const bucket = grouped.get(key) || [];
     bucket.push(event);
     grouped.set(key, bucket);
@@ -206,12 +207,13 @@ function aggregateRows(
         graceMins: shiftConfig?.graceMins ?? DEFAULT_SHIFT_GRACE_MINS,
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
       });
-      const isHoliday = holidayDates.has(selectedDate);
-      const isWeeklyOff = !isHoliday && isWeeklyOffDate(selectedDate, resolvedHoliday.weeklyOffPolicy);
+      const localDate = key.split(":")[1] || selectedDate;
+      const isHoliday = holidayDates.has(localDate);
+      const isWeeklyOff = !isHoliday && isWeeklyOffDate(localDate, resolvedHoliday.weeklyOffPolicy);
       return {
         id: key,
         employeeId: employee?.id || "",
-        localDate: selectedDate,
+        localDate,
         employee: employee?.full_name?.trim() || employee?.employee_code?.trim() || "Unknown Employee",
         department: employee?.department?.trim() || "-",
         shift: shiftConfig?.name || resolvedShift.shiftName || shift,
@@ -338,6 +340,7 @@ export async function GET(req: NextRequest) {
     }
 
     const timeZone = normalizeTimeZone(req.nextUrl.searchParams.get("timeZone") || INDIA_TIME_ZONE);
+    const monthStart = `${date.slice(0, 7)}-01`;
     const { fromIso, toIso } = buildQueryWindow(date);
 
     const [eventsResult, shiftResult, holidayResult] = await Promise.all([
@@ -354,7 +357,12 @@ export async function GET(req: NextRequest) {
         .select("name,type,start_time,end_time,grace_mins,active")
         .eq("company_id", context.companyId)
         .order("created_at", { ascending: true }),
-      context.admin.from("company_holidays").select("holiday_date").eq("company_id", context.companyId).eq("holiday_date", date),
+      context.admin
+        .from("company_holidays")
+        .select("holiday_date")
+        .eq("company_id", context.companyId)
+        .gte("holiday_date", monthStart)
+        .lte("holiday_date", date),
     ]);
 
     if (eventsResult.error) {
