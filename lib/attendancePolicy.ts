@@ -63,6 +63,25 @@ export function rawWorkedMinutes(checkInIso: string | null, checkOutIso: string 
   return Math.floor(diffMs / 60000);
 }
 
+export function resolveWorkedMinutesForAttendance(params: {
+  checkInIso: string | null;
+  checkOutIso: string | null;
+  scheduledMinutes: number | null;
+  policy?: AttendanceStatusPenaltyRuntime | null;
+}) {
+  const rawMinutes = rawWorkedMinutes(params.checkInIso, params.checkOutIso);
+  const scheduledMinutes =
+    typeof params.scheduledMinutes === "number" && Number.isFinite(params.scheduledMinutes) && params.scheduledMinutes > 0
+      ? Math.floor(params.scheduledMinutes)
+      : null;
+
+  if (params.checkInIso && !params.checkOutIso && params.policy?.singlePunchHandling === "present") {
+    return scheduledMinutes ?? rawMinutes;
+  }
+
+  return rawMinutes;
+}
+
 function localMinutesInTimeZone(iso: string, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone,
@@ -162,8 +181,28 @@ export function buildDailyAttendanceDecision(params: {
   }
 
   let baseStatus: AttendanceStatus;
+  let decisionWorkedMinutes = metrics.workedMinutes;
+  let decisionLateMinutes = metrics.lateMinutes;
+  let decisionEarlyGoMinutes = metrics.earlyGoMinutes;
+  let decisionIsLate = metrics.isLate;
 
-  if (metrics.scheduledMinutes !== null && metrics.workedMinutes >= metrics.scheduledMinutes) {
+  if (!metrics.hasPunchOut) {
+    if (params.policy?.singlePunchHandling === "present") {
+      baseStatus = metrics.isLate ? "late" : "present";
+      decisionWorkedMinutes = metrics.scheduledMinutes ?? metrics.workedMinutes;
+      decisionEarlyGoMinutes = 0;
+    } else {
+      return {
+        status: "absent",
+        workedMinutes: 0,
+        lateMinutes: 0,
+        earlyGoMinutes: 0,
+        isLate: false,
+        dayCount: 0,
+        appliedRuleCode: null,
+      } satisfies DailyAttendanceDecision;
+    }
+  } else if (metrics.scheduledMinutes !== null && metrics.workedMinutes >= metrics.scheduledMinutes) {
     baseStatus = metrics.isLate ? "late" : "present";
   } else if (metrics.workedMinutes >= metrics.halfDayThreshold && metrics.workedMinutes > 0) {
     baseStatus = "half_day";
@@ -180,14 +219,14 @@ export function buildDailyAttendanceDecision(params: {
 
     if (
       params.policy.latePunchRule === "enforce_penalty" &&
-      metrics.lateMinutes > Math.max(0, params.policy.latePunchAboveMinutes || 0)
+      decisionLateMinutes > Math.max(0, params.policy.latePunchAboveMinutes || 0)
     ) {
       finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForLateAboveLimit));
       appliedRuleCode = "late_above_limit";
     } else if (
       params.policy.latePunchRule === "enforce_penalty" &&
-      metrics.lateMinutes > 0 &&
-      metrics.lateMinutes <= Math.max(0, params.policy.latePunchUpToMinutes || 0) &&
+      decisionLateMinutes > 0 &&
+      decisionLateMinutes <= Math.max(0, params.policy.latePunchUpToMinutes || 0) &&
       lateRepeatThreshold > 0 &&
       (params.lateCycleOccurrenceCount || 0) > lateRepeatThreshold
     ) {
@@ -197,14 +236,14 @@ export function buildDailyAttendanceDecision(params: {
 
     if (
       params.policy.earlyGoRule === "enforce_penalty" &&
-      metrics.earlyGoMinutes > Math.max(0, params.policy.earlyGoAboveMinutes || 0)
+      decisionEarlyGoMinutes > Math.max(0, params.policy.earlyGoAboveMinutes || 0)
     ) {
       finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForEarlyGoAboveLimit));
       appliedRuleCode = appliedRuleCode || "early_go_above_limit";
     } else if (
       params.policy.earlyGoRule === "enforce_penalty" &&
-      metrics.earlyGoMinutes > 0 &&
-      metrics.earlyGoMinutes <= Math.max(0, params.policy.earlyGoUpToMinutes || 0) &&
+      decisionEarlyGoMinutes > 0 &&
+      decisionEarlyGoMinutes <= Math.max(0, params.policy.earlyGoUpToMinutes || 0) &&
       earlyRepeatThreshold > 0 &&
       (params.earlyGoCycleOccurrenceCount || 0) > earlyRepeatThreshold
     ) {
@@ -213,13 +252,13 @@ export function buildDailyAttendanceDecision(params: {
     }
   }
 
-  const finalStatus = dayCountToStatus(finalDayCount, metrics.isLate);
+  const finalStatus = dayCountToStatus(finalDayCount, decisionIsLate);
   return {
     status: finalStatus,
-    workedMinutes: metrics.workedMinutes,
-    lateMinutes: metrics.lateMinutes,
-    earlyGoMinutes: metrics.earlyGoMinutes,
-    isLate: metrics.isLate,
+    workedMinutes: decisionWorkedMinutes,
+    lateMinutes: decisionLateMinutes,
+    earlyGoMinutes: decisionEarlyGoMinutes,
+    isLate: decisionIsLate,
     dayCount: finalDayCount,
     appliedRuleCode,
   } satisfies DailyAttendanceDecision;

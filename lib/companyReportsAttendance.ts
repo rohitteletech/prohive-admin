@@ -9,7 +9,14 @@ import {
   shiftDurationMinutes,
   workHoursLabel,
 } from "@/lib/shiftWorkPolicy";
-import { applyNonWorkingDayTreatment, buildAttendanceMetrics, buildDailyAttendanceDecision, calculateMonthlyLatePenalty, rawWorkedMinutes, type NonWorkingDayTreatment } from "@/lib/attendancePolicy";
+import {
+  applyNonWorkingDayTreatment,
+  buildAttendanceMetrics,
+  buildDailyAttendanceDecision,
+  calculateMonthlyLatePenalty,
+  resolveWorkedMinutesForAttendance,
+  type NonWorkingDayTreatment,
+} from "@/lib/attendancePolicy";
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
 
 type AdminClientLike = {
@@ -268,7 +275,12 @@ function aggregateRows(params: {
         : findShiftConfig(shift, params.shiftRows);
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
       const effectiveMinutes = applyExtraHoursPolicy(
-        rawWorkedMinutes(checkInIso, checkOutIso),
+        resolveWorkedMinutesForAttendance({
+          checkInIso,
+          checkOutIso,
+          scheduledMinutes,
+          policy: resolvedAttendance,
+        }),
         scheduledMinutes,
         resolvedAttendance.extraHoursPolicy
       );

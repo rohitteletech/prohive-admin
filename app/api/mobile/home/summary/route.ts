@@ -8,7 +8,7 @@ import {
   applyNonWorkingDayTreatment,
   buildAttendanceMetrics,
   buildDailyAttendanceDecision,
-  rawWorkedMinutes,
+  resolveWorkedMinutesForAttendance,
   type NonWorkingDayTreatment,
 } from "@/lib/attendancePolicy";
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
@@ -194,7 +194,12 @@ export async function POST(req: NextRequest) {
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const extraHoursPolicy = normalizeExtraHoursPolicy(resolvedAttendance.extraHoursPolicy);
   const loginAccessRule = normalizeLoginAccessRule(resolvedShift.loginAccessRule);
-  const actualWorkedMinutes = rawWorkedMinutes(checkInAt, checkOutAt);
+  const actualWorkedMinutes = resolveWorkedMinutesForAttendance({
+    checkInIso: checkInAt,
+    checkOutIso: checkOutAt,
+    scheduledMinutes: effectiveScheduledWorkMin,
+    policy: resolvedAttendance,
+  });
   const workingMinutes = applyExtraHoursPolicy(actualWorkedMinutes, effectiveScheduledWorkMin, extraHoursPolicy);
   const todayMetrics = buildAttendanceMetrics({
     checkInIso: checkInAt,

@@ -5,7 +5,13 @@ import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { applyExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
-import { applyNonWorkingDayTreatment, buildAttendanceMetrics, buildDailyAttendanceDecision, rawWorkedMinutes, type NonWorkingDayTreatment } from "@/lib/attendancePolicy";
+import {
+  applyNonWorkingDayTreatment,
+  buildAttendanceMetrics,
+  buildDailyAttendanceDecision,
+  resolveWorkedMinutesForAttendance,
+  type NonWorkingDayTreatment,
+} from "@/lib/attendancePolicy";
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
 
 type EventRow = {
@@ -182,7 +188,12 @@ function aggregateRows(
           }
         : findShiftConfig(shift, shiftRows);
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
-      const rawMinutes = rawWorkedMinutes(checkInIso, checkOutIso);
+      const rawMinutes = resolveWorkedMinutesForAttendance({
+        checkInIso,
+        checkOutIso,
+        scheduledMinutes,
+        policy: resolvedAttendance,
+      });
       const effectiveMinutes = applyExtraHoursPolicy(rawMinutes, scheduledMinutes, resolvedAttendance.extraHoursPolicy);
       const metrics = buildAttendanceMetrics({
         checkInIso,
