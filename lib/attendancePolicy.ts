@@ -76,16 +76,16 @@ export function resolveWorkedMinutesForAttendance(params: {
       ? Math.floor(params.scheduledMinutes)
       : null;
 
-  if (params.checkInIso && !params.checkOutIso && countsSinglePunchAsPresent(params.policy)) {
+  if (params.checkInIso && !params.checkOutIso && singlePunchHandledAsPresent(params.policy)) {
     return scheduledMinutes ?? rawMinutes;
   }
 
   return rawMinutes;
 }
 
-function countsSinglePunchAsPresent(policy?: AttendanceStatusPenaltyRuntime | null) {
+function singlePunchHandledAsPresent(policy?: AttendanceStatusPenaltyRuntime | null) {
   if (!policy) return false;
-  return policy.presentTrigger === "punch_in" || policy.singlePunchHandling === "present";
+  return policy.singlePunchHandling === "present";
 }
 
 function localMinutesInTimeZone(iso: string, timeZone: string) {
@@ -193,7 +193,7 @@ export function buildDailyAttendanceDecision(params: {
   const decisionIsLate = metrics.isLate;
 
   if (!metrics.hasPunchOut) {
-    if (countsSinglePunchAsPresent(params.policy)) {
+    if (singlePunchHandledAsPresent(params.policy)) {
       baseStatus = metrics.isLate ? "late" : "present";
       decisionWorkedMinutes = metrics.scheduledMinutes ?? metrics.workedMinutes;
       decisionEarlyGoMinutes = 0;
