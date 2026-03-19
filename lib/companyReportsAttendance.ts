@@ -203,15 +203,6 @@ function formatPresentCount(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-function presentCountForStatus(
-  status: AttendanceReportRow["status"],
-  halfDayValue: number
-) {
-  if (status === "present" || status === "late") return "1";
-  if (status === "half_day") return formatPresentCount(halfDayValue);
-  return "0";
-}
-
 function presentDaysValueForStatus(params: {
   status: AttendanceReportRow["status"];
   halfDayValue: number;
@@ -222,6 +213,14 @@ function presentDaysValueForStatus(params: {
     return params.presentDaysFormula === "full_plus_half" ? params.halfDayValue : 0;
   }
   return 0;
+}
+
+function presentCountForStatus(params: {
+  status: AttendanceReportRow["status"];
+  halfDayValue: number;
+  presentDaysFormula: "full_plus_half" | "full_only";
+}) {
+  return formatPresentCount(presentDaysValueForStatus(params));
 }
 
 function payrollTreatmentLabel(params: {
@@ -417,7 +416,11 @@ function aggregateRows(params: {
           dayType: row.dayType === "holiday" ? "Holiday" : row.dayType === "weekly_off" ? "Weekly Off" : "Working Day",
           treatment: treatmentLabel || undefined,
         }),
-        presentCount: presentCountForStatus(decision.status, row.attendancePolicy.halfDayValue),
+        presentCount: presentCountForStatus({
+          status: decision.status,
+          halfDayValue: row.attendancePolicy.halfDayValue,
+          presentDaysFormula: row.attendancePolicy.presentDaysFormula,
+        }),
         halfDayValue: row.attendancePolicy.halfDayValue,
         presentDaysFormula: row.attendancePolicy.presentDaysFormula,
         otEligible: treatmentLabel === "OT Only" || treatmentLabel === "Present + OT" ? "Yes" : "No",
