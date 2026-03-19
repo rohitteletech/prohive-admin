@@ -16,6 +16,8 @@ export type DailyAttendanceDecision = {
   isLate: boolean;
   dayCount: number;
   appliedRuleCode: "late_above_limit" | "repeat_late" | "early_go_above_limit" | "repeat_early_go" | null;
+  resetLateCycle: boolean;
+  resetEarlyGoCycle: boolean;
 };
 
 export type LatePenaltyPolicy = {
@@ -183,6 +185,8 @@ export function buildDailyAttendanceDecision(params: {
       isLate: false,
       dayCount: 0,
       appliedRuleCode: null,
+      resetLateCycle: false,
+      resetEarlyGoCycle: false,
     } satisfies DailyAttendanceDecision;
   }
 
@@ -206,6 +210,8 @@ export function buildDailyAttendanceDecision(params: {
         isLate: false,
         dayCount: 0,
         appliedRuleCode: null,
+        resetLateCycle: false,
+        resetEarlyGoCycle: false,
       } satisfies DailyAttendanceDecision;
     }
   } else if (metrics.scheduledMinutes !== null && metrics.workedMinutes >= metrics.scheduledMinutes) {
@@ -218,6 +224,8 @@ export function buildDailyAttendanceDecision(params: {
 
   let finalDayCount = statusToDayCount(baseStatus);
   let appliedRuleCode: DailyAttendanceDecision["appliedRuleCode"] = null;
+  let resetLateCycle = false;
+  let resetEarlyGoCycle = false;
 
   if (params.policy) {
     const lateRepeatThreshold = Math.max(0, Math.floor(params.policy.repeatLateDaysInMonth || 0));
@@ -238,6 +246,7 @@ export function buildDailyAttendanceDecision(params: {
     ) {
       finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForRepeatLate));
       appliedRuleCode = "repeat_late";
+      resetLateCycle = true;
     }
 
     if (
@@ -255,6 +264,7 @@ export function buildDailyAttendanceDecision(params: {
     ) {
       finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForRepeatEarlyGo));
       appliedRuleCode = appliedRuleCode || "repeat_early_go";
+      resetEarlyGoCycle = true;
     }
   }
 
@@ -267,6 +277,8 @@ export function buildDailyAttendanceDecision(params: {
     isLate: decisionIsLate,
     dayCount: finalDayCount,
     appliedRuleCode,
+    resetLateCycle,
+    resetEarlyGoCycle,
   } satisfies DailyAttendanceDecision;
 }
 

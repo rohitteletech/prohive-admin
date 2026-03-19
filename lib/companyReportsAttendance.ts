@@ -394,8 +394,8 @@ function aggregateRows(params: {
         dayType: row.dayType,
         treatment: params.manualReviewResolutionsByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
       });
-      if (baseDecision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
-      if (baseDecision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+      if (baseDecision.resetLateCycle) lateCycleCount = 0;
+      if (baseDecision.resetEarlyGoCycle) earlyCycleCount = 0;
 
       rows.push({
         id: row.id,

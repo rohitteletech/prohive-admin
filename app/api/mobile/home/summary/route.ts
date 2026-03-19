@@ -257,8 +257,8 @@ export async function POST(req: NextRequest) {
       lateCycleOccurrenceCount: qualifiesLateWithinLimit ? lateCycleCount : 0,
       earlyGoCycleOccurrenceCount: qualifiesEarlyWithinLimit ? earlyCycleCount : 0,
     });
-    if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
-    if (decision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+    if (decision.resetLateCycle) lateCycleCount = 0;
+    if (decision.resetEarlyGoCycle) earlyCycleCount = 0;
   }
   const qualifiesLateWithinLimit =
     todayMetrics.lateMinutes > 0 && todayMetrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;

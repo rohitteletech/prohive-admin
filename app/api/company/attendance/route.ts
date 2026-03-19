@@ -291,8 +291,8 @@ function aggregateRows(
         treatment: row.nonWorkingDayTreatment,
       });
 
-      if (baseDecision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
-      if (baseDecision.appliedRuleCode === "repeat_early_go") earlyCycleCount = 0;
+      if (baseDecision.resetLateCycle) lateCycleCount = 0;
+      if (baseDecision.resetEarlyGoCycle) earlyCycleCount = 0;
 
       if (row.localDate === selectedDate) {
         resolvedRows.push({
