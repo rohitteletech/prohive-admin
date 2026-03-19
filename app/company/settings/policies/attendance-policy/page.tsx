@@ -197,6 +197,8 @@ export default function NewAttendancePolicyPage() {
               nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
               status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+              latePunchAboveMinutes: String(config.latePunchUpToMinutes || config.latePunchAboveMinutes || initialState.latePunchUpToMinutes),
+              earlyGoAboveMinutes: String(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes || initialState.earlyGoUpToMinutes),
             } satisfies AttendancePolicyState;
           })
         : [nextPolicy];
