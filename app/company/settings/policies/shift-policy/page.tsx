@@ -407,11 +407,19 @@ export default function NewShiftPolicyPage() {
                 </Select>
               </Field>
               <Field
-                label="Half Day Hours"
-                hint={
-                  draft.halfDayAvailable === "No"
-                    ? "Not applicable when half day is not available for this shift."
-                    : "Automatically calculated from shift duration."
+                label={
+                  <span className="inline-flex items-center gap-2">
+                    <span>Half Day Hours</span>
+                    {draft.halfDayAvailable === "No" ? (
+                      <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                        Not applicable for this shift
+                      </span>
+                    ) : (
+                      <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
+                        Auto-calculated from shift duration
+                      </span>
+                    )}
+                  </span>
                 }
               >
                 <TextInput
