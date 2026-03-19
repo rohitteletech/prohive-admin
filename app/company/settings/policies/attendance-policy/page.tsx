@@ -214,7 +214,7 @@ export default function NewAttendancePolicyPage() {
               effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
               nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
               status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
-              defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+              defaultCompanyPolicy: policy.status === "active" && policy.isDefault ? "Yes" : "No",
               latePunchAboveMinutes: String(config.latePunchUpToMinutes || config.latePunchAboveMinutes || initialState.latePunchUpToMinutes),
               earlyGoAboveMinutes: String(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes || initialState.earlyGoUpToMinutes),
             } satisfies AttendancePolicyState;
@@ -299,6 +299,7 @@ export default function NewAttendancePolicyPage() {
     const nextPolicy = {
       ...draft,
       status: targetStatus,
+      defaultCompanyPolicy: targetStatus === "Active" ? draft.defaultCompanyPolicy : "No",
       policyId: result.policyId || draft.policyId,
     };
     setDraft(nextPolicy);

@@ -132,19 +132,17 @@ export async function GET(req: NextRequest) {
 
     const config = (attendancePolicy.configJson || {}) as Record<string, unknown>;
 
+    const normalizedStatus = String(config.status || attendancePolicy.status || "draft").toLowerCase();
+
     return NextResponse.json({
       policyId: attendancePolicy.id,
       policyName: String(config.policyName || attendancePolicy.policyName || "Standard Attendance Policy"),
       policyCode: String(config.policyCode || attendancePolicy.policyCode || "ATT-001"),
       effectiveFrom: String(config.effectiveFrom || attendancePolicy.effectiveFrom),
       nextReviewDate: String(config.nextReviewDate || attendancePolicy.nextReviewDate),
-      status:
-        String(config.status || attendancePolicy.status || "draft").toLowerCase() === "active"
-          ? "Active"
-          : String(config.status || attendancePolicy.status || "draft").toLowerCase() === "archived"
-            ? "Archived"
-            : "Draft",
-      defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || attendancePolicy.isDefault === false) ? "No" : "Yes",
+      status: normalizedStatus === "active" ? "Active" : normalizedStatus === "archived" ? "Archived" : "Draft",
+      defaultCompanyPolicy:
+        normalizedStatus === "active" && config.defaultCompanyPolicy !== "No" && attendancePolicy.isDefault !== false ? "Yes" : "No",
       presentTrigger: config.presentTrigger === "punch_in" ? "punch_in" : "punch_in_out",
       singlePunchHandling: config.singlePunchHandling === "present" ? "present" : "absent",
       extraHoursCountingRule:
@@ -206,13 +204,23 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
   }
 
+  const normalizedStatus =
+    String(body.status || policy?.status || "Draft").trim().toLowerCase() === "active"
+      ? "active"
+      : String(body.status || policy?.status || "Draft").trim().toLowerCase() === "archived"
+        ? "archived"
+        : "draft";
+  const requestedDefaultCompanyPolicy =
+    String(body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No")).trim() === "Yes" ? "Yes" : "No";
+  const normalizedDefaultCompanyPolicy = normalizedStatus === "active" && requestedDefaultCompanyPolicy === "Yes" ? "Yes" : "No";
+
   const configJson = {
     policyName: policyName || "Standard Attendance Policy",
     policyCode: policyCode || "ATT-001",
     effectiveFrom,
     nextReviewDate,
-    status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
+    status: normalizedStatus,
+    defaultCompanyPolicy: normalizedDefaultCompanyPolicy,
     presentTrigger: body.presentTrigger || "punch_in_out",
     singlePunchHandling: body.singlePunchHandling || "absent",
     extraHoursCountingRule: body.extraHoursCountingRule || "count",
