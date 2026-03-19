@@ -28,6 +28,24 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "No policy fields provided." }, { status: 400 });
   }
 
+  const { data: targetPolicy, error: targetPolicyError } = await context.admin
+    .from("company_policy_definitions")
+    .select("id,policy_type")
+    .eq("company_id", context.companyId)
+    .eq("id", id)
+    .maybeSingle();
+
+  if (targetPolicyError || !targetPolicy) {
+    return NextResponse.json({ error: targetPolicyError?.message || "Policy not found." }, { status: 404 });
+  }
+
+  if (targetPolicy.policy_type === "attendance") {
+    return NextResponse.json(
+      { error: "Attendance policy updates must use the attendance policy bridge." },
+      { status: 400 }
+    );
+  }
+
   const { data, error } = await context.admin
     .from("company_policy_definitions")
     .update(payload)
