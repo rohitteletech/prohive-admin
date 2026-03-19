@@ -391,7 +391,7 @@ export default function NewAttendancePolicyPage() {
             description="Define the late-punch penalty structure and monthly deduction thresholds applicable to this attendance policy."
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Late Punch Penalty">
+              <Field label="Late Punch Action">
                 <Select value={draft.latePunchRule} onChange={(e) => update("latePunchRule", e.target.value as AttendancePolicyState["latePunchRule"])}>
                   <option value="flag_only">No Action / Flag Only</option>
                   <option value="enforce_penalty">Enforce Penalty</option>
@@ -399,35 +399,35 @@ export default function NewAttendancePolicyPage() {
               </Field>
             </div>
             <div className={`grid gap-4 md:grid-cols-2 ${draft.latePunchRule === "flag_only" ? "opacity-60" : ""}`}>
-              <Field label="Late Punch Up To Minutes">
+              <Field label="Late Arrival Up To (mins)">
                 <TextInput
                   value={draft.latePunchUpToMinutes}
                   onChange={(e) => update("latePunchUpToMinutes", e.target.value)}
                   disabled={draft.latePunchRule === "flag_only"}
                 />
               </Field>
-              <Field label="Repeat Late Days In Month">
+              <Field label="Repeat Late Count In Month">
                 <TextInput
                   value={draft.repeatLateDaysInMonth}
                   onChange={(e) => update("repeatLateDaysInMonth", e.target.value)}
                   disabled={draft.latePunchRule === "flag_only"}
                 />
               </Field>
-              <Field label="Day Count For Repeat Late">
+              <Field label="Attendance Value After Repeat Late">
                 <TextInput
                   value={draft.penaltyForRepeatLate}
                   onChange={(e) => update("penaltyForRepeatLate", e.target.value)}
                   disabled={draft.latePunchRule === "flag_only"}
                 />
               </Field>
-              <Field label="Late Punch Above Minutes">
+              <Field label="Late Arrival Above (mins)">
                 <TextInput
                   value={draft.latePunchAboveMinutes}
                   onChange={(e) => update("latePunchAboveMinutes", e.target.value)}
                   disabled={draft.latePunchRule === "flag_only"}
                 />
               </Field>
-              <Field label="Day Count For Late Above Limit">
+              <Field label="Attendance Value After Late Above Limit">
                 <TextInput
                   value={draft.penaltyForLateAboveLimit}
                   onChange={(e) => update("penaltyForLateAboveLimit", e.target.value)}
@@ -436,14 +436,8 @@ export default function NewAttendancePolicyPage() {
               </Field>
             </div>
 
-            <p className="mt-3 text-xs text-slate-500">
-              {draft.latePunchRule === "flag_only"
-                ? "Late Punch Penalty 'No Action / Flag Only' असल्यामुळे late punch day-count fields सध्या disabled आहेत."
-                : "Late punch thresholds cross झाल्यावर त्या दिवशी किती day count द्यायचा ते खाली define केले आहे."}
-            </p>
-
             <div className="mt-5 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2">
-              <Field label="Early Go Penalty">
+              <Field label="Early Go Action">
                 <Select value={draft.earlyGoRule} onChange={(e) => update("earlyGoRule", e.target.value as AttendancePolicyState["earlyGoRule"])}>
                   <option value="flag_only">No Action / Flag Only</option>
                   <option value="enforce_penalty">Enforce Penalty</option>
@@ -451,40 +445,36 @@ export default function NewAttendancePolicyPage() {
               </Field>
             </div>
 
-            <p className="mt-2 text-xs text-slate-500">
-              Early Go Penalty `No Action / Flag Only` असेल तर खालील early-go day-count fields disabled राहतील.
-            </p>
-
             <div className={`mt-4 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2 ${draft.earlyGoRule === "flag_only" ? "opacity-60" : ""}`}>
-              <Field label="Early Go Up To Minutes">
+              <Field label="Early Go Up To (mins)">
                 <TextInput
                   value={draft.earlyGoUpToMinutes}
                   onChange={(e) => update("earlyGoUpToMinutes", e.target.value)}
                   disabled={draft.earlyGoRule === "flag_only"}
                 />
               </Field>
-              <Field label="Repeat Early Go Days In Month">
+              <Field label="Repeat Early Go Count In Month">
                 <TextInput
                   value={draft.repeatEarlyGoDaysInMonth}
                   onChange={(e) => update("repeatEarlyGoDaysInMonth", e.target.value)}
                   disabled={draft.earlyGoRule === "flag_only"}
                 />
               </Field>
-              <Field label="Day Count For Repeat Early Go">
+              <Field label="Attendance Value After Repeat Early Go">
                 <TextInput
                   value={draft.penaltyForRepeatEarlyGo}
                   onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value)}
                   disabled={draft.earlyGoRule === "flag_only"}
                 />
               </Field>
-              <Field label="Early Go Above Minutes">
+              <Field label="Early Go Above (mins)">
                 <TextInput
                   value={draft.earlyGoAboveMinutes}
                   onChange={(e) => update("earlyGoAboveMinutes", e.target.value)}
                   disabled={draft.earlyGoRule === "flag_only"}
                 />
               </Field>
-              <Field label="Day Count For Early Go Above Limit">
+              <Field label="Attendance Value After Early Go Above Limit">
                 <TextInput
                   value={draft.penaltyForEarlyGoAboveLimit}
                   onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value)}

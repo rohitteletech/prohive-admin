@@ -74,6 +74,8 @@ type AttendanceReportRowWithLate = AttendanceReportRow & {
     aboveMins: number;
     aboveDays: number;
   };
+  halfDayValue: number;
+  presentDaysFormula: "full_plus_half" | "full_only";
 };
 
 export type AttendanceReportInput = {
@@ -197,10 +199,29 @@ function buildQueryWindow(startDate: string, endDate: string) {
   };
 }
 
-function presentCountForStatus(status: AttendanceReportRow["status"]) {
+function formatPresentCount(value: number) {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+function presentCountForStatus(
+  status: AttendanceReportRow["status"],
+  halfDayValue: number
+) {
   if (status === "present" || status === "late") return "1";
-  if (status === "half_day") return "0.5";
+  if (status === "half_day") return formatPresentCount(halfDayValue);
   return "0";
+}
+
+function presentDaysValueForStatus(params: {
+  status: AttendanceReportRow["status"];
+  halfDayValue: number;
+  presentDaysFormula: "full_plus_half" | "full_only";
+}) {
+  if (params.status === "present" || params.status === "late") return 1;
+  if (params.status === "half_day") {
+    return params.presentDaysFormula === "full_plus_half" ? params.halfDayValue : 0;
+  }
+  return 0;
 }
 
 function payrollTreatmentLabel(params: {
@@ -396,7 +417,9 @@ function aggregateRows(params: {
           dayType: row.dayType === "holiday" ? "Holiday" : row.dayType === "weekly_off" ? "Weekly Off" : "Working Day",
           treatment: treatmentLabel || undefined,
         }),
-        presentCount: presentCountForStatus(decision.status),
+        presentCount: presentCountForStatus(decision.status, row.attendancePolicy.halfDayValue),
+        halfDayValue: row.attendancePolicy.halfDayValue,
+        presentDaysFormula: row.attendancePolicy.presentDaysFormula,
         otEligible: treatmentLabel === "OT Only" || treatmentLabel === "Present + OT" ? "Yes" : "No",
         compOffGranted: treatmentLabel === "Grant Comp Off" ? "Yes" : "No",
         manualReviewRequired: decision.status === "manual_review" ? "Yes" : "No",
@@ -561,7 +584,14 @@ export async function getAttendanceReportData(params: {
       aboveDays: 0.5,
     }
   );
-  const rows = filteredRows.map(({ lateMinutes, ...row }) => row);
+  const rows = filteredRows.map(({ lateMinutes, latePenaltyPolicy, halfDayValue, presentDaysFormula, ...row }) => row);
+  const present = filteredRows.reduce((total, row) => {
+    return total + presentDaysValueForStatus({
+      status: row.status,
+      halfDayValue: row.halfDayValue,
+      presentDaysFormula: row.presentDaysFormula,
+    });
+  }, 0);
 
   return {
     ok: true as const,
@@ -569,7 +599,7 @@ export async function getAttendanceReportData(params: {
     rows,
     summary: {
       total: rows.length,
-      present: rows.filter((row) => row.status === "present").length,
+      present,
       late: rows.filter((row) => row.status === "late").length,
       halfDay: rows.filter((row) => row.status === "half_day").length,
       absent: rows.filter((row) => row.status === "absent").length,

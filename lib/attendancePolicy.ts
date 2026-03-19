@@ -30,6 +30,7 @@ export type LatePenaltyPolicy = {
 export type AttendanceStatusPenaltyRuntime = {
   presentTrigger: string;
   singlePunchHandling: string;
+  presentDaysFormula: "full_plus_half" | "full_only";
   latePunchRule: "flag_only" | "enforce_penalty";
   earlyGoRule: "flag_only" | "enforce_penalty";
   halfDayValue: number;
