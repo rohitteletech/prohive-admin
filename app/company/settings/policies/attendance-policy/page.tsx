@@ -88,7 +88,25 @@ export default function NewAttendancePolicyPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function update<K extends keyof AttendancePolicyState>(key: K, value: AttendancePolicyState[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+    setDraft((current) => {
+      if (key === "latePunchUpToMinutes") {
+        return {
+          ...current,
+          latePunchUpToMinutes: value as AttendancePolicyState["latePunchUpToMinutes"],
+          latePunchAboveMinutes: value as AttendancePolicyState["latePunchAboveMinutes"],
+        };
+      }
+
+      if (key === "earlyGoUpToMinutes") {
+        return {
+          ...current,
+          earlyGoUpToMinutes: value as AttendancePolicyState["earlyGoUpToMinutes"],
+          earlyGoAboveMinutes: value as AttendancePolicyState["earlyGoAboveMinutes"],
+        };
+      }
+
+      return { ...current, [key]: value };
+    });
   }
 
   function notify(message: string) {
@@ -124,7 +142,12 @@ export default function NewAttendancePolicyPage() {
       return;
     }
 
-    const nextPolicy = { ...initialState, ...result };
+    const nextPolicy = {
+      ...initialState,
+      ...result,
+      latePunchAboveMinutes: String(result.latePunchUpToMinutes || result.latePunchAboveMinutes || initialState.latePunchUpToMinutes),
+      earlyGoAboveMinutes: String(result.earlyGoUpToMinutes || result.earlyGoAboveMinutes || initialState.earlyGoUpToMinutes),
+    };
     setDraft(nextPolicy);
     const policiesResponse = await fetch("/api/company/policies?policy_type=attendance", {
       headers: { authorization: `Bearer ${token}` },
@@ -423,8 +446,7 @@ export default function NewAttendancePolicyPage() {
               <Field label="Late Arrival Above (mins)">
                 <TextInput
                   value={draft.latePunchAboveMinutes}
-                  onChange={(e) => update("latePunchAboveMinutes", e.target.value)}
-                  disabled={draft.latePunchRule === "flag_only"}
+                  disabled
                 />
               </Field>
               <Field label="Attendance Value After Late Above Limit">
@@ -470,8 +492,7 @@ export default function NewAttendancePolicyPage() {
               <Field label="Early Go Above (mins)">
                 <TextInput
                   value={draft.earlyGoAboveMinutes}
-                  onChange={(e) => update("earlyGoAboveMinutes", e.target.value)}
-                  disabled={draft.earlyGoRule === "flag_only"}
+                  disabled
                 />
               </Field>
               <Field label="Attendance Value After Early Go Above Limit">

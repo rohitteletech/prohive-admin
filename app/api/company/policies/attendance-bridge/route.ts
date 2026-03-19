@@ -96,12 +96,12 @@ export async function GET(req: NextRequest) {
       latePunchUpToMinutes: String(config.latePunchUpToMinutes || "60"),
       repeatLateDaysInMonth: String(config.repeatLateDaysInMonth || "3"),
       penaltyForRepeatLate: String(config.penaltyForRepeatLate || "1"),
-      latePunchAboveMinutes: String(config.latePunchAboveMinutes || "60"),
+      latePunchAboveMinutes: String(config.latePunchUpToMinutes || config.latePunchAboveMinutes || "60"),
       penaltyForLateAboveLimit: String(config.penaltyForLateAboveLimit || "0.5"),
       earlyGoUpToMinutes: String(config.earlyGoUpToMinutes || "30"),
       repeatEarlyGoDaysInMonth: String(config.repeatEarlyGoDaysInMonth || "3"),
       penaltyForRepeatEarlyGo: String(config.penaltyForRepeatEarlyGo || "1"),
-      earlyGoAboveMinutes: String(config.earlyGoAboveMinutes || "60"),
+      earlyGoAboveMinutes: String(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes || "30"),
       penaltyForEarlyGoAboveLimit: String(config.penaltyForEarlyGoAboveLimit || "0.5"),
     } satisfies AttendanceBridgePayload);
   } catch (error) {
@@ -144,12 +144,12 @@ export async function PUT(req: NextRequest) {
     latePunchUpToMinutes: String(body.latePunchUpToMinutes || "60"),
     repeatLateDaysInMonth: String(body.repeatLateDaysInMonth || "3"),
     penaltyForRepeatLate: String(body.penaltyForRepeatLate || "1"),
-    latePunchAboveMinutes: String(body.latePunchAboveMinutes || "60"),
+    latePunchAboveMinutes: String(body.latePunchUpToMinutes || body.latePunchAboveMinutes || "60"),
     penaltyForLateAboveLimit: String(body.penaltyForLateAboveLimit || "0.5"),
     earlyGoUpToMinutes: String(body.earlyGoUpToMinutes || "30"),
     repeatEarlyGoDaysInMonth: String(body.repeatEarlyGoDaysInMonth || "3"),
     penaltyForRepeatEarlyGo: String(body.penaltyForRepeatEarlyGo || "1"),
-    earlyGoAboveMinutes: String(body.earlyGoAboveMinutes || "60"),
+    earlyGoAboveMinutes: String(body.earlyGoUpToMinutes || body.earlyGoAboveMinutes || "30"),
     penaltyForEarlyGoAboveLimit: String(body.penaltyForEarlyGoAboveLimit || "0.5"),
   };
 
