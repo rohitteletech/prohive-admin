@@ -137,7 +137,10 @@ export default function CompanyDashboardPage() {
       ]);
 
       const attendanceJson = (await attendanceRes.json().catch(() => ({}))) as {
-        rows?: Array<{ status?: "present" | "late" | "absent" }>;
+        rows?: Array<{
+          status?: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
+          presentTodayEligible?: boolean;
+        }>;
       };
       const correctionsJson = (await correctionsRes.json().catch(() => ({}))) as {
         rows?: Array<{ status?: "pending" | "approved" | "rejected" }>;
@@ -158,7 +161,7 @@ export default function CompanyDashboardPage() {
 
       setData({
         employeeCount: employees.length,
-        presentToday: attendanceRows.filter((row) => row.status === "present").length,
+        presentToday: attendanceRows.filter((row) => row.presentTodayEligible === true).length,
         lateToday: attendanceRows.filter((row) => row.status === "late").length,
         absentToday: attendanceRows.filter((row) => row.status === "absent").length,
         pendingCorrections: correctionsRows.filter((row) => row.status === "pending").length,

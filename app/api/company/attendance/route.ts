@@ -49,6 +49,7 @@ type AttendanceRow = {
   workHours: string;
   status: "present" | "late" | "half_day" | "absent" | "off_day_worked" | "manual_review";
   nonWorkingDayTreatment?: NonWorkingDayTreatment;
+  presentTodayEligible: boolean;
 };
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
@@ -231,6 +232,10 @@ function aggregateRows(
         attendancePolicy: resolvedAttendance,
         checkInIso,
         checkOutIso,
+        presentTodayEligible:
+          resolvedAttendance.presentTrigger === "punch_in"
+            ? Boolean(checkInIso)
+            : Boolean(checkInIso && checkOutIso),
         dayType: isHoliday ? ("holiday" as const) : isWeeklyOff ? ("weekly_off" as const) : null,
         nonWorkingDayTreatment:
           isHoliday
@@ -305,6 +310,7 @@ function aggregateRows(
           workHours: row.workHours,
           status: decision.status,
           nonWorkingDayTreatment: treatmentLabel || undefined,
+          presentTodayEligible: row.presentTodayEligible,
         });
       }
     }
