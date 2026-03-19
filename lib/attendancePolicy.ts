@@ -234,7 +234,7 @@ export function buildDailyAttendanceDecision(params: {
       decisionLateMinutes > 0 &&
       decisionLateMinutes <= Math.max(0, params.policy.latePunchUpToMinutes || 0) &&
       lateRepeatThreshold > 0 &&
-      (params.lateCycleOccurrenceCount || 0) > lateRepeatThreshold
+      (params.lateCycleOccurrenceCount || 0) >= lateRepeatThreshold
     ) {
       finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForRepeatLate));
       appliedRuleCode = "repeat_late";
@@ -251,7 +251,7 @@ export function buildDailyAttendanceDecision(params: {
       decisionEarlyGoMinutes > 0 &&
       decisionEarlyGoMinutes <= Math.max(0, params.policy.earlyGoUpToMinutes || 0) &&
       earlyRepeatThreshold > 0 &&
-      (params.earlyGoCycleOccurrenceCount || 0) > earlyRepeatThreshold
+      (params.earlyGoCycleOccurrenceCount || 0) >= earlyRepeatThreshold
     ) {
       finalDayCount = Math.min(finalDayCount, clampDayCount(params.policy.dayCountForRepeatEarlyGo));
       appliedRuleCode = appliedRuleCode || "repeat_early_go";
@@ -339,7 +339,7 @@ export function calculateMonthlyLatePenalty(
 
   const repeatLateCount = lateMinutesList.filter((mins) => mins > 0 && mins <= policy.upToMins).length;
   const aboveLimitCount = lateMinutesList.filter((mins) => mins > policy.aboveMins).length;
-  const repeatPenaltyBlocks = Math.floor(repeatLateCount / Math.max(1, policy.repeatCount + 1));
+  const repeatPenaltyBlocks = Math.floor(repeatLateCount / Math.max(1, policy.repeatCount));
   const penaltyDays = repeatPenaltyBlocks * policy.repeatDays + aboveLimitCount * policy.aboveDays;
 
   return {
