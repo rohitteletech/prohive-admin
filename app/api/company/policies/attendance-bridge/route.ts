@@ -45,6 +45,19 @@ function isValidIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function currentIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function comparePolicyPriority(
+  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
+  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
+) {
+  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -55,9 +68,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+    const today = currentIsoDate();
+    const attendancePolicies = definitions.filter((policy) => policy.policyType === "attendance");
+    const effectiveAttendancePolicies = attendancePolicies
+      .filter((policy) => policy.status === "active")
+      .filter((policy) => policy.effectiveFrom <= today)
+      .sort(comparePolicyPriority);
     const attendancePolicy =
-      definitions.find((policy) => policy.policyType === "attendance" && policy.isDefault) ||
-      definitions.find((policy) => policy.policyType === "attendance") ||
+      effectiveAttendancePolicies.find((policy) => policy.isDefault) ||
+      effectiveAttendancePolicies[0] ||
+      attendancePolicies.find((policy) => policy.isDefault) ||
+      [...attendancePolicies].sort(comparePolicyPriority)[0] ||
       null;
     if (!attendancePolicy) {
       return NextResponse.json({ error: "Attendance policy definition not found." }, { status: 404 });
@@ -168,6 +189,8 @@ export async function PUT(req: NextRequest) {
     earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes || body.earlyGoAboveMinutes, 30)),
     penaltyForEarlyGoAboveLimit: normalizeAttendancePenaltyDayValue(body.penaltyForEarlyGoAboveLimit, 0.5),
   };
+  const today = currentIsoDate();
+  const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
@@ -179,19 +202,26 @@ export async function PUT(req: NextRequest) {
       .eq("company_id", context.companyId)
       .eq("policy_type", "attendance")
       .eq("status", "active");
+    const scopedArchiveQuery = isFutureEffectiveActive
+      ? archiveQuery.eq("effective_from", configJson.effectiveFrom)
+      : archiveQuery.lte("effective_from", configJson.effectiveFrom);
 
-    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    const { error: archiveError } = policy?.id ? await scopedArchiveQuery.neq("id", policy.id) : await scopedArchiveQuery;
     if (archiveError) {
       return NextResponse.json({ error: archiveError.message || "Unable to archive existing active attendance policies." }, { status: 400 });
     }
   }
 
-  if (configJson.defaultCompanyPolicy === "Yes") {
-    const { error: clearDefaultError } = await context.admin
+  if (configJson.defaultCompanyPolicy === "Yes" && configJson.status === "active") {
+    const clearDefaultQuery = context.admin
       .from("company_policy_definitions")
       .update({ is_default: false })
       .eq("company_id", context.companyId)
       .eq("policy_type", "attendance");
+    const scopedDefaultQuery = isFutureEffectiveActive
+      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
+      : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: clearDefaultError } = policy?.id ? await scopedDefaultQuery.neq("id", policy.id) : await scopedDefaultQuery;
     if (clearDefaultError) {
       return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default attendance policy." }, { status: 400 });
     }

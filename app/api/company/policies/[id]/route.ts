@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 
+function currentIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -54,7 +58,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { data: policy, error: policyError } = await context.admin
     .from("company_policy_definitions")
-    .select("id,status")
+    .select("id,status,effective_from")
     .eq("company_id", context.companyId)
     .eq("id", id)
     .maybeSingle();
@@ -63,7 +67,11 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: policyError?.message || "Policy not found." }, { status: 404 });
   }
 
-  if (String(policy.status || "").toLowerCase() === "active") {
+  const isCurrentlyEffectiveActive =
+    String(policy.status || "").toLowerCase() === "active" &&
+    String(policy.effective_from || "").trim() <= currentIsoDate();
+
+  if (isCurrentlyEffectiveActive) {
     return NextResponse.json({ error: "Active policy cannot be deleted. Archive or replace it first." }, { status: 400 });
   }
 
