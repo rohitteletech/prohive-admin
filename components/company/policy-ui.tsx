@@ -200,6 +200,21 @@ export function PolicyRegisterSection({
   }>;
   emptyState?: string;
 }) {
+  function renderCreatedOn(value: string) {
+    const parts = value.trim().split(/\s+/);
+    if (parts.length < 2) return value;
+
+    const date = parts[0];
+    const time = parts.slice(1).join(" ");
+
+    return (
+      <span className="inline-flex flex-col leading-5">
+        <span>{date}</span>
+        <span>{time}</span>
+      </span>
+    );
+  }
+
   return (
     <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
       <div className="flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-start sm:justify-between">
@@ -253,7 +268,7 @@ export function PolicyRegisterSection({
                     </span>
                   </td>
                   <td className="px-3 py-3 break-words">{row.createdBy}</td>
-                  <td className="px-3 py-3 break-words">{row.createdOn}</td>
+                  <td className="px-3 py-3">{renderCreatedOn(row.createdOn)}</td>
                   <td className="px-3 py-3 break-words">{row.defaultPolicy}</td>
                   <td className="px-3 py-3 text-right">
                     <div className="flex justify-end gap-2">
