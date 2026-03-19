@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-
-function currentIsoDate() {
-  return new Date().toISOString().slice(0, 10);
-}
+import { todayISOInIndia } from "@/lib/dateTime";
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const authHeader = req.headers.get("authorization") || "";
@@ -69,7 +66,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const isCurrentlyEffectiveActive =
     String(policy.status || "").toLowerCase() === "active" &&
-    String(policy.effective_from || "").trim() <= currentIsoDate();
+    String(policy.effective_from || "").trim() <= todayISOInIndia();
 
   if (isCurrentlyEffectiveActive) {
     return NextResponse.json({ error: "Active policy cannot be deleted. Archive or replace it first." }, { status: 400 });

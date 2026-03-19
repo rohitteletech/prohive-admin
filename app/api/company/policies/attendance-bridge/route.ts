@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
+import { todayISOInIndia } from "@/lib/dateTime";
 import {
   normalizeLatePenaltyCount,
   normalizeLatePenaltyMinutes,
@@ -43,10 +44,6 @@ function normalizeAttendancePenaltyDayValue(value: unknown, fallback: number) {
 
 function isValidIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function currentIsoDate() {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function comparePolicyPriority(
@@ -117,7 +114,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-    const today = currentIsoDate();
+    const today = todayISOInIndia();
     const attendancePolicies = definitions.filter((policy) => policy.policyType === "attendance");
     const effectiveAttendancePolicies = attendancePolicies
       .filter((policy) => policy.status === "active")
@@ -238,7 +235,7 @@ export async function PUT(req: NextRequest) {
     earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes || body.earlyGoAboveMinutes, 30)),
     penaltyForEarlyGoAboveLimit: normalizeAttendancePenaltyDayValue(body.penaltyForEarlyGoAboveLimit, 0.5),
   };
-  const today = currentIsoDate();
+  const today = todayISOInIndia();
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
   const keepsCurrentEffectiveDefault = hasCurrentEffectiveDefaultAfterSave({
     definitions,
