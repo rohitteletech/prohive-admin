@@ -19,7 +19,7 @@ export function PolicyPage({
 }) {
   const hasAside = Boolean(aside);
   return (
-    <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6">
+    <div className="w-full px-0 pb-5 pt-0 lg:pb-6">
       <div className={hasAside ? "grid gap-4 lg:gap-5 xl:grid-cols-[minmax(0,1fr)_340px] xl:items-start" : "grid gap-4 lg:gap-5"}>
         <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
           <div className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-start lg:justify-between">
