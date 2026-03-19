@@ -220,7 +220,7 @@ export function resolvePolicyForEmployee(params: {
     }
   }
 
-  return eligibleDefinitions.find((definition) => definition.isDefault) || null;
+  return eligibleDefinitions.find((definition) => definition.isDefault) || eligibleDefinitions[0] || null;
 }
 
 export function labelPolicyType(value: PolicyType) {

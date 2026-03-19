@@ -58,6 +58,55 @@ function comparePolicyPriority(
   return b.createdAt.localeCompare(a.createdAt);
 }
 
+function hasCurrentEffectiveDefaultAfterSave(params: {
+  definitions: Array<{
+    id: string;
+    policyType: string;
+    status: string;
+    isDefault: boolean;
+    effectiveFrom: string;
+  }>;
+  targetPolicyId?: string;
+  nextStatus: string;
+  nextIsDefault: boolean;
+  nextEffectiveFrom: string;
+  today: string;
+}) {
+  const currentPolicies = params.definitions
+    .filter((policy) => policy.policyType === "attendance")
+    .map((policy) => ({
+      id: policy.id,
+      status: policy.status,
+      isDefault: policy.isDefault,
+      effectiveFrom: policy.effectiveFrom,
+    }));
+
+  const nextPolicies = currentPolicies
+    .filter((policy) => policy.id !== params.targetPolicyId)
+    .map((policy) => ({ ...policy }));
+
+  if (params.nextStatus === "active" && params.nextEffectiveFrom <= params.today) {
+    for (const policy of nextPolicies) {
+      if (policy.status === "active" && policy.effectiveFrom <= params.nextEffectiveFrom) {
+        policy.status = "archived";
+        policy.isDefault = false;
+      }
+    }
+  }
+
+  nextPolicies.push({
+    id: params.targetPolicyId || "__new_attendance_policy__",
+    status: params.nextStatus,
+    isDefault: params.nextIsDefault,
+    effectiveFrom: params.nextEffectiveFrom,
+  });
+
+  return nextPolicies
+    .filter((policy) => policy.status === "active")
+    .filter((policy) => policy.effectiveFrom <= params.today)
+    .some((policy) => policy.isDefault);
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -191,6 +240,21 @@ export async function PUT(req: NextRequest) {
   };
   const today = currentIsoDate();
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
+  const keepsCurrentEffectiveDefault = hasCurrentEffectiveDefaultAfterSave({
+    definitions,
+    targetPolicyId: policy?.id,
+    nextStatus: configJson.status,
+    nextIsDefault: configJson.defaultCompanyPolicy === "Yes",
+    nextEffectiveFrom: configJson.effectiveFrom,
+    today,
+  });
+
+  if (!keepsCurrentEffectiveDefault) {
+    return NextResponse.json(
+      { error: "At least one current-effective active attendance policy must remain the default." },
+      { status: 400 }
+    );
+  }
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
