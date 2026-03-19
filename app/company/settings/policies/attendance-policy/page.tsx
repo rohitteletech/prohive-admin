@@ -57,13 +57,13 @@ const initialState: AttendancePolicyState = {
   halfDayValue: "0.5",
   latePunchUpToMinutes: "60",
   repeatLateDaysInMonth: "3",
-  penaltyForRepeatLate: "1",
+  penaltyForRepeatLate: "0.5",
   latePunchAboveMinutes: "60",
   penaltyForLateAboveLimit: "0.5",
   earlyGoUpToMinutes: "30",
   repeatEarlyGoDaysInMonth: "3",
-  penaltyForRepeatEarlyGo: "1",
-  earlyGoAboveMinutes: "60",
+  penaltyForRepeatEarlyGo: "0.5",
+  earlyGoAboveMinutes: "30",
   penaltyForEarlyGoAboveLimit: "0.5",
 };
 
