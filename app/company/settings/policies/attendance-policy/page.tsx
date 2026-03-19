@@ -113,15 +113,21 @@ export default function NewAttendancePolicyPage() {
     return value.replace(/\D/g, "").slice(0, maxDigits);
   }
 
+  function clampNumericText(value: string, max: number) {
+    const digits = value.replace(/\D/g, "");
+    if (!digits) return "";
+    return String(Math.min(Number(digits), max));
+  }
+
   function updateMinutesField(
     key: "latePunchUpToMinutes" | "latePunchAboveMinutes" | "earlyGoUpToMinutes" | "earlyGoAboveMinutes",
     value: string
   ) {
-    update(key, digitsOnly(value, 3) as AttendancePolicyState[typeof key]);
+    update(key, clampNumericText(value, 180) as AttendancePolicyState[typeof key]);
   }
 
   function updateCountField(key: "repeatLateDaysInMonth" | "repeatEarlyGoDaysInMonth", value: string) {
-    update(key, digitsOnly(value, 2) as AttendancePolicyState[typeof key]);
+    update(key, clampNumericText(value, 31) as AttendancePolicyState[typeof key]);
   }
 
   function notify(message: string) {
