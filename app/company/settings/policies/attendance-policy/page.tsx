@@ -9,6 +9,7 @@ import {
   PolicyRegisterSection,
   PolicySection,
   PolicySuccessOverlay,
+  PolicyToast,
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
@@ -376,7 +377,7 @@ export default function NewAttendancePolicyPage() {
       description="Maintain company attendance policy records and create structured attendance policies for daily status, monthly formula, and penalty governance."
     >
       <PolicySuccessOverlay message={successMessage} />
-      {toast ? <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900">{toast}</div> : null}
+      <PolicyToast message={toast} />
 
       <PolicyRegisterSection
         description="Maintain approved attendance policies with effective governance dates, administrative ownership, and default company applicability."

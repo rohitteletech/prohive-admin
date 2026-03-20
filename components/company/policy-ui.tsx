@@ -314,3 +314,22 @@ export function PolicySuccessOverlay({
     </div>
   );
 }
+
+export function PolicyToast({
+  message,
+}: {
+  message: string | null;
+}) {
+  if (!message) return null;
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-20 z-[70] flex justify-center px-4 sm:top-24">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-auto w-full max-w-3xl rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-medium text-sky-900 shadow-lg shadow-sky-100/80"
+      >
+        {message}
+      </div>
+    </div>
+  );
+}
