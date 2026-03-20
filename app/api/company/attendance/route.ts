@@ -5,6 +5,7 @@ import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { applyExtraHoursPolicy, shiftDurationMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
+import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
 import {
   applyNonWorkingDayTreatment,
   buildAttendanceMetrics,
@@ -144,7 +145,8 @@ function aggregateRows(
   timeZone: string,
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
   resolvedPoliciesByEmployee: ResolvedPoliciesByEmployee,
-  holidayDates: Set<string>
+  holidayDates: Set<string>,
+  manualReviewResolutionsByEmployeeDate: Map<string, NonWorkingDayTreatment>
 ) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -293,7 +295,7 @@ function aggregateRows(
       const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
         decision: baseDecision,
         dayType: row.dayType,
-        treatment: row.nonWorkingDayTreatment,
+        treatment: manualReviewResolutionsByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
       });
 
       if (baseDecision.resetLateCycle) lateCycleCount = 0;
@@ -427,6 +429,17 @@ export async function GET(req: NextRequest) {
       ["shift", "attendance", "holiday_weekoff"],
     );
 
+    const manualResolutionResult = await fetchManualReviewResolutionMap({
+      admin: context.admin,
+      companyId: context.companyId,
+      employeeIds,
+      startDate: date,
+      endDate: date,
+    });
+    if (manualResolutionResult.error) {
+      return NextResponse.json({ error: manualResolutionResult.error }, { status: 400 });
+    }
+
     const rows = aggregateRows(
       events,
       employeesById,
@@ -434,7 +447,8 @@ export async function GET(req: NextRequest) {
       timeZone,
       effectiveShiftRows,
       resolvedPoliciesByEmployee,
-      new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date))
+      new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
+      manualResolutionResult.byEmployeeDate,
     );
     return NextResponse.json({ rows });
   } catch (error) {
