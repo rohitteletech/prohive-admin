@@ -1,4 +1,5 @@
 import { isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const CORRECTION_AUTO_REJECT_REMARK = "Auto-rejected: no action by company admin within 48 hours.";
 export const CORRECTION_AUTO_REJECT_BY = "system_auto";
@@ -115,7 +116,7 @@ export function isSameIndiaDate(iso: string, correctionDateIso: string) {
 }
 
 export async function upsertPunchEventFromCorrection(args: {
-  admin: any;
+  admin: SupabaseClient;
   companyId: string;
   employeeId: string;
   correctionDate: string;
@@ -142,12 +143,12 @@ export async function upsertPunchEventFromCorrection(args: {
   if (eventsError) return eventsError.message || "Unable to apply correction to attendance events.";
 
   const dayEvents = (events || [])
-    .filter((event: any) => event.approval_status !== "rejected")
-    .filter((event: any) => {
+    .filter((event: { approval_status?: string | null }) => event.approval_status !== "rejected")
+    .filter((event: { effective_punch_at?: string | null; server_received_at?: string | null }) => {
       const sourceIso = event.effective_punch_at || event.server_received_at || "";
       return sourceIso ? isSameIndiaDate(sourceIso, correctionDate) : false;
     })
-    .filter((event: any) => event.punch_type === punchType);
+    .filter((event: { punch_type?: string | null }) => event.punch_type === punchType);
 
   const existing = punchType === "in" ? dayEvents[0] : dayEvents[dayEvents.length - 1];
   if (existing?.id) {
@@ -226,7 +227,7 @@ export async function upsertPunchEventFromCorrection(args: {
   return insertError ? String(insertError.message || "Unable to create corrected attendance punch event.") : "";
 }
 
-export async function expirePendingCorrections(admin: any, companyId?: string) {
+export async function expirePendingCorrections(admin: SupabaseClient, companyId?: string) {
   const threshold = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
   let query = admin
     .from("employee_attendance_corrections")

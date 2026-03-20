@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
   PolicyPage,
@@ -260,8 +259,15 @@ export default function LeavePolicyPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
+  const loadLeaveBridgeEffect = useEffectEvent(() => {
     void loadLeaveBridge();
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadLeaveBridgeEffect();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function openNewForm() {

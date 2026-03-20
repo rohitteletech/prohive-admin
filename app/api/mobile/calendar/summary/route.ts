@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
   leaveRows.forEach((row) => {
     if (row.status !== "pending" && row.status !== "approved") return;
     if (!row.from_date || !row.to_date) return;
-    let cursor = new Date(`${row.from_date}T00:00:00.000Z`);
+    const cursor = new Date(`${row.from_date}T00:00:00.000Z`);
     const end = new Date(`${row.to_date}T00:00:00.000Z`);
     while (cursor <= end) {
       const iso = cursor.toISOString().slice(0, 10);

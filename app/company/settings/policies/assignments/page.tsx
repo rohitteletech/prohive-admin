@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { AssignmentLevel, labelAssignmentLevel, labelPolicyType, PolicyType } from "@/lib/companyPolicies";
 import { Field, PolicyPage, PolicySection, Select, TextInput } from "@/components/company/policy-ui";
@@ -114,8 +114,15 @@ export default function PolicyAssignmentsPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
+  const loadDataEffect = useEffectEvent(() => {
     void loadData();
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadDataEffect();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const filteredPolicies = useMemo(
@@ -146,28 +153,18 @@ export default function PolicyAssignmentsPage() {
     if (form.assignmentLevel === "department") return payload.targets.departments;
     return payload.targets.employees;
   }, [payload.targets, form.assignmentLevel]);
-
-  useEffect(() => {
-    const nextPolicy = filteredPolicies[0];
-    setForm((current) => ({
-      ...current,
-      policyId: filteredPolicies.some((policy) => policy.id === current.policyId) ? current.policyId : nextPolicy?.id || "",
-    }));
-  }, [filteredPolicies]);
-
-  useEffect(() => {
-    const nextTarget = targetOptions[0];
-    setForm((current) => ({
-      ...current,
-      targetId: targetOptions.some((target) => target.id === current.targetId) ? current.targetId : nextTarget?.id || "",
-    }));
-  }, [targetOptions]);
+  const selectedPolicyId = filteredPolicies.some((policy) => policy.id === form.policyId)
+    ? form.policyId
+    : filteredPolicies[0]?.id || "";
+  const selectedTargetId = targetOptions.some((target) => target.id === form.targetId)
+    ? form.targetId
+    : targetOptions[0]?.id || "";
 
   async function saveAssignment() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
-    if (!form.policyId) return notify("Select a policy to assign.");
-    if (!form.targetId) return notify("Select an assignment target.");
+    if (!selectedPolicyId) return notify("Select a policy to assign.");
+    if (!selectedTargetId) return notify("Select an assignment target.");
     if (form.effectiveTo && form.effectiveTo < form.effectiveFrom) {
       return notify("Effective To date cannot be earlier than Effective From date.");
     }
@@ -182,7 +179,11 @@ export default function PolicyAssignmentsPage() {
         "Content-Type": "application/json",
         authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        policyId: selectedPolicyId,
+        targetId: selectedTargetId,
+      }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     setSaving(false);
@@ -256,7 +257,19 @@ export default function PolicyAssignmentsPage() {
           <Field label="Policy Type">
             <Select
               value={form.policyType}
-              onChange={(e) => setForm((current) => ({ ...current, policyType: e.target.value as PolicyType }))}
+              onChange={(e) => {
+                const nextPolicyType = e.target.value as PolicyType;
+                const nextPolicies = payload.policies.filter(
+                  (policy) => policy.policyType === nextPolicyType && policy.status === "active" && !policy.isDefault,
+                );
+                setForm((current) => ({
+                  ...current,
+                  policyType: nextPolicyType,
+                  policyId: nextPolicies.some((policy) => policy.id === current.policyId)
+                    ? current.policyId
+                    : nextPolicies[0]?.id || "",
+                }));
+              }}
             >
               <option value="shift">Shift Policy</option>
               <option value="attendance">Attendance Policy</option>
@@ -267,7 +280,7 @@ export default function PolicyAssignmentsPage() {
           </Field>
 
           <Field label="Select Policy">
-            <Select value={form.policyId} onChange={(e) => setForm((current) => ({ ...current, policyId: e.target.value }))}>
+            <Select value={selectedPolicyId} onChange={(e) => setForm((current) => ({ ...current, policyId: e.target.value }))}>
               {filteredPolicies.map((policy) => (
                 <option key={policy.id} value={policy.id}>
                   {policy.policyName} ({policy.policyCode})
@@ -279,7 +292,18 @@ export default function PolicyAssignmentsPage() {
           <Field label="Assignment Level">
             <Select
               value={form.assignmentLevel}
-              onChange={(e) => setForm((current) => ({ ...current, assignmentLevel: e.target.value as AssignmentLevel }))}
+              onChange={(e) => {
+                const nextAssignmentLevel = e.target.value as AssignmentLevel;
+                const nextTargetOptions =
+                  nextAssignmentLevel === "department" ? payload.targets.departments : payload.targets.employees;
+                setForm((current) => ({
+                  ...current,
+                  assignmentLevel: nextAssignmentLevel,
+                  targetId: nextTargetOptions.some((target) => target.id === current.targetId)
+                    ? current.targetId
+                    : nextTargetOptions[0]?.id || "",
+                }));
+              }}
             >
               <option value="department">{labelAssignmentLevel("department")}</option>
               <option value="employee">{labelAssignmentLevel("employee")}</option>
@@ -288,7 +312,7 @@ export default function PolicyAssignmentsPage() {
 
           <Field label="Select Target">
             <Select
-              value={form.targetId}
+              value={selectedTargetId}
               onChange={(e) => setForm((current) => ({ ...current, targetId: e.target.value }))}
               disabled={targetOptions.length === 0}
             >

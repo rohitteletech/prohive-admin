@@ -1,4 +1,5 @@
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const RESOLVABLE_NON_WORKING_TREATMENTS: NonWorkingDayTreatment[] = [
   "Record Only",
@@ -6,6 +7,7 @@ export const RESOLVABLE_NON_WORKING_TREATMENTS: NonWorkingDayTreatment[] = [
   "Grant Comp Off",
   "Present + OT",
 ];
+type AdminClientLike = SupabaseClient;
 
 export function normalizeResolvedNonWorkingDayTreatment(value: unknown): NonWorkingDayTreatment | null {
   const text = String(value || "").trim();
@@ -15,7 +17,7 @@ export function normalizeResolvedNonWorkingDayTreatment(value: unknown): NonWork
 }
 
 export async function fetchManualReviewResolutionMap(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeIds: string[];
   startDate: string;
@@ -49,7 +51,7 @@ export async function fetchManualReviewResolutionMap(params: {
 }
 
 export async function fetchManualReviewResolutionMapForEmployee(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   startDate: string;

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
@@ -47,7 +48,7 @@ function addDaysToIsoDate(isoDate: string, days: number) {
 }
 
 async function findApprovedOverlap(params: {
-  admin: any;
+  admin: SupabaseClient;
   companyId: string;
   employeeId: string;
   fromDate: string;

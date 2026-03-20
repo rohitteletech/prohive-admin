@@ -1,8 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseLeaveScope } from "@/lib/companyReportsLeaves";
 
-type AdminClientLike = {
-  from: (table: string) => any;
-};
+type AdminClientLike = SupabaseClient;
 
 export type EmployeeReportRow = {
   id: string;
@@ -61,7 +60,7 @@ export async function getEmployeesReportData(params: {
   }
 
   const rows = (Array.isArray(data) ? data : []).map((row) => {
-    const source = row as Record<string, unknown>;
+    const source = row as unknown as Record<string, unknown>;
     return {
       id: normalizeText(source.id),
       employee: normalizeText(source.full_name) || "Unknown",

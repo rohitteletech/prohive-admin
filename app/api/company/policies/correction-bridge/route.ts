@@ -1,27 +1,42 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import {
+  correctionPolicyBridgeStateFromStoredConfig,
+  CORRECTION_POLICY_LIMITS,
+  type CorrectionPolicyBridgeState,
+  type CorrectionPolicyStoredStatus,
+  type CorrectionPolicyYesNo,
+  normalizeCorrectionPolicyConfig,
+} from "@/lib/correctionPolicyDefaults";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 
-type CorrectionBridgePayload = {
-  policyId?: string;
-  policyName?: string;
-  policyCode?: string;
-  effectiveFrom?: string;
-  nextReviewDate?: string;
-  status?: "Draft" | "Active" | "Archived";
-  defaultCompanyPolicy?: "Yes" | "No";
-  attendanceCorrectionEnabled?: "Yes" | "No";
-  missingPunchCorrectionAllowed?: "Yes" | "No";
-  latePunchRegularizationAllowed?: "Yes" | "No";
-  earlyGoRegularizationAllowed?: "Yes" | "No";
-  correctionRequestWindow?: string;
-  backdatedCorrectionAllowed?: "Yes" | "No";
-  maximumBackdatedDays?: string;
-  approvalRequired?: "Yes" | "No";
-  approvalFlow?: "Manager Approval" | "HR Approval" | "Manager + HR Approval";
-  maximumRequestsPerMonth?: string;
-  reasonMandatory?: "Yes" | "No";
-};
+type CorrectionBridgePayload = Partial<CorrectionPolicyBridgeState> & { policyId?: string };
+
+function isValidIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeStoredStatus(value: unknown, fallback: CorrectionPolicyStoredStatus): CorrectionPolicyStoredStatus {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "active") return "active";
+  if (normalized === "archived") return "archived";
+  if (normalized === "draft") return "draft";
+  return fallback;
+}
+
+function normalizeYesNo(value: unknown, fallback: CorrectionPolicyYesNo): CorrectionPolicyYesNo {
+  const normalized = String(value ?? "").trim();
+  if (normalized === "Yes" || normalized === "No") return normalized;
+  return fallback;
+}
+
+function parseWholeNumberInRange(value: unknown, min: number, max: number) {
+  const normalized = String(value ?? "").trim();
+  if (!/^\d+$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) return null;
+  return parsed;
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
@@ -41,35 +56,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Correction policy definition not found." }, { status: 404 });
     }
 
-    const config = (correctionPolicy.configJson || {}) as Record<string, unknown>;
+    const config = normalizeCorrectionPolicyConfig((correctionPolicy.configJson || {}) as Record<string, unknown>, {
+      policyName: correctionPolicy.policyName,
+      policyCode: correctionPolicy.policyCode,
+      effectiveFrom: correctionPolicy.effectiveFrom,
+      nextReviewDate: correctionPolicy.nextReviewDate,
+      status: correctionPolicy.status,
+      defaultCompanyPolicy: correctionPolicy.isDefault === false ? "No" : "Yes",
+    });
 
     return NextResponse.json({
       policyId: correctionPolicy.id,
-      policyName: String(config.policyName || correctionPolicy.policyName || "Standard Correction Policy"),
-      policyCode: String(config.policyCode || correctionPolicy.policyCode || "COR-001"),
-      effectiveFrom: String(config.effectiveFrom || correctionPolicy.effectiveFrom),
-      nextReviewDate: String(config.nextReviewDate || correctionPolicy.nextReviewDate),
-      status:
-        String(config.status || correctionPolicy.status || "draft").toLowerCase() === "active"
-          ? "Active"
-          : String(config.status || correctionPolicy.status || "draft").toLowerCase() === "archived"
-            ? "Archived"
-            : "Draft",
-      defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || correctionPolicy.isDefault === false) ? "No" : "Yes",
-      attendanceCorrectionEnabled: config.attendanceCorrectionEnabled === "No" ? "No" : "Yes",
-      missingPunchCorrectionAllowed: config.missingPunchCorrectionAllowed === "No" ? "No" : "Yes",
-      latePunchRegularizationAllowed: config.latePunchRegularizationAllowed === "No" ? "No" : "Yes",
-      earlyGoRegularizationAllowed: config.earlyGoRegularizationAllowed === "No" ? "No" : "Yes",
-      correctionRequestWindow: String(config.correctionRequestWindow || "2"),
-      backdatedCorrectionAllowed: config.backdatedCorrectionAllowed === "Yes" ? "Yes" : "No",
-      maximumBackdatedDays: String(config.maximumBackdatedDays || "2"),
-      approvalRequired: config.approvalRequired === "No" ? "No" : "Yes",
-      approvalFlow:
-        config.approvalFlow === "Manager Approval" || config.approvalFlow === "HR Approval" || config.approvalFlow === "Manager + HR Approval"
-          ? config.approvalFlow
-          : "Manager + HR Approval",
-      maximumRequestsPerMonth: String(config.maximumRequestsPerMonth || "3"),
-      reasonMandatory: config.reasonMandatory === "No" ? "No" : "Yes",
+      ...correctionPolicyBridgeStateFromStoredConfig(config),
     } satisfies CorrectionBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load correction policy bridge." }, { status: 400 });
@@ -89,29 +87,118 @@ export async function PUT(req: NextRequest) {
   const policy = body.policyId
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "correction")
     : null;
+  const existingConfig = normalizeCorrectionPolicyConfig((policy?.configJson || {}) as Record<string, unknown>, {
+    policyName: String(policy?.policyName || ""),
+    policyCode: String(policy?.policyCode || ""),
+    effectiveFrom: String(policy?.effectiveFrom || ""),
+    nextReviewDate: String(policy?.nextReviewDate || ""),
+    status: policy?.status || "draft",
+    defaultCompanyPolicy: policy?.isDefault === false ? "No" : "Yes",
+  });
+  const policyName = String(body.policyName ?? existingConfig.policyName).trim();
+  const policyCode = String(body.policyCode ?? existingConfig.policyCode).trim();
+  const effectiveFrom = String(body.effectiveFrom ?? existingConfig.effectiveFrom).trim();
+  const nextReviewDate = String(body.nextReviewDate ?? existingConfig.nextReviewDate).trim();
+  const normalizedStatus = normalizeStoredStatus(body.status ?? existingConfig.status, existingConfig.status);
+  const defaultCompanyPolicy = normalizeYesNo(body.defaultCompanyPolicy, existingConfig.defaultCompanyPolicy);
+  const attendanceCorrectionEnabled = normalizeYesNo(
+    body.attendanceCorrectionEnabled,
+    existingConfig.attendanceCorrectionEnabled,
+  );
+  const missingPunchCorrectionAllowed = normalizeYesNo(
+    body.missingPunchCorrectionAllowed,
+    existingConfig.missingPunchCorrectionAllowed,
+  );
+  const latePunchRegularizationAllowed = normalizeYesNo(
+    body.latePunchRegularizationAllowed,
+    existingConfig.latePunchRegularizationAllowed,
+  );
+  const earlyGoRegularizationAllowed = normalizeYesNo(
+    body.earlyGoRegularizationAllowed,
+    existingConfig.earlyGoRegularizationAllowed,
+  );
+  const backdatedCorrectionAllowed = normalizeYesNo(
+    body.backdatedCorrectionAllowed,
+    existingConfig.backdatedCorrectionAllowed,
+  );
+  const approvalRequired = normalizeYesNo(body.approvalRequired, existingConfig.approvalRequired);
+  const reasonMandatory = normalizeYesNo(body.reasonMandatory, existingConfig.reasonMandatory);
 
-  const configJson = {
-    policyName: body.policyName || policy?.policyName || "Standard Correction Policy",
-    policyCode: body.policyCode || policy?.policyCode || "COR-001",
-    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
-    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
-    status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
-    attendanceCorrectionEnabled: body.attendanceCorrectionEnabled || "Yes",
-    missingPunchCorrectionAllowed: body.missingPunchCorrectionAllowed || "Yes",
-    latePunchRegularizationAllowed: body.latePunchRegularizationAllowed || "Yes",
-    earlyGoRegularizationAllowed: body.earlyGoRegularizationAllowed || "Yes",
-    correctionRequestWindow: body.correctionRequestWindow || "2",
-    backdatedCorrectionAllowed: body.backdatedCorrectionAllowed || "No",
-    maximumBackdatedDays:
-      (body.backdatedCorrectionAllowed || "No") === "Yes"
-        ? body.maximumBackdatedDays || "2"
-        : "0",
-    approvalRequired: body.approvalRequired || "Yes",
-    approvalFlow: body.approvalFlow || "Manager + HR Approval",
-    maximumRequestsPerMonth: body.maximumRequestsPerMonth || "3",
-    reasonMandatory: body.reasonMandatory || "Yes",
-  };
+  if (!policyName) {
+    return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
+  }
+  if (!policyCode) {
+    return NextResponse.json({ error: "Policy Code is required." }, { status: 400 });
+  }
+  if (!effectiveFrom || !isValidIsoDate(effectiveFrom)) {
+    return NextResponse.json({ error: "Valid Effective From date is required." }, { status: 400 });
+  }
+  if (!nextReviewDate || !isValidIsoDate(nextReviewDate)) {
+    return NextResponse.json({ error: "Valid Next Review Date is required." }, { status: 400 });
+  }
+  if (nextReviewDate < effectiveFrom) {
+    return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
+  }
+
+  const correctionRequestWindow = parseWholeNumberInRange(
+    body.correctionRequestWindow ?? existingConfig.correctionRequestWindow,
+    CORRECTION_POLICY_LIMITS.correctionRequestWindow.min,
+    CORRECTION_POLICY_LIMITS.correctionRequestWindow.max,
+  );
+  if (correctionRequestWindow == null) {
+    return NextResponse.json({
+      error: `Correction Request Window must be a whole number between ${CORRECTION_POLICY_LIMITS.correctionRequestWindow.min} and ${CORRECTION_POLICY_LIMITS.correctionRequestWindow.max}.`,
+    }, { status: 400 });
+  }
+
+  const maximumBackdatedDays = parseWholeNumberInRange(
+    backdatedCorrectionAllowed === "Yes"
+      ? body.maximumBackdatedDays ?? existingConfig.maximumBackdatedDays
+      : "0",
+    CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min,
+    CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max,
+  );
+  if (maximumBackdatedDays == null) {
+    return NextResponse.json({
+      error: `Maximum Backdated Days must be a whole number between ${CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min} and ${CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max}.`,
+    }, { status: 400 });
+  }
+  if (backdatedCorrectionAllowed === "Yes" && maximumBackdatedDays > correctionRequestWindow) {
+    return NextResponse.json({
+      error: "Maximum Backdated Days cannot be greater than Correction Request Window.",
+    }, { status: 400 });
+  }
+
+  const maximumRequestsPerMonth = parseWholeNumberInRange(
+    body.maximumRequestsPerMonth ?? existingConfig.maximumRequestsPerMonth,
+    CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min,
+    CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.max,
+  );
+  if (maximumRequestsPerMonth == null) {
+    return NextResponse.json({
+      error: `Maximum Requests Per Month must be a whole number between ${CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min} and ${CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.max}.`,
+    }, { status: 400 });
+  }
+
+  const configJson = normalizeCorrectionPolicyConfig({
+    policyName,
+    policyCode,
+    effectiveFrom,
+    nextReviewDate,
+    status: normalizedStatus,
+    defaultCompanyPolicy,
+    attendanceCorrectionEnabled,
+    missingPunchCorrectionAllowed,
+    latePunchRegularizationAllowed,
+    earlyGoRegularizationAllowed,
+    correctionRequestWindow: String(correctionRequestWindow),
+    backdatedCorrectionAllowed,
+    maximumBackdatedDays: backdatedCorrectionAllowed === "Yes" ? String(maximumBackdatedDays) : "0",
+    approvalRequired,
+    approvalFlow: body.approvalFlow ?? existingConfig.approvalFlow,
+    maximumRequestsPerMonth: String(maximumRequestsPerMonth),
+    reasonMandatory,
+  });
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin

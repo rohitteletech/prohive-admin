@@ -1,10 +1,9 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { expirePendingCorrections } from "@/lib/attendanceCorrections";
 import { correctionRowFromDb } from "@/lib/companyCorrections";
 import { parseLeaveScope } from "@/lib/companyReportsLeaves";
 
-type AdminClientLike = {
-  from: (table: string) => any;
-};
+type AdminClientLike = SupabaseClient;
 
 export type CorrectionReportRow = {
   id: string;
@@ -41,7 +40,7 @@ export async function getCorrectionsReportData(params: {
     return { ok: false as const, status: 400, error: scope.error };
   }
 
-  await expirePendingCorrections(params.admin as never, params.companyId);
+  await expirePendingCorrections(params.admin, params.companyId);
 
   const employeeQuery = String(params.input.employeeQuery || "").trim().toLowerCase();
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();

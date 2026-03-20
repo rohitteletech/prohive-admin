@@ -204,17 +204,6 @@ function buildLast3CompleteMonths(today: Date): MonthOption[] {
   return out;
 }
 
-function statusBadge(status: ReportCard["status"]) {
-  if (status === "ready_next") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-  return "border-amber-200 bg-amber-50 text-amber-700";
-}
-
-function statusLabel(status: ReportCard["status"]) {
-  return status === "ready_next" ? "Build Next" : "Planned";
-}
-
 function attendanceStatusChip(status: AttendancePreviewRow["status"]) {
   if (status === "present") return "border-emerald-200 bg-emerald-50 text-emerald-700";
   if (status === "late") return "border-amber-200 bg-amber-50 text-amber-700";

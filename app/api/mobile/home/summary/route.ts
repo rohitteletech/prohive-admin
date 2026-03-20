@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { INDIA_TIME_ZONE, isoDateInIndia, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import {
+  resolveAttendancePolicyRuntime,
+  resolveCorrectionPolicyRuntime,
+  resolveHolidayPolicyRuntime,
+  resolveShiftPolicyRuntime,
+} from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
@@ -27,7 +32,14 @@ function normalizeTimeZone(value: unknown) {
 }
 
 function currentDateInTimeZone(timeZone: string) {
-  return isoDateInIndia(new Date().toISOString());
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const lookup = (type: string) => parts.find((part) => part.type === type)?.value || "";
+  return `${lookup("year")}-${lookup("month")}-${lookup("day")}`;
 }
 
 function buildMonthWindow(date: string) {
@@ -67,7 +79,7 @@ export async function POST(req: NextRequest) {
     session.employee.company_id,
     session.employee.id,
     today,
-    ["shift", "attendance", "holiday_weekoff"],
+    ["shift", "attendance", "holiday_weekoff", "correction"],
   );
 
   const [employeeResult, companyResult, shiftResult, eventsResult, holidayResult] = await Promise.all([
@@ -192,6 +204,7 @@ export async function POST(req: NextRequest) {
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
   const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance);
+  const resolvedCorrection = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const extraHoursPolicy = normalizeExtraHoursPolicy(resolvedAttendance.extraHoursPolicy);
   const loginAccessRule = normalizeLoginAccessRule(resolvedShift.loginAccessRule);
@@ -337,6 +350,7 @@ export async function POST(req: NextRequest) {
       weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
       allowPunchOnHoliday: resolvedHoliday.allowPunchOnHoliday,
       allowPunchOnWeeklyOff: resolvedHoliday.allowPunchOnWeeklyOff,
+      correctionPolicy: resolvedCorrection,
     },
   });
 }

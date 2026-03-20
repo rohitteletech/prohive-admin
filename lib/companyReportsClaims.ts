@@ -1,8 +1,7 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { parseLeaveScope } from "@/lib/companyReportsLeaves";
 
-type AdminClientLike = {
-  from: (table: string) => any;
-};
+type AdminClientLike = SupabaseClient;
 
 export type ClaimReportRow = {
   id: string;
@@ -71,7 +70,7 @@ export async function getClaimsReportData(params: {
   }
 
   const rows = (Array.isArray(data) ? data : []).map((row) => {
-    const source = row as Record<string, unknown>;
+    const source = row as unknown as Record<string, unknown>;
     const employee = (source.employees || {}) as Record<string, unknown>;
     const claimType = normalizeText(source.claim_type).toLowerCase();
     const claimTypeOther = normalizeText(source.claim_type_other_text);

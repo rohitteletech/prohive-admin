@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
   PolicyPage,
@@ -150,8 +149,15 @@ export default function HolidayWeeklyOffPolicyPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
+  const loadHolidayBridgeEffect = useEffectEvent(() => {
     void loadHolidayBridge();
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadHolidayBridgeEffect();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function openNewForm() {

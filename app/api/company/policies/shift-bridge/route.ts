@@ -51,13 +51,6 @@ function minutesToClock(value: number, fallback = "04:00") {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-function clockToMinutes(value: unknown, fallback: number) {
-  const text = String(value || "").trim();
-  const [hours, minutes] = text.split(":").map(Number);
-  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
-  return Math.max(0, hours * 60 + minutes);
-}
-
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";

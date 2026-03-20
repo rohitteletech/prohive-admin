@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
@@ -5,7 +6,6 @@ import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
 import {
   applyExtraHoursPolicy,
-  normalizeExtraHoursPolicy,
   shiftDurationMinutes,
   workHoursLabel,
 } from "@/lib/shiftWorkPolicy";
@@ -19,9 +19,8 @@ import {
 } from "@/lib/attendancePolicy";
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
 
-type AdminClientLike = {
-  from: (table: string) => any;
-};
+type AdminClientLike = SupabaseClient;
+type ResolvedPoliciesByEmployee = Awaited<ReturnType<typeof resolvePoliciesForEmployees>>;
 
 type EventRow = {
   id: string;
@@ -242,12 +241,35 @@ function buildLatePenaltyPolicyFromAttendancePolicy(policy: ReturnType<typeof re
   };
 }
 
+function toAttendanceReportRow(row: AttendanceReportRowWithLate): AttendanceReportRow {
+  return {
+    id: row.id,
+    employeeId: row.employeeId,
+    localDate: row.localDate,
+    employee: row.employee,
+    department: row.department,
+    shift: row.shift,
+    date: row.date,
+    checkIn: row.checkIn,
+    checkOut: row.checkOut,
+    workHours: row.workHours,
+    status: row.status,
+    nonWorkingDayTreatment: row.nonWorkingDayTreatment,
+    dayType: row.dayType,
+    payrollTreatment: row.payrollTreatment,
+    presentCount: row.presentCount,
+    otEligible: row.otEligible,
+    compOffGranted: row.compOffGranted,
+    manualReviewRequired: row.manualReviewRequired,
+  };
+}
+
 function aggregateRows(params: {
   events: EventRow[];
   employeesById: Map<string, EmployeeLookupRow>;
   timeZone: string;
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>;
-  resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>;
+  resolvedPoliciesByEmployee: ResolvedPoliciesByEmployee;
   holidayDates: Set<string>;
   manualReviewResolutionsByEmployeeDate: Map<string, NonWorkingDayTreatment>;
 }) {
@@ -529,7 +551,7 @@ export async function getAttendanceReportData(params: {
   }
 
   const resolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
-    params.admin as never,
+    params.admin,
     params.companyId,
     Array.from(employeesById.values()).map((row) => ({
       id: row.id,
@@ -589,7 +611,7 @@ export async function getAttendanceReportData(params: {
       aboveDays: 0.5,
     }
   );
-  const rows = filteredRows.map(({ lateMinutes, latePenaltyPolicy, halfDayValue, presentDaysFormula, ...row }) => row);
+  const rows = filteredRows.map(toAttendanceReportRow);
   const present = filteredRows.reduce((total, row) => {
     return total + presentDaysValueForStatus({
       status: row.status,

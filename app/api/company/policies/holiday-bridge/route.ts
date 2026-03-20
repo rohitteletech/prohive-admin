@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
-import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
 type HolidayBridgePayload = {
   policyId?: string;

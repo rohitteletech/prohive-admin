@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
@@ -29,7 +30,7 @@ function normalizeOptional(value?: string) {
 }
 
 async function findApprovedOverlap(params: {
-  admin: any;
+  admin: SupabaseClient;
   companyId: string;
   employeeId: string;
   fromDate: string;
@@ -92,7 +93,6 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     requestRow.approval_flow_snapshot === "hr" || requestRow.approval_flow_snapshot === "manager"
       ? requestRow.approval_flow_snapshot
       : "manager_hr";
-  const requiresTwoStage = approvalFlow === "manager_hr";
   const currentStage =
     requestRow.status === "pending_hr"
       ? "hr"

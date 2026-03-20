@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import {
   Field,
   PolicyPage,
@@ -199,8 +198,15 @@ export default function NewShiftPolicyPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
+  const loadShiftBridgeEffect = useEffectEvent(() => {
     void loadShiftBridge();
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadShiftBridgeEffect();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function startNewPolicy() {

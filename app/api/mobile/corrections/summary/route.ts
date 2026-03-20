@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { formatDisplayDate, formatDisplayDateTime } from "@/lib/dateTime";
+import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { expirePendingCorrections } from "@/lib/attendanceCorrections";
+import { resolveCorrectionPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 
 function displayTime(value: unknown) {
@@ -26,6 +28,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: session.error }, { status: session.status });
   }
   await expirePendingCorrections(session.admin, session.employee.company_id);
+  const policyDate = todayISOInIndia();
+  const policyContext = await resolvePoliciesForEmployee(
+    session.admin,
+    session.employee.company_id,
+    session.employee.id,
+    policyDate,
+    ["correction"],
+  );
+  const correctionPolicy = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
 
   const { data, error } = await session.admin
     .from("employee_attendance_corrections")
@@ -43,6 +54,10 @@ export async function POST(req: NextRequest) {
       id: session.employee.id,
       employeeCode: session.employee.employee_code,
       fullName: session.employee.full_name,
+    },
+    policy: {
+      evaluatedOn: policyDate,
+      ...correctionPolicy,
     },
     requests: (data || []).map((row) => ({
       id: row.id,

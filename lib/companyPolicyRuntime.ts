@@ -1,6 +1,7 @@
 import { PolicyDefinition } from "@/lib/companyPolicies";
 import type { AttendanceStatusPenaltyRuntime } from "@/lib/attendancePolicy";
 import { DEFAULT_ATTENDANCE_POLICY_BEHAVIOR } from "@/lib/attendancePolicyDefaults";
+import { normalizeCorrectionPolicyConfig } from "@/lib/correctionPolicyDefaults";
 import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
@@ -236,18 +237,30 @@ export function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
 }
 
 export function resolveCorrectionPolicyRuntime(policy: PolicyDefinition | null) {
-  const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const config = normalizeCorrectionPolicyConfig((policy?.configJson || {}) as Record<string, unknown>, {
+    policyName: String(policy?.policyName || ""),
+    policyCode: String(policy?.policyCode || ""),
+    effectiveFrom: String(policy?.effectiveFrom || ""),
+    nextReviewDate: String(policy?.nextReviewDate || ""),
+    status:
+      policy?.status === "active"
+        ? "active"
+        : policy?.status === "archived"
+          ? "archived"
+          : "draft",
+    defaultCompanyPolicy: policy?.isDefault === false ? "No" : "Yes",
+  });
   return {
-    attendanceCorrectionEnabled: yesNo(config.attendanceCorrectionEnabled, "Yes") === "Yes",
-    missingPunchCorrectionAllowed: yesNo(config.missingPunchCorrectionAllowed, "Yes") === "Yes",
-    latePunchRegularizationAllowed: yesNo(config.latePunchRegularizationAllowed, "Yes") === "Yes",
-    earlyGoRegularizationAllowed: yesNo(config.earlyGoRegularizationAllowed, "Yes") === "Yes",
+    attendanceCorrectionEnabled: config.attendanceCorrectionEnabled === "Yes",
+    missingPunchCorrectionAllowed: config.missingPunchCorrectionAllowed === "Yes",
+    latePunchRegularizationAllowed: config.latePunchRegularizationAllowed === "Yes",
+    earlyGoRegularizationAllowed: config.earlyGoRegularizationAllowed === "Yes",
     correctionRequestWindow: wholeNumber(config.correctionRequestWindow, 2),
-    backdatedCorrectionAllowed: yesNo(config.backdatedCorrectionAllowed, "No") === "Yes",
-    maximumBackdatedDays: wholeNumber(config.maximumBackdatedDays, 2),
-    approvalRequired: yesNo(config.approvalRequired, "Yes") === "Yes",
-    approvalFlow: text(config.approvalFlow, "Manager + HR Approval"),
-    maximumRequestsPerMonth: wholeNumber(config.maximumRequestsPerMonth, 5),
-    reasonMandatory: yesNo(config.reasonMandatory, "Yes") === "Yes",
+    backdatedCorrectionAllowed: config.backdatedCorrectionAllowed === "Yes",
+    maximumBackdatedDays: wholeNumber(config.maximumBackdatedDays, 0),
+    approvalRequired: config.approvalRequired === "Yes",
+    approvalFlow: config.approvalFlow,
+    maximumRequestsPerMonth: wholeNumber(config.maximumRequestsPerMonth, 3),
+    reasonMandatory: config.reasonMandatory === "Yes",
   };
 }

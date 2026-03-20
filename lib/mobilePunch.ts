@@ -593,7 +593,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   }
 
   let approvalStatus = approval.approvalStatus;
-  let approvalReasonCodes = [...approval.approvalReasonCodes];
+  const approvalReasonCodes = [...approval.approvalReasonCodes];
   let noticeMessage: string | null = null;
   if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Approval") {
     if (!approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) {

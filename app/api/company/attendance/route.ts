@@ -4,7 +4,7 @@ import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShi
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
-import { applyExtraHoursPolicy, shiftDurationMinutes, timeToMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
+import { applyExtraHoursPolicy, shiftDurationMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
 import {
   applyNonWorkingDayTreatment,
   buildAttendanceMetrics,
@@ -54,6 +54,7 @@ type AttendanceRow = {
 
 const APPROVED_STATUSES = ["auto_approved", "approved"];
 const DEFAULT_SHIFT_GRACE_MINS = 10;
+type ResolvedPoliciesByEmployee = Awaited<ReturnType<typeof resolvePoliciesForEmployees>>;
 
 function normalizeDateParam(value: string | null) {
   const date = (value || "").trim();
@@ -142,7 +143,7 @@ function aggregateRows(
   selectedDate: string,
   timeZone: string,
   shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>,
-  resolvedPoliciesByEmployee: Map<string, { resolved: Record<string, any> }>,
+  resolvedPoliciesByEmployee: ResolvedPoliciesByEmployee,
   holidayDates: Set<string>
 ) {
   const grouped = new Map<string, EventRow[]>();

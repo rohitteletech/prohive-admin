@@ -1,7 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { useEffect } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
   PolicyPage,
@@ -11,59 +10,49 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import {
+  correctionPolicyBridgeStateFromStoredConfig,
+  CORRECTION_POLICY_LIMITS,
+  createDefaultCorrectionPolicyConfig,
+  normalizeCorrectionPolicyConfig,
+  type CorrectionPolicyBridgeState,
+  type CorrectionPolicyStoredStatus,
+} from "@/lib/correctionPolicyDefaults";
 import { formatDisplayDateTime } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type CorrectionPolicyState = {
+type CorrectionPolicyState = CorrectionPolicyBridgeState & {
   policyId: string;
-  policyName: string;
-  policyCode: string;
-  effectiveFrom: string;
-  nextReviewDate: string;
-  status: "Draft" | "Active" | "Archived";
-  defaultCompanyPolicy: "Yes" | "No";
-  attendanceCorrectionEnabled: "Yes" | "No";
-  missingPunchCorrectionAllowed: "Yes" | "No";
-  latePunchRegularizationAllowed: "Yes" | "No";
-  earlyGoRegularizationAllowed: "Yes" | "No";
-  correctionRequestWindow: string;
-  backdatedCorrectionAllowed: "Yes" | "No";
-  maximumBackdatedDays: string;
-  approvalRequired: "Yes" | "No";
-  approvalFlow: "Manager Approval" | "HR Approval" | "Manager + HR Approval";
-  maximumRequestsPerMonth: string;
-  reasonMandatory: "Yes" | "No";
   createdOn?: string;
 };
 
-const initialState: CorrectionPolicyState = {
-  policyId: "",
-  policyName: "Standard Correction Policy",
-  policyCode: "COR-001",
-  effectiveFrom: "2026-03-13",
-  nextReviewDate: "2027-03-13",
-  status: "Draft",
-  defaultCompanyPolicy: "Yes",
-  attendanceCorrectionEnabled: "Yes",
-  missingPunchCorrectionAllowed: "Yes",
-  latePunchRegularizationAllowed: "Yes",
-  earlyGoRegularizationAllowed: "Yes",
-  correctionRequestWindow: "7",
-  backdatedCorrectionAllowed: "Yes",
-  maximumBackdatedDays: "7",
-  approvalRequired: "Yes",
-  approvalFlow: "Manager + HR Approval",
-  maximumRequestsPerMonth: "3",
-  reasonMandatory: "Yes",
-};
+function createCorrectionPolicyState(params?: {
+  defaultCompanyPolicy?: "Yes" | "No";
+  storedStatus?: CorrectionPolicyStoredStatus;
+  blankIdentity?: boolean;
+}) {
+  const config = correctionPolicyBridgeStateFromStoredConfig(
+    createDefaultCorrectionPolicyConfig({
+      defaultCompanyPolicy: params?.defaultCompanyPolicy || "Yes",
+      status: params?.storedStatus || "draft",
+    }),
+  );
+
+  return {
+    policyId: "",
+    ...config,
+    ...(params?.blankIdentity ? { policyName: "", policyCode: "" } : {}),
+  } satisfies CorrectionPolicyState;
+}
+
+const initialState = createCorrectionPolicyState({ storedStatus: "draft" });
 
 function createNewPolicyDraft(): CorrectionPolicyState {
-  return {
-    ...initialState,
-    policyName: "",
-    policyCode: "",
+  return createCorrectionPolicyState({
     defaultCompanyPolicy: "No",
-  };
+    storedStatus: "draft",
+    blankIdentity: true,
+  });
 }
 
 export default function CorrectionRegularizationPolicyPage() {
@@ -76,9 +65,50 @@ export default function CorrectionRegularizationPolicyPage() {
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const correctionSettingsDisabled = draft.attendanceCorrectionEnabled === "No";
+  const backdatedSettingsDisabled = correctionSettingsDisabled || draft.backdatedCorrectionAllowed === "No";
+  const approvalFlowDisabled = correctionSettingsDisabled || draft.approvalRequired === "No";
 
   function update<K extends keyof CorrectionPolicyState>(key: K, value: CorrectionPolicyState[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+    setDraft((current) => {
+      const next = { ...current, [key]: value };
+
+      if (key === "backdatedCorrectionAllowed") {
+        if (value === "No") {
+          next.maximumBackdatedDays = "0";
+        } else if (current.maximumBackdatedDays === "0") {
+          next.maximumBackdatedDays = current.correctionRequestWindow || initialState.correctionRequestWindow;
+        }
+      }
+
+      if (key === "correctionRequestWindow") {
+        const nextWindow = Number(value);
+        const currentBackdatedDays = Number(current.maximumBackdatedDays);
+        if (
+          current.backdatedCorrectionAllowed === "Yes" &&
+          Number.isFinite(nextWindow) &&
+          Number.isFinite(currentBackdatedDays) &&
+          currentBackdatedDays > nextWindow
+        ) {
+          next.maximumBackdatedDays = String(Math.max(0, Math.trunc(nextWindow)));
+        }
+      }
+
+      if (key === "maximumBackdatedDays") {
+        const nextBackdatedDays = Number(value);
+        const currentWindow = Number(current.correctionRequestWindow);
+        if (
+          current.backdatedCorrectionAllowed === "Yes" &&
+          Number.isFinite(nextBackdatedDays) &&
+          Number.isFinite(currentWindow) &&
+          nextBackdatedDays > currentWindow
+        ) {
+          next.maximumBackdatedDays = String(Math.max(0, Math.trunc(currentWindow)));
+        }
+      }
+
+      return next;
+    });
   }
 
   function notify(message: string) {
@@ -132,15 +162,20 @@ export default function CorrectionRegularizationPolicyPage() {
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
         ? policiesResult.policies.map((policy) => {
-            const config = (policy.configJson || {}) as Partial<CorrectionPolicyState>;
+            const normalizedConfig = correctionPolicyBridgeStateFromStoredConfig(
+              normalizeCorrectionPolicyConfig((policy.configJson || {}) as Record<string, unknown>, {
+                policyName: String(policy.policyName || ""),
+                policyCode: String(policy.policyCode || ""),
+                effectiveFrom: String(policy.effectiveFrom || initialState.effectiveFrom),
+                nextReviewDate: String(policy.nextReviewDate || initialState.nextReviewDate),
+                status: policy.status === "active" ? "active" : policy.status === "archived" ? "archived" : "draft",
+                defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+              }),
+            );
             return {
               ...initialState,
-              ...config,
+              ...normalizedConfig,
               policyId: policy.id,
-              policyName: String(config.policyName || policy.policyName || ""),
-              policyCode: String(config.policyCode || policy.policyCode || ""),
-              effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
-              nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
               status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
               createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
@@ -154,8 +189,15 @@ export default function CorrectionRegularizationPolicyPage() {
     setLoading(false);
   }
 
-  useEffect(() => {
+  const loadCorrectionBridgeEffect = useEffectEvent(() => {
     void loadCorrectionBridge();
+  });
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadCorrectionBridgeEffect();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   function openNewForm() {
@@ -340,6 +382,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.missingPunchCorrectionAllowed}
                   onChange={(e) => update("missingPunchCorrectionAllowed", e.target.value as CorrectionPolicyState["missingPunchCorrectionAllowed"])}
+                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -349,6 +392,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.latePunchRegularizationAllowed}
                   onChange={(e) => update("latePunchRegularizationAllowed", e.target.value as CorrectionPolicyState["latePunchRegularizationAllowed"])}
+                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -358,12 +402,18 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.earlyGoRegularizationAllowed}
                   onChange={(e) => update("earlyGoRegularizationAllowed", e.target.value as CorrectionPolicyState["earlyGoRegularizationAllowed"])}
+                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </Select>
               </Field>
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {correctionSettingsDisabled
+                ? "Attendance correction is disabled, so the request, approval, and reason settings below are inactive until you enable it again."
+                : "When enabled, the request window, approval flow, and reason rules below control employee correction requests."}
+            </p>
           </PolicySection>
 
           <PolicySection
@@ -372,12 +422,22 @@ export default function CorrectionRegularizationPolicyPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Correction Request Window (Days)">
-                <TextInput value={draft.correctionRequestWindow} onChange={(e) => update("correctionRequestWindow", e.target.value)} />
+                <TextInput
+                  type="number"
+                  min={CORRECTION_POLICY_LIMITS.correctionRequestWindow.min}
+                  max={CORRECTION_POLICY_LIMITS.correctionRequestWindow.max}
+                  step="1"
+                  inputMode="numeric"
+                  value={draft.correctionRequestWindow}
+                  onChange={(e) => update("correctionRequestWindow", e.target.value)}
+                  disabled={correctionSettingsDisabled}
+                />
               </Field>
               <Field label="Backdated Correction Allowed">
                 <Select
                   value={draft.backdatedCorrectionAllowed}
                   onChange={(e) => update("backdatedCorrectionAllowed", e.target.value as CorrectionPolicyState["backdatedCorrectionAllowed"])}
+                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -385,17 +445,33 @@ export default function CorrectionRegularizationPolicyPage() {
               </Field>
               <Field label="Maximum Backdated Days">
                 <TextInput
+                  type="number"
+                  min={CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min}
+                  max={CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max}
+                  step="1"
+                  inputMode="numeric"
                   value={draft.maximumBackdatedDays}
                   onChange={(e) => update("maximumBackdatedDays", e.target.value)}
-                  disabled={draft.backdatedCorrectionAllowed === "No"}
+                  disabled={backdatedSettingsDisabled}
                 />
               </Field>
               <Field label="Maximum Requests Per Month">
-                <TextInput value={draft.maximumRequestsPerMonth} onChange={(e) => update("maximumRequestsPerMonth", e.target.value)} />
+                <TextInput
+                  type="number"
+                  min={CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min}
+                  max={CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.max}
+                  step="1"
+                  inputMode="numeric"
+                  value={draft.maximumRequestsPerMonth}
+                  onChange={(e) => update("maximumRequestsPerMonth", e.target.value)}
+                  disabled={correctionSettingsDisabled}
+                />
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {draft.backdatedCorrectionAllowed === "Yes"
+              {correctionSettingsDisabled
+                ? "Attendance correction is disabled, so request window and backdated controls are inactive."
+                : draft.backdatedCorrectionAllowed === "Yes"
                 ? "Employees can raise backdated corrections only within the configured maximum days."
                 : "Backdated correction is disabled, so maximum backdated days is inactive."}
             </p>
@@ -410,6 +486,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.approvalRequired}
                   onChange={(e) => update("approvalRequired", e.target.value as CorrectionPolicyState["approvalRequired"])}
+                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -419,7 +496,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.approvalFlow}
                   onChange={(e) => update("approvalFlow", e.target.value as CorrectionPolicyState["approvalFlow"])}
-                  disabled={draft.approvalRequired === "No"}
+                  disabled={approvalFlowDisabled}
                 >
                   <option value="Manager Approval">Manager Approval</option>
                   <option value="HR Approval">HR Approval</option>
@@ -428,7 +505,9 @@ export default function CorrectionRegularizationPolicyPage() {
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {draft.approvalRequired === "Yes"
+              {correctionSettingsDisabled
+                ? "Attendance correction is disabled, so approval rules are inactive."
+                : draft.approvalRequired === "Yes"
                 ? "Requests will follow the selected approval workflow."
                 : "Requests will auto-approve when approval is not required."}
             </p>
@@ -440,12 +519,21 @@ export default function CorrectionRegularizationPolicyPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Reason Mandatory">
-                <Select value={draft.reasonMandatory} onChange={(e) => update("reasonMandatory", e.target.value as CorrectionPolicyState["reasonMandatory"])}>
+                <Select
+                  value={draft.reasonMandatory}
+                  onChange={(e) => update("reasonMandatory", e.target.value as CorrectionPolicyState["reasonMandatory"])}
+                  disabled={correctionSettingsDisabled}
+                >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </Select>
               </Field>
             </div>
+            <p className="mt-2 text-xs text-slate-500">
+              {correctionSettingsDisabled
+                ? "Attendance correction is disabled, so reason validation is inactive."
+                : "Reason validation is enforced when employees submit eligible correction requests."}
+            </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
               {isCreatingNew ? (

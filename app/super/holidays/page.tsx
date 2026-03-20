@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import {
   GOVERNMENT_HOLIDAY_STATE_OPTIONS,
   GovernmentHolidayState,
@@ -80,8 +80,15 @@ export default function SuperHolidayTemplatesPage() {
     }
   }
 
+  const loadRowsEffect = useEffectEvent((targetYear: number, targetState: GovernmentHolidayState) => {
+    void loadRows(targetYear, targetState);
+  });
+
   useEffect(() => {
-    void loadRows(year, state);
+    const timer = window.setTimeout(() => {
+      loadRowsEffect(year, state);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [year, state]);
 
   const sortedRows = useMemo(

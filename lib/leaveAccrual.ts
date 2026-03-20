@@ -1,10 +1,12 @@
 import { isoDateInIndia } from "@/lib/dateTime";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { isWeeklyOffDate, type WeeklyOffPolicy } from "@/lib/weeklyOff";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 import { fetchManualReviewResolutionMapForEmployee } from "@/lib/manualReviewResolutions";
 
 export type LeaveAccrualMode = "monthly" | "upfront";
 export type LeaveCycleType = "Calendar Year" | "Financial Year";
+type AdminClientLike = SupabaseClient;
 
 export function normalizeAccrualMode(value: unknown): LeaveAccrualMode {
   return value === "upfront" ? "upfront" : "monthly";
@@ -93,7 +95,7 @@ function addDaysToIsoDate(isoDate: string, days: number) {
 }
 
 export async function fetchApprovedAttendanceDatesForYear(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   year: number;
@@ -124,7 +126,7 @@ export async function fetchApprovedAttendanceDatesForYear(params: {
 }
 
 export async function fetchApprovedAttendanceDatesForCycle(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   asOfIsoDate: string;
@@ -155,7 +157,7 @@ export async function fetchApprovedAttendanceDatesForCycle(params: {
 }
 
 export async function fetchApprovedAttendanceDatesForRange(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   startDate: string;
@@ -185,7 +187,7 @@ export async function fetchApprovedAttendanceDatesForRange(params: {
 }
 
 export async function fetchCompOffEarnedDays(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   asOfIsoDate: string;
@@ -279,8 +281,6 @@ export function deriveCompOffEarnedDates(params: {
   weeklyOffWorkedStatus: NonWorkingDayTreatment;
   manualReviewResolutionsByDate?: Map<string, NonWorkingDayTreatment>;
 }) {
-  const grantsOnHoliday = params.holidayWorkedStatus === "Grant Comp Off";
-  const grantsOnWeeklyOff = params.weeklyOffWorkedStatus === "Grant Comp Off";
   const earnedDates = new Set<string>();
 
   for (const isoDate of params.attendanceDates) {
@@ -331,7 +331,7 @@ export function computeLeaveEntitlement(params: {
 }
 
 export async function fetchLeaveUsageForCycle(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
@@ -377,7 +377,7 @@ export async function fetchLeaveUsageForCycle(params: {
 }
 
 export async function fetchLeaveUsageForRange(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
@@ -424,7 +424,7 @@ export async function fetchLeaveUsageForRange(params: {
 }
 
 export async function fetchLeaveOverrideDays(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
@@ -445,7 +445,7 @@ export async function fetchLeaveOverrideDays(params: {
 }
 
 export async function fetchLeaveCarryForwardDays(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;
@@ -638,7 +638,7 @@ export async function fetchLeaveCarryForwardDays(params: {
 }
 
 export async function fetchLeaveUsageForYear(params: {
-  admin: any;
+  admin: AdminClientLike;
   companyId: string;
   employeeId: string;
   leavePolicyCode: string;

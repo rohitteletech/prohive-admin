@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
@@ -11,9 +12,7 @@ import {
   roundLeaveDays,
 } from "@/lib/leaveAccrual";
 
-type AdminClientLike = {
-  from: (table: string) => any;
-};
+type AdminClientLike = SupabaseClient;
 
 export type LeaveReportRow = {
   id: string;
@@ -116,21 +115,24 @@ export async function getLeaveReportData(params: {
   }
 
   const policies = Array.isArray(policyResult.data) ? policyResult.data : [];
-  const employeeSeedRows: Array<{ id: string; department: string }> = Array.isArray(requestResult.data)
+  const requestRows = Array.isArray(requestResult.data)
+    ? (requestResult.data as unknown as Array<Record<string, unknown>>)
+    : [];
+  const employeeSeedRows: Array<{ id: string; department: string }> = requestRows.length > 0
     ? Array.from(
         new Map<string, { id: string; department: string }>(
-          requestResult.data.map((row: any) => [
+          requestRows.map((row) => [
             String(row.employee_id || ""),
             {
               id: String(row.employee_id || ""),
-              department: String(((row.employees || {}) as Record<string, unknown>).department || ""),
+              department: String(((row.employees || {}) as unknown as Record<string, unknown>).department || ""),
             },
           ]),
         ).values(),
       ).filter((row) => Boolean(row.id))
     : [];
   const resolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
-    params.admin as never,
+    params.admin,
     params.companyId,
     employeeSeedRows,
     scope.startDate,
@@ -153,7 +155,7 @@ export async function getLeaveReportData(params: {
 
     const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null);
     const previousResolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
-      params.admin as never,
+      params.admin,
       params.companyId,
       [{ id: employeeId, department: resolvedPoliciesByEmployee.get(employeeId)?.department || "" }],
       previousCycleEnd,
@@ -239,11 +241,10 @@ export async function getLeaveReportData(params: {
     return available;
   }
 
-  const requestRows = Array.isArray(requestResult.data) ? requestResult.data : [];
   const rows: LeaveReportRow[] = [];
 
-  for (const row of requestRows as Array<Record<string, unknown>>) {
-    const employees = (row.employees || {}) as Record<string, unknown>;
+  for (const row of requestRows) {
+    const employees = (row.employees || {}) as unknown as Record<string, unknown>;
     const employeeId = String(row.employee_id || "");
     const leavePolicyCode = String(row.leave_policy_code || "");
     const availableBalance = await getAvailableBalance(employeeId, leavePolicyCode);
