@@ -5,25 +5,19 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-const workspaceItems = [
+const mainMenuItems = [
   { href: "/company/dashboard", label: "Dashboard", description: "Operational overview" },
   { href: "/company/employees", label: "Employees", description: "Manage employee records" },
   { href: "/company/attendance", label: "Attendance", description: "View daily attendance" },
   { href: "/company/reports", label: "Reports", description: "Export workforce reports" },
-];
-
-const operationsItems = [
   { href: "/company/leaves", label: "Leave", description: "Review and approve leave requests" },
   { href: "/company/corrections", label: "Correction", description: "Resolve attendance correction requests" },
   { href: "/company/manual-reviews", label: "Manual Reviews", description: "Review holiday and weekly-off manual cases" },
   { href: "/company/comp-off-ledger", label: "Comp Off Ledger", description: "Track earned and used comp off balances" },
   { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
-];
-
-const administrationItems = [
+  { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
   { href: "/company/settings/holidays", label: "Holiday Calendar", description: "Manage company-wide holiday dates" },
   { href: "/company/settings", label: "Settings", description: "Admin account, company profile, and security settings" },
-  { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
 ];
 
 const policyItems = [
@@ -372,23 +366,9 @@ export default function CompanyLayout({
         <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "grid", gap: 18 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
-              Workspace
+              Main Menu
             </div>
-            <SidebarGroup items={workspaceItems} pathname={pathname} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
-              Operations
-            </div>
-            <SidebarGroup items={operationsItems} pathname={pathname} />
-          </div>
-
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
-              Administration
-            </div>
-            <SidebarGroup items={administrationItems} pathname={pathname} />
+            <SidebarGroup items={mainMenuItems} pathname={pathname} />
           </div>
 
           <div>
