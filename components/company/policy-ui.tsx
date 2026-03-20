@@ -338,7 +338,7 @@ export function PolicyMessageDialog({
   message,
   tone = "sky",
   onClose,
-  closeLabel = "Close",
+  closeLabel = "OK",
 }: {
   message: string | null;
   tone?: "sky" | "emerald";
