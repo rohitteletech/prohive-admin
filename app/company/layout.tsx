@@ -5,9 +5,7 @@ import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
-const primaryItems = [
-  { href: "/company/settings", label: "Settings", description: "Admin account, company profile, and security settings" },
-  { href: "/company/settings/holidays", label: "Holiday Calendar", description: "Manage company-wide holiday dates" },
+const workspaceItems = [
   { href: "/company/dashboard", label: "Dashboard", description: "Operational overview" },
   { href: "/company/employees", label: "Employees", description: "Manage employee records" },
   { href: "/company/attendance", label: "Attendance", description: "View daily attendance" },
@@ -20,6 +18,11 @@ const operationsItems = [
   { href: "/company/manual-reviews", label: "Manual Reviews", description: "Review holiday and weekly-off manual cases" },
   { href: "/company/comp-off-ledger", label: "Comp Off Ledger", description: "Track earned and used comp off balances" },
   { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
+];
+
+const administrationItems = [
+  { href: "/company/settings/holidays", label: "Holiday Calendar", description: "Manage company-wide holiday dates" },
+  { href: "/company/settings", label: "Settings", description: "Admin account, company profile, and security settings" },
   { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
 ];
 
@@ -66,12 +69,14 @@ function navItemStyle(active: boolean) {
 function SidebarGroup({
   items,
   pathname,
+  compact = false,
 }: {
   items: NavItem[];
   pathname: string;
+  compact?: boolean;
 }) {
   return (
-    <div style={{ display: "grid", gap: 4 }}>
+    <div style={{ display: "grid", gap: compact ? 2 : 4 }}>
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         return (
@@ -323,6 +328,7 @@ export default function CompanyLayout({
             padding: "24px 22px 20px",
             background: "linear-gradient(180deg, #1d4ed8 0%, #1e3a8a 100%)",
             color: "#ffffff",
+            flexShrink: 0,
           }}
         >
           <div
@@ -342,7 +348,20 @@ export default function CompanyLayout({
             {companyInfo.displayName.trim().slice(0, 1).toUpperCase() || "A"}
           </div>
           <div style={{ textAlign: "center" }}>
-            <div style={{ fontSize: 20, fontWeight: 800, lineHeight: 1.2 }}>{companyInfo.displayName}</div>
+            <div
+              style={{
+                fontSize: 20,
+                fontWeight: 800,
+                lineHeight: 1.2,
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+                overflow: "hidden",
+                wordBreak: "break-word",
+              }}
+            >
+              {companyInfo.displayName}
+            </div>
             <div style={{ fontSize: 12, opacity: 0.88, marginTop: 6 }}>
               {companyInfo.adminId ? `Admin ID: ${companyInfo.adminId}` : "Admin access enabled"}
             </div>
@@ -350,12 +369,12 @@ export default function CompanyLayout({
           </div>
         </div>
 
-        <div style={{ padding: 16, overflowY: "auto", display: "grid", gap: 18 }}>
+        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: 16, display: "grid", gap: 18 }}>
           <div>
             <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
-              Main Menu
+              Workspace
             </div>
-            <SidebarGroup items={primaryItems} pathname={pathname} />
+            <SidebarGroup items={workspaceItems} pathname={pathname} />
           </div>
 
           <div>
@@ -363,6 +382,13 @@ export default function CompanyLayout({
               Operations
             </div>
             <SidebarGroup items={operationsItems} pathname={pathname} />
+          </div>
+
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: "#94a3b8", marginBottom: 10 }}>
+              Administration
+            </div>
+            <SidebarGroup items={administrationItems} pathname={pathname} />
           </div>
 
           <div>
@@ -377,12 +403,12 @@ export default function CompanyLayout({
                 background: "#f8fafc",
               }}
             >
-              <SidebarGroup items={policyItems} pathname={pathname} />
+              <SidebarGroup items={policyItems} pathname={pathname} compact />
             </div>
           </div>
         </div>
 
-        <div style={{ marginTop: "auto", padding: 16, borderTop: "1px solid #e5e7eb" }}>
+        <div style={{ marginTop: "auto", padding: 16, borderTop: "1px solid #e5e7eb", background: "#ffffff", flexShrink: 0 }}>
           <button
             type="button"
             onClick={handleLogout}
