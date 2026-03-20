@@ -4,6 +4,7 @@ import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions, listCompanyPolicyAssignments } from "@/lib/companyPoliciesServer";
 import {
   expirePendingCorrections,
+  rollbackPunchEventFromCorrection,
   upsertPunchEventFromCorrection,
 } from "@/lib/attendanceCorrections";
 import { resolvePolicyForEmployee } from "@/lib/companyPolicies";
@@ -91,7 +92,9 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const nextApprovedStatus = requiresTwoStage && currentStage === "manager" ? "pending_hr" : "approved";
 
   if (body.status === "approved" && nextApprovedStatus === "approved") {
-    const inApplyError = await upsertPunchEventFromCorrection({
+    const rollbackActions = [];
+
+    const inApplyResult = await upsertPunchEventFromCorrection({
       admin: context.admin,
       companyId: context.companyId,
       employeeId: row.employee_id,
@@ -101,9 +104,12 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       performedBy: context.adminEmail,
       correctionId: row.id,
     });
-    if (inApplyError) return NextResponse.json({ error: inApplyError }, { status: 400 });
+    if (inApplyResult.error) {
+      return NextResponse.json({ error: inApplyResult.error }, { status: 400 });
+    }
+    if (inApplyResult.rollbackAction) rollbackActions.push(inApplyResult.rollbackAction);
 
-    const outApplyError = await upsertPunchEventFromCorrection({
+    const outApplyResult = await upsertPunchEventFromCorrection({
       admin: context.admin,
       companyId: context.companyId,
       employeeId: row.employee_id,
@@ -113,7 +119,18 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       performedBy: context.adminEmail,
       correctionId: row.id,
     });
-    if (outApplyError) return NextResponse.json({ error: outApplyError }, { status: 400 });
+    if (outApplyResult.error) {
+      for (const rollbackAction of rollbackActions.reverse()) {
+        await rollbackPunchEventFromCorrection({
+          admin: context.admin,
+          companyId: context.companyId,
+          employeeId: row.employee_id,
+          rollbackAction,
+        });
+      }
+      return NextResponse.json({ error: outApplyResult.error }, { status: 400 });
+    }
+    if (outApplyResult.rollbackAction) rollbackActions.push(outApplyResult.rollbackAction);
   }
 
   const reviewedAt = new Date().toISOString();
