@@ -69,6 +69,8 @@ export default function CorrectionRegularizationPolicyPage() {
   const correctionSettingsDisabled = draft.attendanceCorrectionEnabled === "No";
   const backdatedSettingsDisabled = correctionSettingsDisabled || draft.backdatedCorrectionAllowed === "No";
   const approvalFlowDisabled = correctionSettingsDisabled || draft.approvalRequired === "No";
+  const defaultPolicyHelperText =
+    "Default Company Policy applies only when the policy is enforced as active. Draft saves keep this as No until activation.";
 
   function update<K extends keyof CorrectionPolicyState>(key: K, value: CorrectionPolicyState[K]) {
     setDraft((current) => {
@@ -243,6 +245,7 @@ export default function CorrectionRegularizationPolicyPage() {
     if (!token) return notify("Company session not found. Please login again.");
 
     const creating = !draft.policyId;
+    const defaultCompanyPolicy = targetStatus === "Active" ? draft.defaultCompanyPolicy : "No";
     setSaving(true);
     const response = await fetch("/api/company/policies/correction-bridge", {
       method: "PUT",
@@ -252,6 +255,7 @@ export default function CorrectionRegularizationPolicyPage() {
       },
       body: JSON.stringify({
         ...draft,
+        defaultCompanyPolicy,
         status: targetStatus,
       }),
     });
@@ -262,6 +266,7 @@ export default function CorrectionRegularizationPolicyPage() {
     }
     const nextPolicy = {
       ...draft,
+      defaultCompanyPolicy,
       status: targetStatus,
       policyId: result.policyId || draft.policyId,
     };
@@ -367,6 +372,7 @@ export default function CorrectionRegularizationPolicyPage() {
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </Select>
+                <p className="mt-2 text-xs text-slate-500">{defaultPolicyHelperText}</p>
               </Field>
             </div>
           </PolicySection>
