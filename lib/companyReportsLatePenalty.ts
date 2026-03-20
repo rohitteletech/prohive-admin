@@ -1,13 +1,13 @@
 import { parseAttendanceScope } from "@/lib/companyReportsAttendance";
-import { resolveAttendancePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { buildAttendanceMetrics, buildDailyAttendanceDecision } from "@/lib/attendancePolicy";
 import { shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
+import { isWeeklyOffDate } from "@/lib/weeklyOff";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
-type AdminClientLike = {
-  from: (table: string) => any;
-};
+type AdminClientLike = Pick<SupabaseClient, "from">;
 
 type EventRow = {
   employee_id: string;
@@ -125,7 +125,7 @@ export async function getLatePenaltyReportData(params: {
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();
   const { fromIso, toIso } = buildQueryWindow(scope.startDate, scope.endDate);
 
-  const [eventsResult, shiftResult] = await Promise.all([
+  const [eventsResult, shiftResult, holidayResult] = await Promise.all([
     params.admin
       .from("attendance_punch_events")
       .select("employee_id,punch_type,effective_punch_at,server_received_at,approval_status")
@@ -139,12 +139,20 @@ export async function getLatePenaltyReportData(params: {
       .select("name,type,start_time,end_time,grace_mins,active")
       .eq("company_id", params.companyId)
       .order("created_at", { ascending: true }),
+    params.admin
+      .from("company_holidays")
+      .select("holiday_date")
+      .eq("company_id", params.companyId)
+      .gte("holiday_date", scope.startDate)
+      .lte("holiday_date", scope.endDate),
   ]);
 
   if (eventsResult.error) return { ok: false as const, status: 400, error: eventsResult.error.message || "Unable to load attendance events." };
   if (shiftResult.error) return { ok: false as const, status: 400, error: shiftResult.error.message || "Unable to load shift rules." };
+  if (holidayResult.error) return { ok: false as const, status: 400, error: holidayResult.error.message || "Unable to load holiday markers." };
 
   const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
+  const holidayDates = new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date));
   const employeeIds = Array.from(new Set(events.map((row) => row.employee_id).filter(Boolean)));
   const employeesById = new Map<string, EmployeeLookupRow>();
 
@@ -216,7 +224,7 @@ export async function getLatePenaltyReportData(params: {
         params.companyId,
         Array.from(contextsByEmployee.values()),
         localDate,
-        ["shift", "attendance"],
+        ["shift", "attendance", "holiday_weekoff"],
       );
       resolvedPoliciesByDate.set(localDate, resolved);
     }),
@@ -259,6 +267,7 @@ export async function getLatePenaltyReportData(params: {
         shiftName: shift,
       });
       const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null);
+      const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedPolicies?.resolved?.holiday_weekoff || null);
       const shiftConfig = resolvedPolicies?.resolved?.shift
         ? {
             name: resolvedShift.shiftName,
@@ -279,6 +288,9 @@ export async function getLatePenaltyReportData(params: {
         graceMins: shiftConfig?.graceMins || resolvedShift.gracePeriod || 10,
         halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
       });
+      const isHoliday = holidayDates.has(row.localDate);
+      const isWeeklyOff = !isHoliday && isWeeklyOffDate(row.localDate, resolvedHoliday.weeklyOffPolicy);
+      if (isHoliday || isWeeklyOff) continue;
       const qualifiesLateWithinLimit =
         metrics.lateMinutes > 0 && metrics.lateMinutes <= Math.max(0, resolvedAttendance.latePunchUpToMinutes || 0);
       if (qualifiesLateWithinLimit) lateCycleCount += 1;
@@ -318,7 +330,7 @@ export async function getLatePenaltyReportData(params: {
       ruleLabels.add(buildLateRuleLabel(resolvedAttendance));
       employeeRuleLabelsMap.set(row.employeeId, ruleLabels);
 
-      if (decision.appliedRuleCode === "repeat_late") lateCycleCount = 0;
+      if (decision.resetLateCycle) lateCycleCount = 0;
     }
   }
 
