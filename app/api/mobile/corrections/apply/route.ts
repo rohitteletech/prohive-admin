@@ -6,6 +6,7 @@ import { resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import {
   expirePendingCorrections,
   monthRangeForIsoDate,
+  rollbackPunchEventFromCorrection,
   upsertPunchEventFromCorrection,
   validateCorrectionReason,
   validateCorrectionWindowWithPolicy,
@@ -218,6 +219,7 @@ export async function POST(req: NextRequest) {
   const nowIso = new Date().toISOString();
   const nextStatus = initialStatus;
   const autoRemark = correctionPolicy.approvalRequired ? null : "Auto-approved as per assigned correction policy.";
+  const autoApproved = !correctionPolicy.approvalRequired;
 
   const { data, error } = await session.admin
     .from("employee_attendance_corrections")
@@ -228,10 +230,10 @@ export async function POST(req: NextRequest) {
       requested_check_in: requestedCheckIn || null,
       requested_check_out: requestedCheckOut || null,
       reason,
-      status: nextStatus,
-      admin_remark: autoRemark,
-      reviewed_at: nextStatus === "approved" ? nowIso : null,
-      reviewed_by: nextStatus === "approved" ? "policy_auto" : null,
+      status: autoApproved ? "pending" : nextStatus,
+      admin_remark: null,
+      reviewed_at: null,
+      reviewed_by: null,
       submitted_at: nowIso,
       updated_at: nowIso,
     })
@@ -242,8 +244,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error?.message || "Unable to submit correction request." }, { status: 400 });
   }
 
-  if (!correctionPolicy.approvalRequired) {
-    const checkInApplyError = await upsertPunchEventFromCorrection({
+  if (autoApproved) {
+    const rollbackActions = [];
+
+    const checkInApplyResult = await upsertPunchEventFromCorrection({
       admin: session.admin,
       companyId: session.employee.company_id,
       employeeId: session.employee.id,
@@ -253,9 +257,17 @@ export async function POST(req: NextRequest) {
       performedBy: session.employee.id,
       correctionId: data.id,
     });
-    if (checkInApplyError) return NextResponse.json({ error: checkInApplyError }, { status: 400 });
+    if (checkInApplyResult.error) {
+      await session.admin
+        .from("employee_attendance_corrections")
+        .delete()
+        .eq("company_id", session.employee.company_id)
+        .eq("id", data.id);
+      return NextResponse.json({ error: checkInApplyResult.error }, { status: 400 });
+    }
+    if (checkInApplyResult.rollbackAction) rollbackActions.push(checkInApplyResult.rollbackAction);
 
-    const checkOutApplyError = await upsertPunchEventFromCorrection({
+    const checkOutApplyResult = await upsertPunchEventFromCorrection({
       admin: session.admin,
       companyId: session.employee.company_id,
       employeeId: session.employee.id,
@@ -265,7 +277,53 @@ export async function POST(req: NextRequest) {
       performedBy: session.employee.id,
       correctionId: data.id,
     });
-    if (checkOutApplyError) return NextResponse.json({ error: checkOutApplyError }, { status: 400 });
+    if (checkOutApplyResult.error) {
+      for (const rollbackAction of rollbackActions.reverse()) {
+        await rollbackPunchEventFromCorrection({
+          admin: session.admin,
+          companyId: session.employee.company_id,
+          employeeId: session.employee.id,
+          rollbackAction,
+        });
+      }
+      await session.admin
+        .from("employee_attendance_corrections")
+        .delete()
+        .eq("company_id", session.employee.company_id)
+        .eq("id", data.id);
+      return NextResponse.json({ error: checkOutApplyResult.error }, { status: 400 });
+    }
+    if (checkOutApplyResult.rollbackAction) rollbackActions.push(checkOutApplyResult.rollbackAction);
+
+    const { error: finalizeError } = await session.admin
+      .from("employee_attendance_corrections")
+      .update({
+        status: "approved",
+        admin_remark: autoRemark,
+        reviewed_at: nowIso,
+        reviewed_by: "policy_auto",
+        updated_at: nowIso,
+      })
+      .eq("company_id", session.employee.company_id)
+      .eq("id", data.id)
+      .eq("status", "pending");
+
+    if (finalizeError) {
+      for (const rollbackAction of rollbackActions.reverse()) {
+        await rollbackPunchEventFromCorrection({
+          admin: session.admin,
+          companyId: session.employee.company_id,
+          employeeId: session.employee.id,
+          rollbackAction,
+        });
+      }
+      await session.admin
+        .from("employee_attendance_corrections")
+        .delete()
+        .eq("company_id", session.employee.company_id)
+        .eq("id", data.id);
+      return NextResponse.json({ error: finalizeError.message || "Unable to finalize auto-approved correction request." }, { status: 400 });
+    }
   }
 
   await session.admin.from("employee_attendance_correction_audit_logs").insert({
@@ -300,8 +358,8 @@ export async function POST(req: NextRequest) {
       requestedCheckIn: data.requested_check_in,
       requestedCheckOut: data.requested_check_out,
       reason: data.reason,
-      status: data.status,
-      adminRemark: data.admin_remark,
+      status: autoApproved ? "approved" : data.status,
+      adminRemark: autoApproved ? autoRemark : data.admin_remark,
       submittedAt: data.submitted_at,
     },
   });

@@ -115,6 +115,25 @@ export function isSameIndiaDate(iso: string, correctionDateIso: string) {
   return isoDateInIndia(iso) === correctionDateIso;
 }
 
+export type CorrectionPunchRollbackAction =
+  | {
+      type: "restore";
+      eventId: string;
+      previousEffectivePunchAt: string | null;
+      previousRequiresApproval: boolean | null;
+      previousApprovalStatus: string | null;
+      previousApprovalReasonCodes: unknown;
+    }
+  | {
+      type: "delete";
+      eventId: string;
+    };
+
+export type CorrectionPunchApplyResult = {
+  error: string;
+  rollbackAction?: CorrectionPunchRollbackAction;
+};
+
 export async function upsertPunchEventFromCorrection(args: {
   admin: SupabaseClient;
   companyId: string;
@@ -124,23 +143,23 @@ export async function upsertPunchEventFromCorrection(args: {
   punchType: "in" | "out";
   performedBy: string;
   correctionId: string;
-}) {
+}): Promise<CorrectionPunchApplyResult> {
   const { admin, companyId, employeeId, correctionDate, requestedTime, punchType, performedBy, correctionId } = args;
-  if (!requestedTime) return "";
+  if (!requestedTime) return { error: "" };
 
   const requestedIso = correctionTimeToIso(correctionDate, requestedTime);
-  if (!requestedIso) return `Invalid ${punchType === "in" ? "punch in" : "punch out"} time.`;
+  if (!requestedIso) return { error: `Invalid ${punchType === "in" ? "punch in" : "punch out"} time.` };
 
   const { fromIso, toIso } = dateRangeForIndiaIsoDate(correctionDate);
   const { data: events, error: eventsError } = await admin
     .from("attendance_punch_events")
-    .select("id,event_id,punch_type,effective_punch_at,server_received_at,approval_status")
+    .select("id,event_id,punch_type,effective_punch_at,server_received_at,approval_status,requires_approval,approval_reason_codes")
     .eq("company_id", companyId)
     .eq("employee_id", employeeId)
     .order("server_received_at", { ascending: true })
     .gte("server_received_at", fromIso)
     .lte("server_received_at", toIso);
-  if (eventsError) return eventsError.message || "Unable to apply correction to attendance events.";
+  if (eventsError) return { error: eventsError.message || "Unable to apply correction to attendance events." };
 
   const dayEvents = (events || [])
     .filter((event: { approval_status?: string | null }) => event.approval_status !== "rejected")
@@ -163,7 +182,19 @@ export async function upsertPunchEventFromCorrection(args: {
       .eq("id", existing.id)
       .eq("company_id", companyId)
       .eq("employee_id", employeeId);
-    return updateError ? String(updateError.message || "Unable to update attendance punch event.") : "";
+    return updateError
+      ? { error: String(updateError.message || "Unable to update attendance punch event.") }
+      : {
+          error: "",
+          rollbackAction: {
+            type: "restore",
+            eventId: String(existing.id),
+            previousEffectivePunchAt: existing.effective_punch_at || null,
+            previousRequiresApproval: typeof existing.requires_approval === "boolean" ? existing.requires_approval : null,
+            previousApprovalStatus: typeof existing.approval_status === "string" ? existing.approval_status : null,
+            previousApprovalReasonCodes: existing.approval_reason_codes ?? null,
+          } satisfies CorrectionPunchRollbackAction,
+        };
   }
 
   const [employeeResult, companyResult] = await Promise.all([
@@ -181,14 +212,14 @@ export async function upsertPunchEventFromCorrection(args: {
   ]);
 
   if (employeeResult.error || !employeeResult.data) {
-    return employeeResult.error?.message || "Employee snapshot missing for correction apply.";
+    return { error: employeeResult.error?.message || "Employee snapshot missing for correction apply." };
   }
   if (companyResult.error || !companyResult.data) {
-    return companyResult.error?.message || "Company snapshot missing for correction apply.";
+    return { error: companyResult.error?.message || "Company snapshot missing for correction apply." };
   }
 
   const ms = new Date(requestedIso).getTime();
-  const { error: insertError } = await admin.from("attendance_punch_events").insert({
+  const { data: insertedEvent, error: insertError } = await admin.from("attendance_punch_events").insert({
     company_id: companyId,
     employee_id: employeeId,
     event_id: crypto.randomUUID(),
@@ -223,8 +254,47 @@ export async function upsertPunchEventFromCorrection(args: {
       correction_id: correctionId,
       applied_by: performedBy,
     },
-  });
-  return insertError ? String(insertError.message || "Unable to create corrected attendance punch event.") : "";
+  }).select("id").maybeSingle();
+  return insertError || !insertedEvent?.id
+    ? { error: String(insertError?.message || "Unable to create corrected attendance punch event.") }
+    : {
+        error: "",
+        rollbackAction: {
+          type: "delete",
+          eventId: String(insertedEvent.id),
+        } satisfies CorrectionPunchRollbackAction,
+      };
+}
+
+export async function rollbackPunchEventFromCorrection(args: {
+  admin: SupabaseClient;
+  companyId: string;
+  employeeId: string;
+  rollbackAction: CorrectionPunchRollbackAction;
+}) {
+  const { admin, companyId, employeeId, rollbackAction } = args;
+  if (rollbackAction.type === "delete") {
+    const { error } = await admin
+      .from("attendance_punch_events")
+      .delete()
+      .eq("id", rollbackAction.eventId)
+      .eq("company_id", companyId)
+      .eq("employee_id", employeeId);
+    return error ? String(error.message || "Unable to rollback corrected attendance punch event.") : "";
+  }
+
+  const { error } = await admin
+    .from("attendance_punch_events")
+    .update({
+      effective_punch_at: rollbackAction.previousEffectivePunchAt,
+      requires_approval: rollbackAction.previousRequiresApproval,
+      approval_status: rollbackAction.previousApprovalStatus,
+      approval_reason_codes: rollbackAction.previousApprovalReasonCodes,
+    })
+    .eq("id", rollbackAction.eventId)
+    .eq("company_id", companyId)
+    .eq("employee_id", employeeId);
+  return error ? String(error.message || "Unable to restore previous attendance punch event.") : "";
 }
 
 export async function expirePendingCorrections(admin: SupabaseClient, companyId?: string) {
