@@ -6,10 +6,9 @@ import { formatDisplayDateTime } from "@/lib/dateTime";
 import {
   Field,
   PolicyPage,
+  PolicyMessageDialog,
   PolicyRegisterSection,
   PolicySection,
-  PolicySuccessOverlay,
-  PolicyToast,
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
@@ -124,7 +123,7 @@ function validateAttendancePolicyDraft(draft: AttendancePolicyState) {
 }
 
 export default function NewAttendancePolicyPage() {
-  const [toast, setToast] = useState<string | null>(null);
+  const [messageDialog, setMessageDialog] = useState<{ message: string; tone: "sky" | "emerald" } | null>(null);
   const [draft, setDraft] = useState<AttendancePolicyState>(() => createInitialAttendancePolicyState());
   const [savedPolicies, setSavedPolicies] = useState<AttendancePolicyState[]>([]);
   const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
@@ -132,7 +131,6 @@ export default function NewAttendancePolicyPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function update<K extends keyof AttendancePolicyState>(key: K, value: AttendancePolicyState[K]) {
     setDraft((current) => {
@@ -174,13 +172,11 @@ export default function NewAttendancePolicyPage() {
   }
 
   const notify = useCallback((message: string) => {
-    setToast(message);
-    window.setTimeout(() => setToast(null), 1800);
+    setMessageDialog({ message, tone: "sky" });
   }, []);
 
   function showSuccess(message: string) {
-    setSuccessMessage(message);
-    window.setTimeout(() => setSuccessMessage(null), 1800);
+    setMessageDialog({ message, tone: "emerald" });
   }
 
   const accessToken = useCallback(async () => {
@@ -376,8 +372,11 @@ export default function NewAttendancePolicyPage() {
       title="Attendance Policy"
       description="Maintain company attendance policy records and create structured attendance policies for daily status, monthly formula, and penalty governance."
     >
-      <PolicySuccessOverlay message={successMessage} />
-      <PolicyToast message={toast} />
+      <PolicyMessageDialog
+        message={messageDialog?.message || null}
+        tone={messageDialog?.tone || "sky"}
+        onClose={() => setMessageDialog(null)}
+      />
 
       <PolicyRegisterSection
         description="Maintain approved attendance policies with effective governance dates, administrative ownership, and default company applicability."

@@ -333,3 +333,47 @@ export function PolicyToast({
     </div>
   );
 }
+
+export function PolicyMessageDialog({
+  message,
+  tone = "sky",
+  onClose,
+  closeLabel = "Close",
+}: {
+  message: string | null;
+  tone?: "sky" | "emerald";
+  onClose: () => void;
+  closeLabel?: string;
+}) {
+  if (!message) return null;
+
+  const shellClass = tone === "emerald" ? "border-emerald-200" : "border-sky-200";
+  const accentClass = tone === "emerald" ? "bg-emerald-500" : "bg-sky-500";
+  const buttonClass =
+    tone === "emerald"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+      : "border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100";
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/35 px-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-live="polite"
+        className={`w-full max-w-lg rounded-[28px] border ${shellClass} bg-white p-6 text-center shadow-2xl sm:p-7`}
+      >
+        <div className={`mx-auto h-1.5 w-16 rounded-full ${accentClass}`} />
+        <div className="mt-5 text-lg font-semibold leading-8 text-slate-950 sm:text-xl">{message}</div>
+        <div className="mt-6 flex justify-center">
+          <button
+            type="button"
+            onClick={onClose}
+            className={`rounded-xl border px-5 py-2.5 text-sm font-semibold transition ${buttonClass}`}
+          >
+            {closeLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
