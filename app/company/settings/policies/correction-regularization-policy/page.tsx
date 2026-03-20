@@ -60,6 +60,7 @@ export default function CorrectionRegularizationPolicyPage() {
   const [draft, setDraft] = useState(initialState);
   const [savedPolicies, setSavedPolicies] = useState<CorrectionPolicyState[]>([]);
   const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
+  const [activeAssignmentPolicyIds, setActiveAssignmentPolicyIds] = useState<Record<string, boolean>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -185,6 +186,12 @@ export default function CorrectionRegularizationPolicyPage() {
     setSavedPolicies(loadedPolicies);
     const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.correction || {};
     setAssignedCounts(nextAssignedCounts);
+    setActiveAssignmentPolicyIds(
+      (assignmentsResult.assignments || []).reduce<Record<string, boolean>>((acc, assignment) => {
+        if (assignment.isActive && assignment.policyId) acc[assignment.policyId] = true;
+        return acc;
+      }, {}),
+    );
     setIsCreatingNew(false);
     setLoading(false);
   }
@@ -210,7 +217,7 @@ export default function CorrectionRegularizationPolicyPage() {
   async function deleteCorrectionPolicy(policyId: string) {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
-    if ((assignedCounts[policyId] || 0) > 0) {
+    if ((assignedCounts[policyId] || 0) > 0 || activeAssignmentPolicyIds[policyId]) {
       return notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
     }
 
@@ -314,7 +321,7 @@ export default function CorrectionRegularizationPolicyPage() {
         rows={savedPolicies.map((policy) => ({
           id: policy.policyId || `${policy.policyName}-${policy.policyCode}`,
           name: policy.policyName,
-          assignedWorkforce: policy.status === "Active" ? String(assignedCounts[policy.policyId] || 0) : "0",
+          assignedWorkforce: String(assignedCounts[policy.policyId] || 0),
           policyCode: policy.policyCode,
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,

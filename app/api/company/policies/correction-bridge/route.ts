@@ -9,6 +9,7 @@ import {
   normalizeCorrectionPolicyConfig,
 } from "@/lib/correctionPolicyDefaults";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
+import { todayISOInIndia } from "@/lib/dateTime";
 
 type CorrectionBridgePayload = Partial<CorrectionPolicyBridgeState> & { policyId?: string };
 
@@ -38,6 +39,15 @@ function parseWholeNumberInRange(value: unknown, min: number, max: number) {
   return parsed;
 }
 
+function comparePolicyPriority(
+  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
+  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
+) {
+  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -48,9 +58,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+    const today = todayISOInIndia();
+    const correctionPolicies = definitions.filter((policy) => policy.policyType === "correction");
+    const effectiveCorrectionPolicies = correctionPolicies
+      .filter((policy) => policy.status === "active")
+      .filter((policy) => policy.effectiveFrom <= today)
+      .sort(comparePolicyPriority);
     const correctionPolicy =
-      definitions.find((policy) => policy.policyType === "correction" && policy.isDefault) ||
-      definitions.find((policy) => policy.policyType === "correction") ||
+      effectiveCorrectionPolicies.find((policy) => policy.isDefault) ||
+      effectiveCorrectionPolicies[0] ||
+      correctionPolicies.find((policy) => policy.isDefault) ||
+      [...correctionPolicies].sort(comparePolicyPriority)[0] ||
       null;
     if (!correctionPolicy) {
       return NextResponse.json({ error: "Correction policy definition not found." }, { status: 404 });
@@ -100,7 +118,9 @@ export async function PUT(req: NextRequest) {
   const effectiveFrom = String(body.effectiveFrom ?? existingConfig.effectiveFrom).trim();
   const nextReviewDate = String(body.nextReviewDate ?? existingConfig.nextReviewDate).trim();
   const normalizedStatus = normalizeStoredStatus(body.status ?? existingConfig.status, existingConfig.status);
-  const defaultCompanyPolicy = normalizeYesNo(body.defaultCompanyPolicy, existingConfig.defaultCompanyPolicy);
+  const requestedDefaultCompanyPolicy = normalizeYesNo(body.defaultCompanyPolicy, existingConfig.defaultCompanyPolicy);
+  const defaultCompanyPolicy =
+    normalizedStatus === "active" && requestedDefaultCompanyPolicy === "Yes" ? "Yes" : "No";
   const attendanceCorrectionEnabled = normalizeYesNo(
     body.attendanceCorrectionEnabled,
     existingConfig.attendanceCorrectionEnabled,
@@ -200,6 +220,9 @@ export async function PUT(req: NextRequest) {
     reasonMandatory,
   });
 
+  const today = todayISOInIndia();
+  const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
+
   if (configJson.status === "active") {
     const archiveQuery = context.admin
       .from("company_policy_definitions")
@@ -210,19 +233,26 @@ export async function PUT(req: NextRequest) {
       .eq("company_id", context.companyId)
       .eq("policy_type", "correction")
       .eq("status", "active");
+    const scopedArchiveQuery = isFutureEffectiveActive
+      ? archiveQuery.eq("effective_from", configJson.effectiveFrom)
+      : archiveQuery.lte("effective_from", configJson.effectiveFrom);
 
-    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    const { error: archiveError } = policy?.id ? await scopedArchiveQuery.neq("id", policy.id) : await scopedArchiveQuery;
     if (archiveError) {
       return NextResponse.json({ error: archiveError.message || "Unable to archive existing active correction policies." }, { status: 400 });
     }
   }
 
-  if (configJson.defaultCompanyPolicy === "Yes") {
-    const { error: clearDefaultError } = await context.admin
+  if (configJson.defaultCompanyPolicy === "Yes" && configJson.status === "active") {
+    const clearDefaultQuery = context.admin
       .from("company_policy_definitions")
       .update({ is_default: false })
       .eq("company_id", context.companyId)
       .eq("policy_type", "correction");
+    const scopedDefaultQuery = isFutureEffectiveActive
+      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
+      : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: clearDefaultError } = policy?.id ? await scopedDefaultQuery.neq("id", policy.id) : await scopedDefaultQuery;
     if (clearDefaultError) {
       return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default correction policy." }, { status: 400 });
     }
