@@ -18,6 +18,15 @@ type HolidayBridgePayload = {
   compOffValidityDays?: string;
 };
 
+function comparePolicyPriority(
+  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
+  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
+) {
+  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
 function normalizeWorkedDayTreatment(
   value: unknown,
   fallback: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review",
@@ -41,9 +50,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+    const today = new Date().toISOString().slice(0, 10);
+    const holidayPolicies = definitions.filter((policy) => policy.policyType === "holiday_weekoff");
+    const effectiveHolidayPolicies = holidayPolicies
+      .filter((policy) => policy.status === "active")
+      .filter((policy) => policy.effectiveFrom <= today)
+      .sort(comparePolicyPriority);
     const holidayPolicy =
-      definitions.find((policy) => policy.policyType === "holiday_weekoff" && policy.isDefault) ||
-      definitions.find((policy) => policy.policyType === "holiday_weekoff") ||
+      effectiveHolidayPolicies.find((policy) => policy.isDefault) ||
+      effectiveHolidayPolicies[0] ||
+      holidayPolicies.find((policy) => policy.isDefault) ||
+      [...holidayPolicies].sort(comparePolicyPriority)[0] ||
       null;
     if (!holidayPolicy) {
       return NextResponse.json({ error: "Holiday policy definition not found." }, { status: 404 });
@@ -131,6 +148,8 @@ export async function PUT(req: NextRequest) {
     (configJson.holidayPunchAllowed === "Yes" && configJson.holidayWorkedStatus === "Grant Comp Off") ||
     (configJson.weeklyOffPunchAllowed === "Yes" && configJson.weeklyOffWorkedStatus === "Grant Comp Off");
   configJson.compOffValidityDays = String(compOffApplies ? body.compOffValidityDays || "60" : "0");
+  const today = new Date().toISOString().slice(0, 10);
+  const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
@@ -142,19 +161,25 @@ export async function PUT(req: NextRequest) {
       .eq("company_id", context.companyId)
       .eq("policy_type", "holiday_weekoff")
       .eq("status", "active");
-
-    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    const scopedArchiveQuery = isFutureEffectiveActive
+      ? archiveQuery.eq("effective_from", configJson.effectiveFrom)
+      : archiveQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: archiveError } = policy?.id ? await scopedArchiveQuery.neq("id", policy.id) : await scopedArchiveQuery;
     if (archiveError) {
       return NextResponse.json({ error: archiveError.message || "Unable to archive existing active holiday policies." }, { status: 400 });
     }
   }
 
   if (configJson.defaultCompanyPolicy === "Yes") {
-    const { error: clearDefaultError } = await context.admin
+    const clearDefaultQuery = context.admin
       .from("company_policy_definitions")
       .update({ is_default: false })
       .eq("company_id", context.companyId)
       .eq("policy_type", "holiday_weekoff");
+    const scopedDefaultQuery = isFutureEffectiveActive
+      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
+      : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: clearDefaultError } = policy?.id ? await scopedDefaultQuery.neq("id", policy.id) : await scopedDefaultQuery;
     if (clearDefaultError) {
       return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default holiday policy." }, { status: 400 });
     }

@@ -33,6 +33,15 @@ type LeaveBridgePayload = {
   leaveTypes?: LeaveTypePayload[];
 };
 
+function comparePolicyPriority(
+  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
+  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
+) {
+  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
 function normalizeAccrualRule(value: unknown): LeaveTypePayload["accrualRule"] {
   if (value === "Monthly Accrual") return "Monthly Accrual";
   return "Yearly Upfront";
@@ -73,9 +82,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+    const today = new Date().toISOString().slice(0, 10);
+    const leavePolicies = definitions.filter((policy) => policy.policyType === "leave");
+    const effectiveLeavePolicies = leavePolicies
+      .filter((policy) => policy.status === "active")
+      .filter((policy) => policy.effectiveFrom <= today)
+      .sort(comparePolicyPriority);
     const leavePolicy =
-      definitions.find((policy) => policy.policyType === "leave" && policy.isDefault) ||
-      definitions.find((policy) => policy.policyType === "leave") ||
+      effectiveLeavePolicies.find((policy) => policy.isDefault) ||
+      effectiveLeavePolicies[0] ||
+      leavePolicies.find((policy) => policy.isDefault) ||
+      [...leavePolicies].sort(comparePolicyPriority)[0] ||
       null;
     if (!leavePolicy) {
       return NextResponse.json({ error: "Leave policy definition not found." }, { status: 404 });
@@ -188,6 +205,8 @@ export async function PUT(req: NextRequest) {
         leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.carryForwardExpiryDays, "0") : "0",
     })),
   };
+  const today = new Date().toISOString().slice(0, 10);
+  const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
@@ -199,19 +218,25 @@ export async function PUT(req: NextRequest) {
       .eq("company_id", context.companyId)
       .eq("policy_type", "leave")
       .eq("status", "active");
-
-    const { error: archiveError } = policy?.id ? await archiveQuery.neq("id", policy.id) : await archiveQuery;
+    const scopedArchiveQuery = isFutureEffectiveActive
+      ? archiveQuery.eq("effective_from", configJson.effectiveFrom)
+      : archiveQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: archiveError } = policy?.id ? await scopedArchiveQuery.neq("id", policy.id) : await scopedArchiveQuery;
     if (archiveError) {
       return NextResponse.json({ error: archiveError.message || "Unable to archive existing active leave policies." }, { status: 400 });
     }
   }
 
   if (configJson.defaultCompanyPolicy === "Yes") {
-    const { error: clearDefaultError } = await context.admin
+    const clearDefaultQuery = context.admin
       .from("company_policy_definitions")
       .update({ is_default: false })
       .eq("company_id", context.companyId)
       .eq("policy_type", "leave");
+    const scopedDefaultQuery = isFutureEffectiveActive
+      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
+      : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: clearDefaultError } = policy?.id ? await scopedDefaultQuery.neq("id", policy.id) : await scopedDefaultQuery;
     if (clearDefaultError) {
       return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default leave policy." }, { status: 400 });
     }

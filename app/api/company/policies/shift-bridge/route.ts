@@ -39,6 +39,15 @@ const FALLBACK_SHIFT = {
   active: true,
 };
 
+function comparePolicyPriority(
+  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
+  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
+) {
+  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+  return b.createdAt.localeCompare(a.createdAt);
+}
+
 function asNumber(value: unknown, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
@@ -61,9 +70,17 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+    const today = new Date().toISOString().slice(0, 10);
+    const shiftPolicies = definitions.filter((policy) => policy.policyType === "shift");
+    const effectiveShiftPolicies = shiftPolicies
+      .filter((policy) => policy.status === "active")
+      .filter((policy) => policy.effectiveFrom <= today)
+      .sort(comparePolicyPriority);
     const shiftPolicy =
-      definitions.find((policy) => policy.policyType === "shift" && policy.isDefault) ||
-      definitions.find((policy) => policy.policyType === "shift") ||
+      effectiveShiftPolicies.find((policy) => policy.isDefault) ||
+      effectiveShiftPolicies[0] ||
+      shiftPolicies.find((policy) => policy.isDefault) ||
+      [...shiftPolicies].sort(comparePolicyPriority)[0] ||
       null;
 
     if (!shiftPolicy) {
@@ -176,9 +193,11 @@ export async function PUT(req: NextRequest) {
     minimumWorkBeforePunchOut: String(body.minimumWorkBeforePunchOut || "60"),
     legacyShiftId: body.legacyShiftId || "",
   };
+  const currentPolicyId = policy?.id || "";
+  const today = new Date().toISOString().slice(0, 10);
+  const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
 
   if (configJson.status === "active") {
-    const currentPolicyId = policy?.id || "";
     const archiveQuery = context.admin
       .from("company_policy_definitions")
       .update({
@@ -188,8 +207,10 @@ export async function PUT(req: NextRequest) {
       .eq("company_id", context.companyId)
       .eq("policy_type", "shift")
       .eq("status", "active");
-
-    const { error: archiveError } = currentPolicyId ? await archiveQuery.neq("id", currentPolicyId) : await archiveQuery;
+    const scopedArchiveQuery = isFutureEffectiveActive
+      ? archiveQuery.eq("effective_from", configJson.effectiveFrom)
+      : archiveQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: archiveError } = currentPolicyId ? await scopedArchiveQuery.neq("id", currentPolicyId) : await scopedArchiveQuery;
 
     if (archiveError) {
       return NextResponse.json({ error: archiveError.message || "Unable to archive existing active shift policies." }, { status: 400 });
@@ -197,11 +218,15 @@ export async function PUT(req: NextRequest) {
   }
 
   if (configJson.defaultCompanyPolicy === "Yes") {
-    const { error: clearDefaultError } = await context.admin
+    const clearDefaultQuery = context.admin
       .from("company_policy_definitions")
       .update({ is_default: false })
       .eq("company_id", context.companyId)
       .eq("policy_type", "shift");
+    const scopedDefaultQuery = isFutureEffectiveActive
+      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
+      : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
+    const { error: clearDefaultError } = currentPolicyId ? await scopedDefaultQuery.neq("id", currentPolicyId) : await scopedDefaultQuery;
     if (clearDefaultError) {
       return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default shift policy." }, { status: 400 });
     }
