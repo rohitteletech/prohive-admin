@@ -213,8 +213,7 @@ export default function CompanyLayout({
           localStorage.removeItem("phv_company_session");
           localStorage.removeItem("phv_company");
           localStorage.removeItem("phv-sb-company-auth");
-          document.cookie = "prohive_company=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-          document.cookie = "prohive_company_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
+          await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
           if (active) router.replace("/login");
           return;
         }
@@ -234,15 +233,14 @@ export default function CompanyLayout({
     };
   }, [router, pathname]);
 
-  async function handleLogout() {
+async function handleLogout() {
     try {
       const supabase = getSupabaseBrowserClient("company");
       await supabase?.auth.signOut();
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
       localStorage.removeItem("phv_company_session");
       localStorage.removeItem("phv_company");
       localStorage.removeItem("phv-sb-company-auth");
-      document.cookie = "prohive_company=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
-      document.cookie = "prohive_company_id=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
     } finally {
       router.replace("/login");
     }

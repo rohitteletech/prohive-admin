@@ -40,12 +40,23 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
       .filter(Boolean);
   }, []);
 
-  function setCookie(name: string, value: string) {
-    document.cookie = `${name}=${value}; path=/; SameSite=Lax`;
-  }
-
   function hardNavigate(path: string) {
     window.location.assign(path);
+  }
+
+  async function establishServerSession(input: { token: string; mode: LoginMode; companyId?: string }) {
+    const response = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string; companyId?: string };
+    if (!response.ok) {
+      throw new Error(payload.error || "Unable to create secure admin session.");
+    }
+    return payload;
   }
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -96,7 +107,13 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
           return;
         }
 
-        setCookie("prohive_super", "1");
+        const accessToken = data.session?.access_token || "";
+        if (!accessToken) {
+          await supabase.auth.signOut();
+          setMsg("Authenticated session token is missing. Please try again.");
+          return;
+        }
+        await establishServerSession({ token: accessToken, mode: "super" });
         target = "/super/companies";
         role = "super_admin";
       }
@@ -158,8 +175,13 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
 
         const mustChangePassword = Boolean(data.user.user_metadata?.must_change_password);
 
-        setCookie("prohive_company", "1");
-        setCookie("prohive_company_id", company.id);
+        const accessToken = data.session?.access_token || "";
+        if (!accessToken) {
+          await supabase.auth.signOut();
+          setMsg("Authenticated session token is missing. Please try again.");
+          return;
+        }
+        await establishServerSession({ token: accessToken, mode: "company", companyId: company.id });
         target = mustChangePassword ? "/company/settings?forcePassword=1" : "/company/dashboard";
         role = "company_admin";
 
@@ -207,6 +229,8 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
       } catch {
         hardNavigate(target);
       }
+    } catch (error) {
+      setMsg(error instanceof Error ? error.message : "Login failed. Please try again.");
     } finally {
       setBusy(false);
     }

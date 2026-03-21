@@ -32,8 +32,8 @@ export default function SuperLayout({ children }: { children: React.ReactNode })
     try {
       const supabase = getSupabaseBrowserClient("super");
       await supabase?.auth.signOut();
+      await fetch("/api/auth/logout", { method: "POST" }).catch(() => null);
       localStorage.removeItem("phv_super_session");
-      document.cookie = "prohive_super=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax";
     } finally {
       router.replace("/super-login");
     }

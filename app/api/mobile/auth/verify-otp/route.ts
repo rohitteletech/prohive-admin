@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { normalizeEmployeeCode } from "@/lib/mobileAuth";
 import { MobileOtpPurpose, validateOtpChallenge } from "@/lib/mobileOtp";
+import { createMobileOtpProof } from "@/lib/mobileOtpProof";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -41,10 +42,20 @@ export async function POST(req: NextRequest) {
   }
 
   const employee = validation.employee;
+  const verificationToken = await createMobileOtpProof({
+    challengeId,
+    employeeCode,
+    deviceId,
+    purpose,
+  });
+  if (!verificationToken) {
+    return NextResponse.json({ error: "OTP proof signing is not configured." }, { status: 500 });
+  }
 
   return NextResponse.json({
     state: "OTP_VERIFIED",
     purpose,
+    verificationToken,
     employee: await buildMobileEmployeePayload(admin, employee),
   });
 }

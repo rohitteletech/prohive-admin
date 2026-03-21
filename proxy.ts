@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { getAdminSessionCookieName, verifyAdminSessionCookie } from "@/lib/adminSession";
 
-export function proxy(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const session = await verifyAdminSessionCookie(req.cookies.get(getAdminSessionCookieName())?.value);
 
   // ✅ allow public pages
   if (pathname === "/login" || pathname === "/super-login" || pathname === "/blocked") {
@@ -11,8 +13,7 @@ export function proxy(req: NextRequest) {
 
   // ✅ protect /super/*
   if (pathname.startsWith("/super")) {
-    const superSession = req.cookies.get("prohive_super")?.value;
-    if (superSession !== "1") {
+    if (session?.role !== "super_admin") {
       const url = req.nextUrl.clone();
       url.pathname = "/super-login";
       return NextResponse.redirect(url);
@@ -21,8 +22,7 @@ export function proxy(req: NextRequest) {
 
   // ✅ protect /company/*
   if (pathname.startsWith("/company")) {
-    const companySession = req.cookies.get("prohive_company")?.value;
-    if (companySession !== "1") {
+    if (session?.role !== "company_admin") {
       const url = req.nextUrl.clone();
       url.pathname = "/login";
       return NextResponse.redirect(url);

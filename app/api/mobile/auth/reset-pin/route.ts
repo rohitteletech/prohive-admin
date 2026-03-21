@@ -3,25 +3,26 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { hashPin, isValidPin, normalizeEmployeeCode } from "@/lib/mobileAuth";
 import { validateOtpChallenge } from "@/lib/mobileOtp";
+import { verifyMobileOtpProof } from "@/lib/mobileOtpProof";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     challengeId?: string;
     employeeCode?: string;
-    otp?: string;
     pin?: string;
     deviceId?: string;
     appVersion?: string;
+    verificationToken?: string;
   };
 
   const challengeId = (body.challengeId || "").trim();
   const employeeCode = normalizeEmployeeCode(body.employeeCode || "");
-  const otp = (body.otp || "").trim();
   const pin = (body.pin || "").trim();
   const deviceId = (body.deviceId || "").trim();
   const appVersion = (body.appVersion || "").trim() || null;
+  const verificationToken = (body.verificationToken || "").trim();
 
-  if (!challengeId || !employeeCode || !/^\d{6}$/.test(otp) || !isValidPin(pin) || !deviceId) {
+  if (!challengeId || !employeeCode || !verificationToken || !isValidPin(pin) || !deviceId) {
     return NextResponse.json({ error: "Invalid reset PIN request." }, { status: 400 });
   }
 
@@ -30,12 +31,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
 
+  const proof = await verifyMobileOtpProof(verificationToken);
+  if (
+    !proof ||
+    proof.challengeId !== challengeId ||
+    proof.employeeCode !== employeeCode ||
+    proof.deviceId !== deviceId ||
+    proof.purpose !== "reset_pin"
+  ) {
+    return NextResponse.json({ error: "OTP verification proof is invalid or expired." }, { status: 401 });
+  }
+
   const validation = await validateOtpChallenge(admin, {
     challengeId,
     employeeCode,
-    otp,
+    otp: "000000",
     deviceId,
     purpose: "reset_pin",
+    skipOtpMatch: true,
   });
 
   if (!validation.ok) {

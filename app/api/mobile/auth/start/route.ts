@@ -10,6 +10,7 @@ import {
   normalizeEmployeeCode,
   normalizeMobile,
 } from "@/lib/mobileAuth";
+import { sendOtpViaMsg91 } from "@/lib/msg91";
 
 type EmployeeRow = {
   id: string;
@@ -114,11 +115,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unable to start login. Please try again." }, { status: 500 });
   }
 
+  const smsResult = await sendOtpViaMsg91({
+    mobile,
+    otp: otpCode,
+    purpose: "first_login",
+  });
+  if (!smsResult.ok) {
+    await admin.from("employee_login_otps").delete().eq("id", otpRow.id);
+    return NextResponse.json({ error: smsResult.error }, { status: 502 });
+  }
+
   return NextResponse.json({
     state: "FIRST_TIME_OTP_REQUIRED",
     challengeId: otpRow.id,
     expiresAt,
     employee: await buildMobileEmployeePayload(admin, { ...employee, mobile }),
-    ...(isProduction() ? {} : { devOtp: otpCode }),
+    ...(isProduction() || !smsResult.skipped ? {} : { devOtp: otpCode }),
   });
 }

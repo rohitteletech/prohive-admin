@@ -116,23 +116,6 @@ export default function Page() {
     return `Expired ${past} day${past === 1 ? "" : "s"} ago`;
   };
 
-  const onRenew = (id: string) => {
-    const c = companies.find((x) => x.id === id);
-    if (!c) return;
-    alert(`Renew/Extend (UI only)\n\nCompany: ${c.name}\nCurrent end: ${c.plan_end}`);
-  };
-
-  const onToggleSuspend = (id: string) => {
-    setCompanies((prev) =>
-      prev.map((c) => {
-        if (c.id !== id) return c;
-        const nextStatus: CompanyStatus =
-          c.status === "suspended" ? (c.plan_type === "trial" ? "trial_active" : "paid_active") : "suspended";
-        return { ...c, status: nextStatus };
-      })
-    );
-  };
-
   return (
     <div style={pageWrap}>
       <div style={topBar}>
@@ -202,11 +185,11 @@ export default function Page() {
                 <Link href={`/super/companies/${c.id}`} style={actionLinkStyle}>
                   View
                 </Link>
-                <button type="button" onClick={() => onRenew(c.id)} style={actionBtnStyle}>
-                  Renew
+                <button type="button" disabled style={disabledActionBtnStyle}>
+                  Renew Soon
                 </button>
-                <button type="button" onClick={() => onToggleSuspend(c.id)} style={actionBtnStyle}>
-                  {c.status === "suspended" ? "Activate" : "Suspend"}
+                <button type="button" disabled style={disabledActionBtnStyle}>
+                  Status Workflow Pending
                 </button>
               </div>
             </div>
@@ -214,7 +197,7 @@ export default function Page() {
         )}
       </div>
 
-      <div style={noteStyle}>Note: Renew/Suspend are UI-only until backend workflow is connected.</div>
+      <div style={noteStyle}>Note: renew and status changes stay disabled until the backend workflow is connected.</div>
     </div>
   );
 }
@@ -351,4 +334,12 @@ const actionBtnStyle: React.CSSProperties = {
   cursor: "pointer",
   fontSize: 13.5,
   fontWeight: 600,
+};
+
+const disabledActionBtnStyle: React.CSSProperties = {
+  ...actionBtnStyle,
+  cursor: "not-allowed",
+  opacity: 0.55,
+  color: "#6b7280",
+  background: "#f8fafc",
 };

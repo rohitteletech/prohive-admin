@@ -46,9 +46,10 @@ export async function validateOtpChallenge(
     otp: string;
     deviceId: string;
     purpose: MobileOtpPurpose;
+    skipOtpMatch?: boolean;
   }
 ): Promise<OtpValidationResult> {
-  const { challengeId, employeeCode, otp, deviceId, purpose } = input;
+  const { challengeId, employeeCode, otp, deviceId, purpose, skipOtpMatch = false } = input;
 
   const { data, error } = await admin
     .from("employee_login_otps")
@@ -96,7 +97,7 @@ export async function validateOtpChallenge(
     return { ok: false, status: 400, error: "OTP expired. Request a new OTP." };
   }
 
-  if (otpRow.otp_code !== otp) {
+  if (!skipOtpMatch && otpRow.otp_code !== otp) {
     return { ok: false, status: 400, error: "Invalid OTP." };
   }
 
