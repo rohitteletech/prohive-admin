@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { hashPin, isValidPin, normalizeEmployeeCode } from "@/lib/mobileAuth";
+import { createMobileSessionToken } from "@/lib/mobileSessionToken";
 import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 type EmployeeRow = {
@@ -98,9 +99,18 @@ export async function POST(req: NextRequest) {
       .from("employees")
       .update({ mobile_last_login_at: new Date().toISOString(), bound_app_version: appVersion })
       .eq("id", exactDeviceEmployee.id);
+    const sessionToken = await createMobileSessionToken({
+      employeeId: exactDeviceEmployee.id,
+      companyId: exactDeviceEmployee.company_id,
+      deviceId,
+    });
+    if (!sessionToken) {
+      return NextResponse.json({ error: "Mobile session signing is not configured." }, { status: 500 });
+    }
 
     return NextResponse.json({
       state: "PIN_LOGIN_OK",
+      sessionToken,
       employee: await buildMobileEmployeePayload(admin, exactDeviceEmployee),
     });
   }

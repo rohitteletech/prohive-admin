@@ -4,12 +4,7 @@ import { normalizeDateInputToIso, todayISOInIndia } from "@/lib/dateTime";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
-    employeeId?: string;
-    employee_id?: string;
-    companyId?: string;
-    company_id?: string;
-    deviceId?: string;
-    device_id?: string;
+    sessionToken?: string;
     fromDate?: string;
     from_date?: string;
     toDate?: string;
@@ -25,9 +20,7 @@ export async function POST(req: NextRequest) {
   };
 
   const session = await getMobileSessionContext({
-    employeeId: body.employeeId || body.employee_id,
-    companyId: body.companyId || body.company_id,
-    deviceId: body.deviceId || body.device_id,
+    sessionToken: body.sessionToken,
   });
   if (!session.ok) {
     return NextResponse.json({ error: session.error }, { status: session.status });

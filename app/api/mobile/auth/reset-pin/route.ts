@@ -4,6 +4,7 @@ import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { hashPin, isValidPin, normalizeEmployeeCode } from "@/lib/mobileAuth";
 import { validateOtpChallenge } from "@/lib/mobileOtp";
 import { verifyMobileOtpProof } from "@/lib/mobileOtpProof";
+import { createMobileSessionToken } from "@/lib/mobileSessionToken";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -71,9 +72,18 @@ export async function POST(req: NextRequest) {
   }
 
   await admin.from("employee_login_otps").update({ consumed_at: now }).eq("id", challengeId);
+  const sessionToken = await createMobileSessionToken({
+    employeeId: employee.id,
+    companyId: employee.company_id,
+    deviceId,
+  });
+  if (!sessionToken) {
+    return NextResponse.json({ error: "Mobile session signing is not configured." }, { status: 500 });
+  }
 
   return NextResponse.json({
     state: "PIN_RESET_OK",
+    sessionToken,
     employee: await buildMobileEmployeePayload(admin, employee),
   });
 }

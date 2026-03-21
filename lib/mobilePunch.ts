@@ -2,6 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
+import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
 import { findMatchingShiftRule, isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
 
@@ -10,6 +11,7 @@ type JsonBody = {
 };
 
 type PunchPayload = {
+  session_token: string | null;
   company_id: string;
   employee_id: string;
   device_id: string;
@@ -257,6 +259,7 @@ function normalizePunchPayload(body: JsonBody | null): PunchPayload | null {
   if (punchType !== "in" && punchType !== "out") return null;
 
   const payload: PunchPayload = {
+    session_token: typeof body.sessionToken === "string" ? body.sessionToken.trim() || null : null,
     company_id: String(body.company_id || "").trim(),
     employee_id: String(body.employee_id || "").trim(),
     device_id: String(body.device_id || "").trim(),
@@ -281,9 +284,9 @@ function normalizePunchPayload(body: JsonBody | null): PunchPayload | null {
   };
 
   if (
-    !payload.company_id ||
-    !payload.employee_id ||
-    !payload.device_id ||
+    (!payload.session_token && !payload.company_id) ||
+    (!payload.session_token && !payload.employee_id) ||
+    (!payload.session_token && !payload.device_id) ||
     !payload.event_id ||
     !Number.isFinite(payload.lat) ||
     !Number.isFinite(payload.lon) ||
@@ -305,6 +308,16 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   const payload = normalizePunchPayload(rawBody);
   if (!payload) {
     return { status: 400, body: { error: "Invalid punch payload." } };
+  }
+
+  if (payload.session_token) {
+    const verifiedToken = await verifyMobileSessionToken(payload.session_token);
+    if (!verifiedToken) {
+      return { status: 401, body: { error: "Mobile session token is missing or invalid." } };
+    }
+    payload.company_id = verifiedToken.companyId;
+    payload.employee_id = verifiedToken.employeeId;
+    payload.device_id = verifiedToken.deviceId;
   }
 
   const { data: duplicate } = await admin

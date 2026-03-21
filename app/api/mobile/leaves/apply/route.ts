@@ -72,9 +72,7 @@ async function findApprovedOverlap(params: {
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
-    employeeId?: string;
-    companyId?: string;
-    deviceId?: string;
+    sessionToken?: string;
     fromDate?: string;
     toDate?: string;
     isHalfDay?: boolean;
@@ -83,9 +81,7 @@ export async function POST(req: NextRequest) {
   };
 
   const session = await getMobileSessionContext({
-    employeeId: body.employeeId,
-    companyId: body.companyId,
-    deviceId: body.deviceId,
+    sessionToken: body.sessionToken,
   });
   if (!session.ok) {
     return NextResponse.json({ error: session.error }, { status: session.status });

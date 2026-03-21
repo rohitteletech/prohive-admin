@@ -1,4 +1,5 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
 
 type AdminClient = NonNullable<ReturnType<typeof getSupabaseAdminClient>>;
 
@@ -23,16 +24,13 @@ export type MobileSessionContext =
     };
 
 export async function getMobileSessionContext(input: {
-  employeeId?: string;
-  companyId?: string;
-  deviceId?: string;
+  sessionToken?: string;
 }): Promise<MobileSessionContext> {
-  const employeeId = (input.employeeId || "").trim();
-  const companyId = (input.companyId || "").trim();
-  const deviceId = (input.deviceId || "").trim();
+  const sessionToken = (input.sessionToken || "").trim();
+  const verifiedToken = await verifyMobileSessionToken(sessionToken);
 
-  if (!employeeId || !companyId || !deviceId) {
-    return { ok: false, status: 400, error: "Missing mobile session identifiers." };
+  if (!verifiedToken) {
+    return { ok: false, status: 401, error: "Mobile session token is missing or invalid." };
   }
 
   const admin = getSupabaseAdminClient();
@@ -43,8 +41,8 @@ export async function getMobileSessionContext(input: {
   const { data, error } = await admin
     .from("employees")
     .select("id,company_id,employee_code,full_name,status,mobile_app_status,bound_device_id")
-    .eq("id", employeeId)
-    .eq("company_id", companyId)
+    .eq("id", verifiedToken.employeeId)
+    .eq("company_id", verifiedToken.companyId)
     .maybeSingle();
 
   if (error || !data) {
@@ -65,7 +63,7 @@ export async function getMobileSessionContext(input: {
     return { ok: false, status: 403, error: "Mobile access is not active for this employee." };
   }
 
-  if (!employee.bound_device_id || employee.bound_device_id !== deviceId) {
+  if (!employee.bound_device_id || employee.bound_device_id !== verifiedToken.deviceId) {
     return { ok: false, status: 409, error: "This device is not authorized for the employee session." };
   }
 
