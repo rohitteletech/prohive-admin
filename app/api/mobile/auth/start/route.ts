@@ -4,6 +4,7 @@ import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import {
   expiresAtIso,
   generateOtp,
+  hashOtp,
   isProduction,
   isValidEmployeeCode,
   isValidMobile,
@@ -11,6 +12,7 @@ import {
   normalizeMobile,
 } from "@/lib/mobileAuth";
 import { sendOtpViaMsg91 } from "@/lib/msg91";
+import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 type EmployeeRow = {
   id: string;
@@ -37,9 +39,22 @@ export async function POST(req: NextRequest) {
   const mobile = normalizeMobile(body.mobile || "");
   const deviceId = (body.deviceId || "").trim();
   const deviceName = (body.deviceName || "").trim() || null;
+  const ip = getRequestClientIp(req.headers);
 
   if (!isValidEmployeeCode(employeeCode) || !isValidMobile(mobile) || !deviceId) {
     return NextResponse.json({ error: "Invalid employee verification request." }, { status: 400 });
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `mobile-auth-start:${employeeCode}:${mobile}:${deviceId}:${ip}`,
+    limit: 5,
+    windowMs: 10 * 60_000,
+  });
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: `Too many OTP requests. Try again in ${rateLimit.retryAfterSec} seconds.` },
+      { status: 429 }
+    );
   }
 
   const admin = getSupabaseAdminClient();
@@ -103,7 +118,7 @@ export async function POST(req: NextRequest) {
       employee_code: employee.employee_code,
       mobile,
       purpose: "first_login",
-      otp_code: otpCode,
+      otp_code: hashOtp(otpCode),
       requested_device_id: deviceId,
       requested_device_name: deviceName,
       expires_at: expiresAt,

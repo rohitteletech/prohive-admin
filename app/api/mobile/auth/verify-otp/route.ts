@@ -4,6 +4,7 @@ import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { normalizeEmployeeCode } from "@/lib/mobileAuth";
 import { MobileOtpPurpose, validateOtpChallenge } from "@/lib/mobileOtp";
 import { createMobileOtpProof } from "@/lib/mobileOtpProof";
+import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
@@ -19,9 +20,22 @@ export async function POST(req: NextRequest) {
   const otp = (body.otp || "").trim();
   const deviceId = (body.deviceId || "").trim();
   const purpose = body.purpose === "reset_pin" ? "reset_pin" : "first_login";
+  const ip = getRequestClientIp(req.headers);
 
   if (!challengeId || !employeeCode || !/^\d{6}$/.test(otp) || !deviceId) {
     return NextResponse.json({ error: "Invalid OTP verification request." }, { status: 400 });
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `mobile-auth-verify:${challengeId}:${employeeCode}:${deviceId}:${ip}`,
+    limit: 8,
+    windowMs: 10 * 60_000,
+  });
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: `Too many OTP verification attempts. Try again in ${rateLimit.retryAfterSec} seconds.` },
+      { status: 429 }
+    );
   }
 
   const admin = getSupabaseAdminClient();

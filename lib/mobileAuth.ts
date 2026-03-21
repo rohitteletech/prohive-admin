@@ -26,6 +26,10 @@ export function hashPin(pin: string) {
   return createHash("sha256").update(pin.trim()).digest("hex");
 }
 
+export function hashOtp(otp: string) {
+  return createHash("sha256").update(otp.trim()).digest("hex");
+}
+
 export function generateOtp() {
   return String(randomInt(100000, 1000000));
 }

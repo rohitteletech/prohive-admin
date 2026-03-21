@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { hashPin, isValidPin, normalizeEmployeeCode } from "@/lib/mobileAuth";
+import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 type EmployeeRow = {
   id: string;
@@ -28,9 +29,22 @@ export async function POST(req: NextRequest) {
   const pin = (body.pin || "").trim();
   const deviceId = (body.deviceId || "").trim();
   const appVersion = (body.appVersion || "").trim() || null;
+  const ip = getRequestClientIp(req.headers);
 
   if (!employeeCode || !isValidPin(pin) || !deviceId) {
     return NextResponse.json({ error: "Invalid PIN login request." }, { status: 400 });
+  }
+
+  const rateLimit = applyRateLimit({
+    key: `mobile-auth-pin:${employeeCode}:${deviceId}:${ip}`,
+    limit: 10,
+    windowMs: 15 * 60_000,
+  });
+  if (!rateLimit.ok) {
+    return NextResponse.json(
+      { error: `Too many PIN attempts. Try again in ${rateLimit.retryAfterSec} seconds.` },
+      { status: 429 }
+    );
   }
 
   const admin = getSupabaseAdminClient();

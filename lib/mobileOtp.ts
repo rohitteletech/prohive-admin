@@ -1,4 +1,5 @@
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { hashOtp } from "@/lib/mobileAuth";
 
 export type MobileOtpPurpose = "first_login" | "reset_pin";
 
@@ -97,7 +98,7 @@ export async function validateOtpChallenge(
     return { ok: false, status: 400, error: "OTP expired. Request a new OTP." };
   }
 
-  if (!skipOtpMatch && otpRow.otp_code !== otp) {
+  if (!skipOtpMatch && otpRow.otp_code !== hashOtp(otp)) {
     return { ok: false, status: 400, error: "Invalid OTP." };
   }
 
