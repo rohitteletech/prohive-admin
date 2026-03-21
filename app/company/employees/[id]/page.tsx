@@ -874,7 +874,7 @@ export default function EmployeeDetailPage() {
                 </button>
 
                 <div className="text-xs text-zinc-500">
-                  Reset will force employee to bind this device again on next login while keeping the same PIN.
+                  Reset will require employee to verify with OTP and set a PIN again on the next device activation.
                 </div>
               </div>
             </div>

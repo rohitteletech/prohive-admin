@@ -115,14 +115,6 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const rebindEmployee = matchingPinRows.find((row) => !row.bound_device_id) || null;
-  if (rebindEmployee) {
-    return NextResponse.json({
-      state: "REBIND_REQUIRED",
-      employee: await buildMobileEmployeePayload(admin, rebindEmployee),
-    });
-  }
-
   if (matchingPinRows.length > 1) {
     return NextResponse.json(
       { code: "EMPLOYEE_AMBIGUOUS", error: "Multiple employee records matched. Contact your company admin." },
