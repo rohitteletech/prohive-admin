@@ -202,9 +202,17 @@ export function msg91PayloadMatchesMobile(payload: Record<string, unknown>, mobi
 
   const values: string[] = [];
   collectStringValues(payload, values);
+  const candidateNumbers = values
+    .map((value) => normalizeIdentifierValue(value))
+    .filter((value) => value.length >= 10);
 
-  return values.some((value) => {
-    const normalizedValue = normalizeIdentifierValue(value);
+  if (candidateNumbers.length === 0) {
+    // Some MSG91 widget responses confirm success without echoing the identifier/mobile.
+    // In that case, trust the verified access token instead of failing every valid OTP.
+    return true;
+  }
+
+  return candidateNumbers.some((normalizedValue) => {
     if (!normalizedValue) return false;
 
     return expectedVariants.has(normalizedValue) || expectedVariants.has(lastTenDigits(normalizedValue));
