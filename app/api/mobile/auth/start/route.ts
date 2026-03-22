@@ -11,7 +11,7 @@ import {
   normalizeEmployeeCode,
   normalizeMobile,
 } from "@/lib/mobileAuth";
-import { sendOtpViaMsg91 } from "@/lib/msg91";
+import { getMsg91WidgetClientConfig, hasMsg91WidgetConfig, sendOtpViaMsg91 } from "@/lib/msg91";
 import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 type EmployeeRow = {
@@ -101,8 +101,10 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const otpCode = generateOtp();
   const expiresAt = expiresAtIso();
+  const widgetConfig = getMsg91WidgetClientConfig(mobile);
+  const usesWidgetOtp = Boolean(widgetConfig && hasMsg91WidgetConfig());
+  const otpCode = usesWidgetOtp ? generateOtp() : generateOtp();
 
   await admin
     .from("employee_login_otps")
@@ -130,14 +132,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unable to start login. Please try again." }, { status: 500 });
   }
 
-  const smsResult = await sendOtpViaMsg91({
-    mobile,
-    otp: otpCode,
-    purpose: "first_login",
-  });
-  if (!smsResult.ok) {
-    await admin.from("employee_login_otps").delete().eq("id", otpRow.id);
-    return NextResponse.json({ error: smsResult.error }, { status: 502 });
+  if (!usesWidgetOtp) {
+    const smsResult = await sendOtpViaMsg91({
+      mobile,
+      otp: otpCode,
+      purpose: "first_login",
+    });
+    if (!smsResult.ok) {
+      await admin.from("employee_login_otps").delete().eq("id", otpRow.id);
+      return NextResponse.json({ error: smsResult.error }, { status: 502 });
+    }
+
+    return NextResponse.json({
+      state: "FIRST_TIME_OTP_REQUIRED",
+      challengeId: otpRow.id,
+      expiresAt,
+      employee: await buildMobileEmployeePayload(admin, { ...employee, mobile }),
+      ...(isProduction() || !smsResult.skipped ? {} : { devOtp: otpCode }),
+    });
   }
 
   return NextResponse.json({
@@ -145,6 +157,6 @@ export async function POST(req: NextRequest) {
     challengeId: otpRow.id,
     expiresAt,
     employee: await buildMobileEmployeePayload(admin, { ...employee, mobile }),
-    ...(isProduction() || !smsResult.skipped ? {} : { devOtp: otpCode }),
+    otpProvider: widgetConfig,
   });
 }

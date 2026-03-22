@@ -36,12 +36,21 @@ copy .env.example .env.local
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `SESSION_COOKIE_SECRET`
 - `MSG91_AUTH_KEY`
-- `MSG91_FLOW_ID_FIRST_LOGIN`
-- `MSG91_FLOW_ID_RESET_PIN`
+- `MSG91_OTP_WIDGET_ID`
+- `MSG91_OTP_WIDGET_TOKEN`
 - `MSG91_COUNTRY_CODE` (default `91`)
-- `MSG91_OTP_VARIABLE_NAME` (default `OTP`)
 - `NEXT_PUBLIC_SUPERADMIN_EMAILS` (comma-separated)
 - `SUPERADMIN_EMAILS` (comma-separated, server-side)
+
+Preferred OTP setup:
+- MSG91 OTP Widget with Mobile integration enabled
+- Android client uses widget/token flow
+- Backend verifies MSG91 access token server-side before activation/reset
+
+Legacy fallback:
+- `MSG91_FLOW_ID_FIRST_LOGIN`
+- `MSG91_FLOW_ID_RESET_PIN`
+- `MSG91_OTP_VARIABLE_NAME` (default `OTP`)
 
 4. In Supabase SQL Editor, run:
 - [`supabase/schema.sql`](supabase/schema.sql)

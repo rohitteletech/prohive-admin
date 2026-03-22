@@ -4,13 +4,18 @@ type SendOtpResult =
   | { ok: true; skipped: boolean; requestId?: string }
   | { ok: false; error: string };
 
+type VerifyAccessTokenResult =
+  | { ok: true; payload: Record<string, unknown> }
+  | { ok: false; status: number; error: string };
+
 const MSG91_FLOW_ENDPOINT = "https://api.msg91.com/api/v5/flow/";
+const MSG91_VERIFY_ACCESS_TOKEN_ENDPOINT = "https://control.msg91.com/api/v5/widget/verifyAccessToken";
 
 function getMsg91AuthKey() {
   return process.env.MSG91_AUTH_KEY?.trim() || "";
 }
 
-function getMsg91CountryCode() {
+export function getMsg91CountryCode() {
   return process.env.MSG91_COUNTRY_CODE?.trim() || "91";
 }
 
@@ -24,8 +29,41 @@ function getMsg91FlowId(purpose: OtpPurpose) {
     : process.env.MSG91_FLOW_ID_RESET_PIN?.trim() || "";
 }
 
+function getMsg91WidgetId() {
+  return process.env.MSG91_OTP_WIDGET_ID?.trim() || "";
+}
+
+function getMsg91WidgetToken() {
+  return process.env.MSG91_OTP_WIDGET_TOKEN?.trim() || "";
+}
+
 export function hasMsg91ConfigForPurpose(purpose: OtpPurpose) {
   return Boolean(getMsg91AuthKey() && getMsg91FlowId(purpose));
+}
+
+export function hasMsg91WidgetConfig() {
+  return Boolean(getMsg91AuthKey() && getMsg91WidgetId() && getMsg91WidgetToken());
+}
+
+export function getMsg91WidgetClientConfig(mobile: string) {
+  const widgetId = getMsg91WidgetId();
+  const tokenAuth = getMsg91WidgetToken();
+
+  if (!widgetId || !tokenAuth) {
+    return null;
+  }
+
+  return {
+    provider: "msg91_widget" as const,
+    widgetId,
+    tokenAuth,
+    identifier: buildMsg91Identifier(mobile),
+    countryCode: getMsg91CountryCode(),
+  };
+}
+
+export function buildMsg91Identifier(mobile: string) {
+  return `${getMsg91CountryCode()}${mobile}`;
 }
 
 export async function sendOtpViaMsg91(input: {
@@ -43,9 +81,8 @@ export async function sendOtpViaMsg91(input: {
     return { ok: true, skipped: true };
   }
 
-  const countryCode = getMsg91CountryCode();
   const otpVariableName = getMsg91OtpVariableName();
-  const mobile = `${countryCode}${input.mobile}`;
+  const mobile = buildMsg91Identifier(input.mobile);
   const recipient = {
     mobiles: mobile,
     [otpVariableName]: input.otp,
@@ -69,7 +106,6 @@ export async function sendOtpViaMsg91(input: {
   }
 
   const payload = (await response.json().catch(() => ({}))) as {
-    type?: string;
     request_id?: string;
     message?: string;
   };
@@ -83,4 +119,82 @@ export async function sendOtpViaMsg91(input: {
     skipped: false,
     requestId: typeof payload.request_id === "string" ? payload.request_id : undefined,
   };
+}
+
+export async function verifyMsg91AccessToken(accessToken: string): Promise<VerifyAccessTokenResult> {
+  const authKey = getMsg91AuthKey();
+
+  if (!authKey) {
+    return { ok: false, status: 500, error: "MSG91 auth configuration is missing." };
+  }
+
+  const response = await fetch(MSG91_VERIFY_ACCESS_TOKEN_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      authkey: authKey,
+      "access-token": accessToken,
+    }).toString(),
+    cache: "no-store",
+  }).catch(() => null);
+
+  if (!response) {
+    return { ok: false, status: 502, error: "Unable to reach MSG91 verification service." };
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  const message = firstString(payload.message) || firstString((payload.data as Record<string, unknown> | undefined)?.message);
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status || 502,
+      error: message || "MSG91 access token verification failed.",
+    };
+  }
+
+  return { ok: true, payload };
+}
+
+function firstString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function collectStringValues(value: unknown, bucket: string[]) {
+  if (typeof value === "string") {
+    bucket.push(value);
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectStringValues(item, bucket);
+    }
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) {
+      collectStringValues(item, bucket);
+    }
+  }
+}
+
+function normalizeIdentifierValue(value: string) {
+  return value.replace(/[^\d+]/g, "");
+}
+
+export function msg91PayloadMatchesMobile(payload: Record<string, unknown>, mobile: string) {
+  const expectedVariants = new Set([
+    mobile,
+    buildMsg91Identifier(mobile),
+    `+${buildMsg91Identifier(mobile)}`,
+  ]);
+
+  const values: string[] = [];
+  collectStringValues(payload, values);
+
+  return values.some((value) => expectedVariants.has(normalizeIdentifierValue(value)));
 }

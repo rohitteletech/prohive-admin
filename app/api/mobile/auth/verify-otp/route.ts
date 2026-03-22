@@ -4,6 +4,7 @@ import { buildMobileEmployeePayload } from "@/lib/mobileEmployeePayload";
 import { normalizeEmployeeCode } from "@/lib/mobileAuth";
 import { MobileOtpPurpose, validateOtpChallenge } from "@/lib/mobileOtp";
 import { createMobileOtpProof } from "@/lib/mobileOtpProof";
+import { hasMsg91WidgetConfig, msg91PayloadMatchesMobile, verifyMsg91AccessToken } from "@/lib/msg91";
 import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 export async function POST(req: NextRequest) {
@@ -11,6 +12,7 @@ export async function POST(req: NextRequest) {
     challengeId?: string;
     employeeCode?: string;
     otp?: string;
+    accessToken?: string;
     deviceId?: string;
     purpose?: MobileOtpPurpose;
   };
@@ -18,11 +20,13 @@ export async function POST(req: NextRequest) {
   const challengeId = (body.challengeId || "").trim();
   const employeeCode = normalizeEmployeeCode(body.employeeCode || "");
   const otp = (body.otp || "").trim();
+  const accessToken = (body.accessToken || "").trim();
   const deviceId = (body.deviceId || "").trim();
   const purpose = body.purpose === "reset_pin" ? "reset_pin" : "first_login";
   const ip = getRequestClientIp(req.headers);
+  const usesWidgetOtp = Boolean(accessToken && hasMsg91WidgetConfig());
 
-  if (!challengeId || !employeeCode || !/^\d{6}$/.test(otp) || !deviceId) {
+  if (!challengeId || !employeeCode || !deviceId || (!usesWidgetOtp && !/^\d{6}$/.test(otp))) {
     return NextResponse.json({ error: "Invalid OTP verification request." }, { status: 400 });
   }
 
@@ -46,9 +50,10 @@ export async function POST(req: NextRequest) {
   const validation = await validateOtpChallenge(admin, {
     challengeId,
     employeeCode,
-    otp,
+    otp: usesWidgetOtp ? "000000" : otp,
     deviceId,
     purpose,
+    skipOtpMatch: usesWidgetOtp,
   });
 
   if (!validation.ok) {
@@ -56,6 +61,17 @@ export async function POST(req: NextRequest) {
   }
 
   const employee = validation.employee;
+  if (usesWidgetOtp) {
+    const widgetVerification = await verifyMsg91AccessToken(accessToken);
+    if (!widgetVerification.ok) {
+      return NextResponse.json({ error: widgetVerification.error }, { status: widgetVerification.status });
+    }
+
+    if (!employee.mobile || !msg91PayloadMatchesMobile(widgetVerification.payload, employee.mobile)) {
+      return NextResponse.json({ error: "Verified OTP does not match the registered mobile number." }, { status: 401 });
+    }
+  }
+
   const verificationToken = await createMobileOtpProof({
     challengeId,
     employeeCode,
