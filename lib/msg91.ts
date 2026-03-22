@@ -183,18 +183,30 @@ function collectStringValues(value: unknown, bucket: string[]) {
 }
 
 function normalizeIdentifierValue(value: string) {
-  return value.replace(/[^\d+]/g, "");
+  return value.replace(/[^\d]/g, "");
+}
+
+function lastTenDigits(value: string) {
+  const normalized = normalizeIdentifierValue(value);
+  return normalized.length > 10 ? normalized.slice(-10) : normalized;
 }
 
 export function msg91PayloadMatchesMobile(payload: Record<string, unknown>, mobile: string) {
+  const normalizedMobile = normalizeIdentifierValue(mobile);
   const expectedVariants = new Set([
-    mobile,
-    buildMsg91Identifier(mobile),
-    `+${buildMsg91Identifier(mobile)}`,
+    normalizedMobile,
+    normalizeIdentifierValue(buildMsg91Identifier(mobile)),
+    lastTenDigits(normalizedMobile),
+    lastTenDigits(buildMsg91Identifier(mobile)),
   ]);
 
   const values: string[] = [];
   collectStringValues(payload, values);
 
-  return values.some((value) => expectedVariants.has(normalizeIdentifierValue(value)));
+  return values.some((value) => {
+    const normalizedValue = normalizeIdentifierValue(value);
+    if (!normalizedValue) return false;
+
+    return expectedVariants.has(normalizedValue) || expectedVariants.has(lastTenDigits(normalizedValue));
+  });
 }
