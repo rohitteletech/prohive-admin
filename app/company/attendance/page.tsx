@@ -58,6 +58,7 @@ export default function Page() {
   const [shift, setShift] = useState("all");
   const [date, setDate] = useState(today);
   const [rows, setRows] = useState<AttendanceRow[]>([]);
+  const [onLeaveCount, setOnLeaveCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cellInspector, setCellInspector] = useState<{
@@ -82,6 +83,7 @@ export default function Page() {
       if (!accessToken) {
         if (!ignore) {
           setRows([]);
+          setOnLeaveCount(0);
           setLoading(false);
           setError("Company session not found. Please login again.");
         }
@@ -97,16 +99,22 @@ export default function Page() {
             ...(companyId ? { "x-company-id": companyId } : {}),
           },
         });
-        const json = (await response.json().catch(() => ({}))) as { rows?: AttendanceRow[]; error?: string };
+        const json = (await response.json().catch(() => ({}))) as {
+          rows?: AttendanceRow[];
+          summary?: { onLeave?: number };
+          error?: string;
+        };
         if (!response.ok) {
           throw new Error(json.error || "Unable to load attendance.");
         }
         if (!ignore) {
           setRows(Array.isArray(json.rows) ? json.rows : []);
+          setOnLeaveCount(Number(json.summary?.onLeave || 0));
         }
       } catch (err) {
         if (!ignore) {
           setRows([]);
+          setOnLeaveCount(0);
           setError(err instanceof Error ? err.message : "Unable to load attendance.");
         }
       } finally {
@@ -144,9 +152,8 @@ export default function Page() {
     const late = filtered.filter((r) => r.status === "late").length;
     const halfDay = filtered.filter((r) => r.status === "half_day").length;
     const absent = filtered.filter((r) => r.status === "absent").length;
-    const offDayWorked = filtered.filter((r) => r.status === "off_day_worked").length;
     const manualReview = filtered.filter((r) => r.status === "manual_review").length;
-    return { total, present, late, halfDay, absent, offDayWorked, manualReview };
+    return { total, present, late, halfDay, absent, manualReview };
   }, [filtered]);
 
   function openCellInspector(label: string, value: string, e: React.MouseEvent<HTMLButtonElement>) {
@@ -208,8 +215,8 @@ export default function Page() {
           <p className="mt-1 text-[24px] font-semibold tracking-tight text-rose-700">{stats.absent}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
-          <p className="text-[11px] font-semibold tracking-wide text-slate-600">Off Day Worked</p>
-          <p className="mt-1 text-[24px] font-semibold tracking-tight text-fuchsia-700">{stats.offDayWorked}</p>
+          <p className="text-[11px] font-semibold tracking-wide text-slate-600">On Leave</p>
+          <p className="mt-1 text-[24px] font-semibold tracking-tight text-fuchsia-700">{onLeaveCount}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
           <p className="text-[11px] font-semibold tracking-wide text-slate-600">Manual Review</p>

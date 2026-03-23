@@ -53,6 +53,14 @@ type AttendanceRow = {
   presentTodayEligible: boolean;
 };
 
+type LeaveLookupRow = {
+  employee_id: string | null;
+  employees?: {
+    id?: string | null;
+    status?: "active" | "inactive" | null;
+  } | null;
+};
+
 const APPROVED_STATUSES = ["auto_approved", "approved"];
 const DEFAULT_SHIFT_GRACE_MINS = 10;
 type ResolvedPoliciesByEmployee = Awaited<ReturnType<typeof resolvePoliciesForEmployees>>;
@@ -346,7 +354,7 @@ export async function GET(req: NextRequest) {
     const monthStart = `${date.slice(0, 7)}-01`;
     const { fromIso, toIso } = buildQueryWindow(date);
 
-    const [eventsResult, shiftResult, holidayResult] = await Promise.all([
+    const [eventsResult, shiftResult, holidayResult, leaveResult] = await Promise.all([
       context.admin
         .from("attendance_punch_events")
         .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
@@ -366,6 +374,13 @@ export async function GET(req: NextRequest) {
         .eq("company_id", context.companyId)
         .gte("holiday_date", monthStart)
         .lte("holiday_date", date),
+      context.admin
+        .from("employee_leave_requests")
+        .select("employee_id,employees!inner(id,status)")
+        .eq("company_id", context.companyId)
+        .eq("status", "approved")
+        .lte("from_date", date)
+        .gte("to_date", date),
     ]);
 
     if (eventsResult.error) {
@@ -376,6 +391,9 @@ export async function GET(req: NextRequest) {
     }
     if (holidayResult.error) {
       return NextResponse.json({ error: holidayResult.error.message || "Unable to load holiday markers." }, { status: 400 });
+    }
+    if (leaveResult.error) {
+      return NextResponse.json({ error: leaveResult.error.message || "Unable to load leave records." }, { status: 400 });
     }
 
     const shiftRows =
@@ -450,7 +468,25 @@ export async function GET(req: NextRequest) {
       new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
       manualResolutionResult.byEmployeeDate,
     );
-    return NextResponse.json({ rows });
+    const attendanceEmployeeIdsForSelectedDate = new Set(rows.map((row) => row.id.split(":")[0]).filter(Boolean));
+    const onLeaveEmployeeIds = new Set(
+      ((leaveResult.data || []) as LeaveLookupRow[])
+        .filter((row) => {
+          const employeeId = String(row.employee_id || "");
+          if (!employeeId) return false;
+          if (row.employees?.status === "inactive") return false;
+          return !attendanceEmployeeIdsForSelectedDate.has(employeeId);
+        })
+        .map((row) => String(row.employee_id || ""))
+        .filter(Boolean),
+    );
+
+    return NextResponse.json({
+      rows,
+      summary: {
+        onLeave: onLeaveEmployeeIds.size,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unexpected attendance error.";
     return NextResponse.json({ error: `Attendance route crashed: ${message}` }, { status: 500 });
