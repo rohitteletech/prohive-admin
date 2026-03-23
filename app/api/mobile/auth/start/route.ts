@@ -11,7 +11,7 @@ import {
   normalizeEmployeeCode,
   normalizeMobile,
 } from "@/lib/mobileAuth";
-import { sendOtpViaMsg91 } from "@/lib/msg91";
+import { getMsg91WidgetClientConfig, sendOtpViaMsg91 } from "@/lib/msg91";
 import { applyRateLimit, getRequestClientIp } from "@/lib/rateLimit";
 
 type EmployeeRow = {
@@ -130,14 +130,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unable to start login. Please try again." }, { status: 500 });
   }
 
-  const smsResult = await sendOtpViaMsg91({
-    mobile,
-    otp: otpCode,
-    purpose: "first_login",
-  });
-  if (!smsResult.ok) {
-    await admin.from("employee_login_otps").delete().eq("id", otpRow.id);
-    return NextResponse.json({ error: smsResult.error }, { status: 502 });
+  const widget = getMsg91WidgetClientConfig(mobile);
+  let smsResult:
+    | Awaited<ReturnType<typeof sendOtpViaMsg91>>
+    | null = null;
+
+  if (!widget) {
+    smsResult = await sendOtpViaMsg91({
+      mobile,
+      otp: otpCode,
+      purpose: "first_login",
+    });
+    if (!smsResult.ok) {
+      await admin.from("employee_login_otps").delete().eq("id", otpRow.id);
+      return NextResponse.json({ error: smsResult.error }, { status: 502 });
+    }
   }
 
   return NextResponse.json({
@@ -145,6 +152,7 @@ export async function POST(req: NextRequest) {
     challengeId: otpRow.id,
     expiresAt,
     employee: await buildMobileEmployeePayload(admin, { ...employee, mobile }),
-    ...(isProduction() || !smsResult.skipped ? {} : { devOtp: otpCode }),
+    ...(widget ? { otpProvider: "msg91_widget", widget } : { otpProvider: "server_sms" }),
+    ...(widget || isProduction() || !smsResult?.skipped ? {} : { devOtp: otpCode }),
   });
 }
