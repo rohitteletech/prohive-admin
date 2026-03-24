@@ -163,6 +163,7 @@ export async function POST(req: NextRequest) {
   const presentDates = new Set<string>();
   const nonWorkingDayTreatmentByDate = new Map<string, string>();
   const leaveDates = new Set<string>();
+  const punchMomentsByDate = new Map<string, string[]>();
 
   attendanceRows.forEach((row) => {
     const punchAt = row.effective_punch_at || row.server_received_at;
@@ -170,6 +171,9 @@ export async function POST(req: NextRequest) {
     const isoDate = isoDateInIndia(punchAt);
     if (isoDate >= start && isoDate < nextStart) {
       presentDates.add(isoDate);
+      const existingMoments = punchMomentsByDate.get(isoDate) || [];
+      existingMoments.push(punchAt);
+      punchMomentsByDate.set(isoDate, existingMoments);
       if (holidayDates.has(isoDate)) {
         nonWorkingDayTreatmentByDate.set(isoDate, resolvedHoliday.holidayWorkedStatus);
       }
@@ -191,7 +195,12 @@ export async function POST(req: NextRequest) {
   });
 
   const monthDate = new Date(Date.UTC(year, safeMonth - 1, 1));
-  const monthlyStatuses: Array<{ date: string; status: "present" | "absent" | "leave" | "holiday" | "weekly_off" }> = [];
+  const monthlyStatuses: Array<{
+    date: string;
+    status: "present" | "absent" | "leave" | "holiday" | "weekly_off";
+    punchInAt: string | null;
+    punchOutAt: string | null;
+  }> = [];
   while (monthDate.getUTCMonth() === safeMonth - 1) {
     const iso = monthDate.toISOString().slice(0, 10);
     if (isWeeklyOffDate(iso, weeklyOffPolicy)) {
@@ -217,7 +226,15 @@ export async function POST(req: NextRequest) {
     }
 
     if (status) {
-      monthlyStatuses.push({ date: iso, status });
+      const punches = (punchMomentsByDate.get(iso) || []).slice().sort();
+      const punchInAt = punches[0] || null;
+      const punchOutAt = punches.length >= 2 ? punches[punches.length - 1] : null;
+      monthlyStatuses.push({
+        date: iso,
+        status,
+        punchInAt,
+        punchOutAt,
+      });
     }
     monthDate.setUTCDate(monthDate.getUTCDate() + 1);
   }
