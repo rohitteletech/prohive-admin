@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveCorrectionPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { normalizeDateInputToIso } from "@/lib/dateTime";
+import { formatMilitaryTimeInIndia, normalizeDateInputToIso } from "@/lib/dateTime";
 import { resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import {
+  dateRangeForIndiaIsoDate,
   expirePendingCorrections,
+  isSameIndiaDate,
   monthRangeForIsoDate,
   rollbackPunchEventFromCorrection,
   upsertPunchEventFromCorrection,
@@ -56,6 +58,7 @@ export async function POST(req: NextRequest) {
 
   if (!correctionDateRaw) return NextResponse.json({ error: "Correction date is required." }, { status: 400 });
   if (!correctionDate) return NextResponse.json({ error: "Correction date is invalid. Use DD MMM YYYY." }, { status: 400 });
+  const { fromIso, toIso } = dateRangeForIndiaIsoDate(correctionDate);
 
   const policyContext = await resolvePoliciesForEmployee(
     session.admin,
@@ -103,19 +106,26 @@ export async function POST(req: NextRequest) {
     .select("punch_type,effective_punch_at,server_received_at,approval_status")
     .eq("company_id", session.employee.company_id)
     .eq("employee_id", session.employee.id)
-    .gte("server_received_at", `${correctionDate}T00:00:00.000+05:30`)
-    .lte("server_received_at", `${correctionDate}T23:59:59.999+05:30`)
+    .gte("effective_punch_at", fromIso)
+    .lte("effective_punch_at", toIso)
     .order("server_received_at", { ascending: true });
 
   if (dayEventsError) {
     return NextResponse.json({ error: dayEventsError.message || "Unable to inspect correction day punches." }, { status: 400 });
   }
 
-  const effectiveDayEvents = Array.isArray(dayEvents) ? dayEvents.filter((row) => row.approval_status !== "rejected") : [];
+  const effectiveDayEvents = Array.isArray(dayEvents)
+    ? dayEvents
+        .filter((row) => row.approval_status !== "rejected")
+        .filter((row) => {
+          const sourceIso = row.effective_punch_at || row.server_received_at || "";
+          return sourceIso ? isSameIndiaDate(sourceIso, correctionDate) : false;
+        })
+    : [];
   const existingCheckIn = effectiveDayEvents.find((row) => row.punch_type === "in");
   const existingCheckOut = [...effectiveDayEvents].reverse().find((row) => row.punch_type === "out");
-  const existingCheckInTime = String(existingCheckIn?.effective_punch_at || existingCheckIn?.server_received_at || "").slice(11, 16);
-  const existingCheckOutTime = String(existingCheckOut?.effective_punch_at || existingCheckOut?.server_received_at || "").slice(11, 16);
+  const existingCheckInTime = formatMilitaryTimeInIndia(existingCheckIn?.effective_punch_at || existingCheckIn?.server_received_at);
+  const existingCheckOutTime = formatMilitaryTimeInIndia(existingCheckOut?.effective_punch_at || existingCheckOut?.server_received_at);
   const isMissingPunchRequest =
     (requestedCheckIn && !requestedCheckOut && !existingCheckIn) ||
     (!requestedCheckIn && requestedCheckOut && !existingCheckOut);

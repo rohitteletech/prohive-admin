@@ -155,6 +155,18 @@ export function formatDisplayTime(value: string | Date | null | undefined) {
   }).format(parsed);
 }
 
+export function formatMilitaryTimeInIndia(value: string | Date | null | undefined) {
+  if (!value) return "";
+  const parsed = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: INDIA_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(parsed);
+}
+
 export function formatDisplayDateTime(value: string | Date | null | undefined) {
   if (!value) return "";
   const date = formatDisplayDate(value);
