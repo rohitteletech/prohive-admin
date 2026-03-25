@@ -203,6 +203,7 @@ export async function POST(req: NextRequest) {
   }> = [];
   while (monthDate.getUTCMonth() === safeMonth - 1) {
     const iso = monthDate.toISOString().slice(0, 10);
+    const isPastDate = iso < today;
     if (isWeeklyOffDate(iso, weeklyOffPolicy)) {
       weeklyOffDates.add(iso);
       if (presentDates.has(iso) && !holidayDates.has(iso)) {
@@ -211,7 +212,9 @@ export async function POST(req: NextRequest) {
     }
 
     let status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null = null;
-    if (holidayDates.has(iso)) {
+    if (!isPastDate) {
+      status = null;
+    } else if (holidayDates.has(iso)) {
       status = nonWorkingDayTreatmentByDate.get(iso) === "Present + OT" ? "present" : "holiday";
     } else if (presentDates.has(iso) && weeklyOffDates.has(iso)) {
       status = nonWorkingDayTreatmentByDate.get(iso) === "Present + OT" ? "present" : "weekly_off";
@@ -221,7 +224,7 @@ export async function POST(req: NextRequest) {
       status = "leave";
     } else if (weeklyOffDates.has(iso)) {
       status = "weekly_off";
-    } else if (iso <= today) {
+    } else if (isPastDate) {
       status = "absent";
     }
 
