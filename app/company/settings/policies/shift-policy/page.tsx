@@ -11,19 +11,22 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
+import { formatDisplayDateTime } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ShiftPolicyState = {
   policyId: string;
   policyName: string;
   policyCode: string;
+  createdAt?: string;
+  createdBy?: string;
   effectiveFrom: string;
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
   defaultCompanyPolicy: "Yes" | "No";
   shiftName: string;
   shiftType: string;
-  shiftStructure: "fixed" | "rotational";
+  shiftStructure: "fixed";
   shiftStartTime: string;
   shiftEndTime: string;
   halfDayAvailable: "Yes" | "No";
@@ -35,12 +38,30 @@ type ShiftPolicyState = {
   legacyShiftId: string;
 };
 
+function formatDateInput(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function getDefaultPolicyDates() {
+  const effectiveFrom = new Date();
+  const nextReviewDate = new Date(effectiveFrom);
+  nextReviewDate.setFullYear(nextReviewDate.getFullYear() + 1);
+
+  return {
+    effectiveFrom: formatDateInput(effectiveFrom),
+    nextReviewDate: formatDateInput(nextReviewDate),
+  };
+}
+
+function createShiftPolicyCode() {
+  return `SFT-${Date.now().toString().slice(-6)}`;
+}
+
 const initialState: ShiftPolicyState = {
   policyId: "",
   policyName: "Standard Shift Policy",
-  policyCode: "SFT-001",
-  effectiveFrom: "2026-03-13",
-  nextReviewDate: "2027-03-13",
+  policyCode: createShiftPolicyCode(),
+  ...getDefaultPolicyDates(),
   status: "Draft",
   defaultCompanyPolicy: "Yes",
   shiftName: "General Shift",
@@ -61,7 +82,7 @@ function createNewPolicyDraft(): ShiftPolicyState {
   return {
     ...initialState,
     policyName: "",
-    policyCode: "",
+    policyCode: createShiftPolicyCode(),
     defaultCompanyPolicy: "No",
   };
 }
@@ -172,6 +193,8 @@ export default function NewShiftPolicyPage() {
         id: string;
         policyName: string;
         policyCode: string;
+        createdAt?: string;
+        createdBy?: string;
         effectiveFrom: string;
         nextReviewDate: string;
         status: string;
@@ -194,6 +217,8 @@ export default function NewShiftPolicyPage() {
               ...initialState,
               ...config,
               policyId: policy.id,
+              createdAt: String(policy.createdAt || ""),
+              createdBy: String(policy.createdBy || ""),
               policyName: String(config.policyName || policy.policyName || ""),
               policyCode: String(config.policyCode || policy.policyCode || ""),
               effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
@@ -355,8 +380,8 @@ export default function NewShiftPolicyPage() {
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
-          createdBy: "Company Admin",
-          createdOn: "2026-03-13 08:00 AM",
+          createdBy: policy.createdBy || "Company Admin",
+          createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
       />

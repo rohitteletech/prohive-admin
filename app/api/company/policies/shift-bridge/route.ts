@@ -15,7 +15,7 @@ type ShiftBridgePayload = {
   defaultCompanyPolicy?: "Yes" | "No";
   shiftName?: string;
   shiftType?: string;
-  shiftStructure?: "fixed" | "rotational";
+  shiftStructure?: "fixed";
   shiftStartTime?: string;
   shiftEndTime?: string;
   halfDayAvailable?: "Yes" | "No";
@@ -60,6 +60,16 @@ function minutesToClock(value: number, fallback = "04:00") {
   const hours = Math.floor(value / 60);
   const minutes = Math.floor(value % 60);
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function createShiftPolicyCode() {
+  return `SFT-${Date.now().toString().slice(-6)}`;
+}
+
+function fallbackShiftPolicyCode(policyId?: string) {
+  const normalized = String(policyId || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  if (normalized) return `SFT-${normalized.slice(0, 6)}`;
+  return createShiftPolicyCode();
 }
 
 export async function GET(req: NextRequest) {
@@ -127,7 +137,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       policyId: shiftPolicy.id,
       policyName: String(config.policyName || shiftPolicy.policyName || "Standard Shift Policy"),
-      policyCode: String(config.policyCode || shiftPolicy.policyCode || "SFT-001"),
+      policyCode: String(config.policyCode || shiftPolicy.policyCode || fallbackShiftPolicyCode(shiftPolicy.id)),
       effectiveFrom: String(config.effectiveFrom || shiftPolicy.effectiveFrom),
       nextReviewDate: String(config.nextReviewDate || shiftPolicy.nextReviewDate),
       status:
@@ -177,9 +187,11 @@ export async function PUT(req: NextRequest) {
   const normalizedPunchAccessRule = body.punchAccessRule || body.loginAccessRule || "any_time";
   const normalizedEarlyPunchAllowed = String(body.earlyPunchAllowed || body.earlyInAllowed || "15");
 
+  const policyCode = String(body.policyCode || policy?.policyCode || "").trim() || createShiftPolicyCode();
+
   const configJson = {
     policyName: body.policyName || policy?.policyName || "Standard Shift Policy",
-    policyCode: body.policyCode || policy?.policyCode || "SFT-001",
+    policyCode,
     effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
     nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
     status: (body.status || "Draft").toLowerCase(),
@@ -331,6 +343,20 @@ export async function PUT(req: NextRequest) {
 
   if (patchConfigError) {
     return NextResponse.json({ error: patchConfigError.message || "Unable to finalize shift policy config." }, { status: 400 });
+  }
+
+  const { error: companyMirrorError } = await context.admin
+    .from("companies")
+    .update({
+      login_access_rule: normalizedPunchAccessRule,
+    })
+    .eq("id", context.companyId);
+
+  if (
+    companyMirrorError &&
+    !String(companyMirrorError.message || "").toLowerCase().includes("login_access_rule")
+  ) {
+    return NextResponse.json({ error: companyMirrorError.message || "Unable to mirror company login access rule." }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true, policyId, legacyShiftId });
