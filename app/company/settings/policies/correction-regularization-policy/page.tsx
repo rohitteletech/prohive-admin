@@ -533,11 +533,6 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Correction is disabled, so the dependent settings below stay visible for reference but remain inactive."
-                : "When enabled, the request window, approval flow, and reason rules below control employee correction requests."}
-            </p>
           </PolicySection>
 
           <PolicySection
@@ -627,13 +622,6 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Request window and threshold limits are kept inactive until attendance correction is enabled."
-                : draft.backdatedCorrectionAllowed === "Yes"
-                ? "Employees can raise backdated corrections only within the configured maximum days."
-                : "Backdated correction is disabled, so maximum backdated days is inactive."}
-            </p>
           </PolicySection>
 
           <PolicySection
@@ -682,11 +670,6 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {draft.approvalRequired === "Yes"
-                ? "Requests will follow the selected approval workflow."
-                : "Requests will auto-approve when approval is not required."}
-            </p>
           </PolicySection>
 
           <PolicySection
@@ -716,12 +699,6 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Reason validation stays inactive until attendance correction is enabled."
-                : "Reason validation is enforced when employees submit eligible correction requests."}
-            </p>
-
             <div className="mt-5 flex flex-wrap gap-2">
               {isCreatingNew ? (
                 <>
