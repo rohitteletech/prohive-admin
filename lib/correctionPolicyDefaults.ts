@@ -6,7 +6,7 @@ export type CorrectionPolicyStoredStatus = "draft" | "active" | "archived";
 export type CorrectionPolicyBridgeStatus = "Draft" | "Active" | "Archived";
 
 export const DEFAULT_CORRECTION_POLICY_NAME = "Standard Correction Policy";
-export const DEFAULT_CORRECTION_POLICY_CODE = "COR-001";
+export const DEFAULT_CORRECTION_POLICY_CODE_PREFIX = "COR";
 
 export const CORRECTION_POLICY_LIMITS = {
   correctionRequestWindow: { min: 0, max: 31 },
@@ -111,6 +111,14 @@ export function createCorrectionPolicyGovernanceDates(baseDate = todayISOInIndia
   };
 }
 
+export function generateCorrectionPolicyCode(seed?: string) {
+  const normalizedSeed = String(seed || "").replace(/\D/g, "");
+  if (normalizedSeed) {
+    return `${DEFAULT_CORRECTION_POLICY_CODE_PREFIX}-${normalizedSeed.slice(-6).padStart(6, "0")}`;
+  }
+  return `${DEFAULT_CORRECTION_POLICY_CODE_PREFIX}-${Date.now().toString().slice(-6)}`;
+}
+
 export function createDefaultCorrectionPolicyConfig(params?: {
   policyName?: string;
   policyCode?: string;
@@ -125,7 +133,7 @@ export function createDefaultCorrectionPolicyConfig(params?: {
 
   return {
     policyName: params?.policyName || DEFAULT_CORRECTION_POLICY_NAME,
-    policyCode: params?.policyCode || DEFAULT_CORRECTION_POLICY_CODE,
+    policyCode: params?.policyCode || generateCorrectionPolicyCode(effectiveFrom),
     effectiveFrom,
     nextReviewDate,
     status: params?.status || "active",

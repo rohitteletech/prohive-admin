@@ -46,7 +46,7 @@ export function PolicySection({
   tone = "white",
   children,
 }: {
-  title: string;
+  title: React.ReactNode;
   description: string;
   tone?: "white" | "slate";
   children: React.ReactNode;

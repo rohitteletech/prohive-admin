@@ -125,24 +125,25 @@ export async function PUT(req: NextRequest) {
     body.attendanceCorrectionEnabled,
     existingConfig.attendanceCorrectionEnabled,
   );
-  const missingPunchCorrectionAllowed = normalizeYesNo(
-    body.missingPunchCorrectionAllowed,
-    existingConfig.missingPunchCorrectionAllowed,
-  );
-  const latePunchRegularizationAllowed = normalizeYesNo(
-    body.latePunchRegularizationAllowed,
-    existingConfig.latePunchRegularizationAllowed,
-  );
-  const earlyGoRegularizationAllowed = normalizeYesNo(
-    body.earlyGoRegularizationAllowed,
-    existingConfig.earlyGoRegularizationAllowed,
-  );
-  const backdatedCorrectionAllowed = normalizeYesNo(
-    body.backdatedCorrectionAllowed,
-    existingConfig.backdatedCorrectionAllowed,
-  );
-  const approvalRequired = normalizeYesNo(body.approvalRequired, existingConfig.approvalRequired);
-  const reasonMandatory = normalizeYesNo(body.reasonMandatory, existingConfig.reasonMandatory);
+  const correctionIsEnabled = attendanceCorrectionEnabled === "Yes";
+  const missingPunchCorrectionAllowed = correctionIsEnabled
+    ? normalizeYesNo(body.missingPunchCorrectionAllowed, existingConfig.missingPunchCorrectionAllowed)
+    : "No";
+  const latePunchRegularizationAllowed = correctionIsEnabled
+    ? normalizeYesNo(body.latePunchRegularizationAllowed, existingConfig.latePunchRegularizationAllowed)
+    : "No";
+  const earlyGoRegularizationAllowed = correctionIsEnabled
+    ? normalizeYesNo(body.earlyGoRegularizationAllowed, existingConfig.earlyGoRegularizationAllowed)
+    : "No";
+  const backdatedCorrectionAllowed = correctionIsEnabled
+    ? normalizeYesNo(body.backdatedCorrectionAllowed, existingConfig.backdatedCorrectionAllowed)
+    : "No";
+  const approvalRequired = correctionIsEnabled
+    ? normalizeYesNo(body.approvalRequired, existingConfig.approvalRequired)
+    : "No";
+  const reasonMandatory = correctionIsEnabled
+    ? normalizeYesNo(body.reasonMandatory, existingConfig.reasonMandatory)
+    : "No";
 
   if (!policyName) {
     return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
@@ -161,7 +162,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const correctionRequestWindow = parseWholeNumberInRange(
-    body.correctionRequestWindow ?? existingConfig.correctionRequestWindow,
+    correctionIsEnabled ? body.correctionRequestWindow ?? existingConfig.correctionRequestWindow : "0",
     CORRECTION_POLICY_LIMITS.correctionRequestWindow.min,
     CORRECTION_POLICY_LIMITS.correctionRequestWindow.max,
   );
@@ -190,7 +191,7 @@ export async function PUT(req: NextRequest) {
   }
 
   const maximumRequestsPerMonth = parseWholeNumberInRange(
-    body.maximumRequestsPerMonth ?? existingConfig.maximumRequestsPerMonth,
+    correctionIsEnabled ? body.maximumRequestsPerMonth ?? existingConfig.maximumRequestsPerMonth : "0",
     CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min,
     CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.max,
   );
