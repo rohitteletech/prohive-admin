@@ -58,6 +58,14 @@ function getInactiveFieldClassName(disabled: boolean) {
   return disabled ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500 opacity-80" : "";
 }
 
+function DisabledFieldValue({ text = "Disabled" }: { text?: string }) {
+  return (
+    <div className="inline-flex min-h-[44px] w-full items-center rounded-xl border border-orange-300 bg-orange-50 px-4 py-2.5 text-[14px] font-semibold text-orange-700 shadow-sm">
+      {text}
+    </div>
+  );
+}
+
 function normalizeCorrectionDraftForSave(current: CorrectionPolicyState): CorrectionPolicyState {
   if (current.attendanceCorrectionEnabled !== "No") {
     return current.approvalRequired === "No" ? { ...current, reasonMandatory: "No" } : current;
@@ -476,15 +484,17 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <Select
-                  value={draft.missingPunchCorrectionAllowed}
-                  onChange={(e) => update("missingPunchCorrectionAllowed", e.target.value as CorrectionPolicyState["missingPunchCorrectionAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.missingPunchCorrectionAllowed}
+                    onChange={(e) => update("missingPunchCorrectionAllowed", e.target.value as CorrectionPolicyState["missingPunchCorrectionAllowed"])}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </Select>
+                )}
               </Field>
               <Field
                 label={inactiveFieldLabel(
@@ -492,15 +502,17 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <Select
-                  value={draft.latePunchRegularizationAllowed}
-                  onChange={(e) => update("latePunchRegularizationAllowed", e.target.value as CorrectionPolicyState["latePunchRegularizationAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.latePunchRegularizationAllowed}
+                    onChange={(e) => update("latePunchRegularizationAllowed", e.target.value as CorrectionPolicyState["latePunchRegularizationAllowed"])}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </Select>
+                )}
               </Field>
               <Field
                 label={inactiveFieldLabel(
@@ -508,15 +520,17 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <Select
-                  value={draft.earlyGoRegularizationAllowed}
-                  onChange={(e) => update("earlyGoRegularizationAllowed", e.target.value as CorrectionPolicyState["earlyGoRegularizationAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.earlyGoRegularizationAllowed}
+                    onChange={(e) => update("earlyGoRegularizationAllowed", e.target.value as CorrectionPolicyState["earlyGoRegularizationAllowed"])}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </Select>
+                )}
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
@@ -540,17 +554,19 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <TextInput
-                  type="number"
-                  min={CORRECTION_POLICY_LIMITS.correctionRequestWindow.min}
-                  max={CORRECTION_POLICY_LIMITS.correctionRequestWindow.max}
-                  step="1"
-                  inputMode="numeric"
-                  value={draft.correctionRequestWindow}
-                  onChange={(e) => update("correctionRequestWindow", e.target.value)}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                />
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <TextInput
+                    type="number"
+                    min={CORRECTION_POLICY_LIMITS.correctionRequestWindow.min}
+                    max={CORRECTION_POLICY_LIMITS.correctionRequestWindow.max}
+                    step="1"
+                    inputMode="numeric"
+                    value={draft.correctionRequestWindow}
+                    onChange={(e) => update("correctionRequestWindow", e.target.value)}
+                  />
+                )}
               </Field>
               <Field
                 label={inactiveFieldLabel(
@@ -558,15 +574,17 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <Select
-                  value={draft.backdatedCorrectionAllowed}
-                  onChange={(e) => update("backdatedCorrectionAllowed", e.target.value as CorrectionPolicyState["backdatedCorrectionAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.backdatedCorrectionAllowed}
+                    onChange={(e) => update("backdatedCorrectionAllowed", e.target.value as CorrectionPolicyState["backdatedCorrectionAllowed"])}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </Select>
+                )}
               </Field>
               <Field
                 label={inactiveFieldLabel(
@@ -574,17 +592,19 @@ export default function CorrectionRegularizationPolicyPage() {
                   backdatedSettingsDisabled ? "Auto-inactive" : undefined,
                 )}
               >
-                <TextInput
-                  type="number"
-                  min={CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min}
-                  max={CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max}
-                  step="1"
-                  inputMode="numeric"
-                  value={draft.maximumBackdatedDays}
-                  onChange={(e) => update("maximumBackdatedDays", e.target.value)}
-                  disabled={backdatedSettingsDisabled}
-                  className={getInactiveFieldClassName(backdatedSettingsDisabled)}
-                />
+                {backdatedSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <TextInput
+                    type="number"
+                    min={CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min}
+                    max={CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max}
+                    step="1"
+                    inputMode="numeric"
+                    value={draft.maximumBackdatedDays}
+                    onChange={(e) => update("maximumBackdatedDays", e.target.value)}
+                  />
+                )}
               </Field>
               <Field
                 label={inactiveFieldLabel(
@@ -592,17 +612,19 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <TextInput
-                  type="number"
-                  min={CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min}
-                  max={CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.max}
-                  step="1"
-                  inputMode="numeric"
-                  value={draft.maximumRequestsPerMonth}
-                  onChange={(e) => update("maximumRequestsPerMonth", e.target.value)}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                />
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <TextInput
+                    type="number"
+                    min={CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min}
+                    max={CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.max}
+                    step="1"
+                    inputMode="numeric"
+                    value={draft.maximumRequestsPerMonth}
+                    onChange={(e) => update("maximumRequestsPerMonth", e.target.value)}
+                  />
+                )}
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
@@ -628,15 +650,17 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <Select
-                  value={draft.approvalRequired}
-                  onChange={(e) => update("approvalRequired", e.target.value as CorrectionPolicyState["approvalRequired"])}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.approvalRequired}
+                    onChange={(e) => update("approvalRequired", e.target.value as CorrectionPolicyState["approvalRequired"])}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </Select>
+                )}
               </Field>
               <Field
                 label={inactiveFieldLabel(
@@ -644,16 +668,18 @@ export default function CorrectionRegularizationPolicyPage() {
                   approvalFlowDisabled ? "Not applicable" : undefined,
                 )}
               >
-                <Select
-                  value={draft.approvalFlow}
-                  onChange={(e) => update("approvalFlow", e.target.value as CorrectionPolicyState["approvalFlow"])}
-                  disabled={approvalFlowDisabled}
-                  className={getInactiveFieldClassName(approvalFlowDisabled)}
-                >
-                  <option value="Manager Approval">Manager Approval</option>
-                  <option value="HR Approval">HR Approval</option>
-                  <option value="Manager + HR Approval">Manager + HR Approval</option>
-                </Select>
+                {approvalFlowDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.approvalFlow}
+                    onChange={(e) => update("approvalFlow", e.target.value as CorrectionPolicyState["approvalFlow"])}
+                  >
+                    <option value="Manager Approval">Manager Approval</option>
+                    <option value="HR Approval">HR Approval</option>
+                    <option value="Manager + HR Approval">Manager + HR Approval</option>
+                  </Select>
+                )}
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
@@ -677,15 +703,17 @@ export default function CorrectionRegularizationPolicyPage() {
                   correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
                 )}
               >
-                <Select
-                  value={draft.reasonMandatory}
-                  onChange={(e) => update("reasonMandatory", e.target.value as CorrectionPolicyState["reasonMandatory"])}
-                  disabled={correctionSettingsDisabled}
-                  className={getInactiveFieldClassName(correctionSettingsDisabled)}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
+                {correctionSettingsDisabled ? (
+                  <DisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.reasonMandatory}
+                    onChange={(e) => update("reasonMandatory", e.target.value as CorrectionPolicyState["reasonMandatory"])}
+                  >
+                    <option value="Yes">Yes</option>
+                    <option value="No">No</option>
+                  </Select>
+                )}
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
