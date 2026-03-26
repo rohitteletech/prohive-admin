@@ -466,26 +466,26 @@ export default function NewShiftPolicyPage() {
             description="Define punch access governance and threshold controls applicable to this shift policy."
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Login Access Rule">
+              <Field label="Punch Access Rule">
                 <Select
                   value={draft.loginAccessRule}
                   onChange={(e) => update("loginAccessRule", e.target.value as ShiftPolicyState["loginAccessRule"])}
                 >
-                  <option value="any_time">Allow Login Any Time</option>
-                  <option value="shift_time_only">Allow Login Only During Shift Time</option>
+                  <option value="any_time">Allow Punch Any Time</option>
+                  <option value="shift_time_only">Allow Punch Only During Shift Time</option>
                 </Select>
               </Field>
               <Field
                 label={
                   <span className="inline-flex items-center gap-2">
-                    <span>Early In Allowed (mins)</span>
+                    <span>Early Punch Allowed (mins)</span>
                     {draft.loginAccessRule === "any_time" ? (
                       <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
-                        Not applicable for this login rule
+                        Not applicable for this punch rule
                       </span>
                     ) : (
                       <span className="rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-[11px] font-semibold text-sky-700">
-                        Applied before shift start
+                        Applied before shift start for punch-in
                       </span>
                     )}
                   </span>
