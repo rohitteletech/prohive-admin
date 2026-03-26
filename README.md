@@ -55,6 +55,53 @@ Legacy fallback:
 4. In Supabase SQL Editor, run:
 - [`supabase/schema.sql`](supabase/schema.sql)
 
+## Supabase CLI Workflow
+
+This repo now includes a checked-in [`supabase/config.toml`](supabase/config.toml) with the hosted
+project id only. It does not contain secrets.
+
+Recommended GitHub-safe rules:
+- Commit `supabase/config.toml`, `supabase/migrations/`, `supabase/functions/`, and `supabase/schema.sql`
+- Do not commit `.env.local`, access tokens, service-role keys, or other secrets
+- Keep `/supabase/.temp/` ignored
+
+Recommended workflow:
+
+1. Pull latest code
+
+```bash
+git pull
+```
+
+2. Log in to Supabase CLI locally
+
+```bash
+npx supabase@latest login
+```
+
+3. Link/check project context if needed
+
+```bash
+npx supabase@latest projects list
+```
+
+4. Deploy edge functions
+
+```bash
+npx supabase@latest functions deploy punch
+```
+
+5. Apply database changes when new migrations are added
+
+```bash
+npx supabase@latest db push
+```
+
+Notes:
+- `git push` updates GitHub only. It does not deploy Supabase functions or database changes by itself.
+- Use `supabase/schema.sql` as the current schema reference, and `supabase/migrations/` for tracked DB changes.
+- If you add a new Edge Function, create it inside `supabase/functions/<name>/`.
+
 Current starter integration:
 - Superadmin companies list fetches live data from `companies` table.
 - Superadmin login uses Supabase Auth (no dummy fallback).
