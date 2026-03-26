@@ -2,7 +2,7 @@ import { PolicyDefinition } from "@/lib/companyPolicies";
 import type { AttendanceStatusPenaltyRuntime } from "@/lib/attendancePolicy";
 import { DEFAULT_ATTENDANCE_POLICY_BEHAVIOR } from "@/lib/attendancePolicyDefaults";
 import { normalizeCorrectionPolicyConfig } from "@/lib/correctionPolicyDefaults";
-import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
+import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
 import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
 function text(value: unknown, fallback = "") {
@@ -40,6 +40,8 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
   halfDayAvailable?: string;
   halfDayHours?: string;
   halfDayMinWorkMins?: number;
+  punchAccessRule?: string;
+  earlyPunchAllowed?: number;
   loginAccessRule?: string;
   earlyInAllowed?: number;
   gracePeriod?: number;
@@ -64,8 +66,20 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
       clockToMinutes(config.halfDayHours, clockToMinutes(halfDayHours, fallback?.halfDayMinWorkMins ?? 240)),
       fallback?.halfDayMinWorkMins ?? 240,
     ),
-    loginAccessRule: normalizeLoginAccessRule(config.loginAccessRule || fallback?.loginAccessRule),
-    earlyInAllowed: wholeNumber(config.earlyInAllowed, fallback?.earlyInAllowed ?? 15),
+    punchAccessRule: normalizePunchAccessRule(
+      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+    ),
+    earlyPunchAllowed: wholeNumber(
+      config.earlyPunchAllowed || config.earlyInAllowed,
+      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+    ),
+    loginAccessRule: normalizePunchAccessRule(
+      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+    ),
+    earlyInAllowed: wholeNumber(
+      config.earlyPunchAllowed || config.earlyInAllowed,
+      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+    ),
     gracePeriod: wholeNumber(config.gracePeriod, fallback?.gracePeriod ?? 10),
     minimumWorkBeforePunchOut: wholeNumber(
       config.minimumWorkBeforePunchOut,

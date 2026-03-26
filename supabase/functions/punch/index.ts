@@ -65,7 +65,7 @@ function isWeeklyOffDate(dateIso: string, policy: unknown) {
   return day === 0;
 }
 
-function normalizeLoginAccessRule(value: unknown) {
+function normalizePunchAccessRule(value: unknown) {
   return String(value || "").trim().toLowerCase() === "shift_time_only" ? "shift_time_only" : "any_time";
 }
 
@@ -157,6 +157,8 @@ function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
   shiftType?: string;
   shiftStartTime?: string;
   shiftEndTime?: string;
+  punchAccessRule?: string;
+  earlyPunchAllowed?: number;
   loginAccessRule?: string;
   earlyInAllowed?: number;
   minimumWorkBeforePunchOut?: number;
@@ -167,8 +169,20 @@ function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
     shiftType: text(config.shiftType, fallback?.shiftType || "General"),
     shiftStartTime: text(config.shiftStartTime, fallback?.shiftStartTime || "09:00"),
     shiftEndTime: text(config.shiftEndTime, fallback?.shiftEndTime || "18:00"),
-    loginAccessRule: normalizeLoginAccessRule(config.loginAccessRule || fallback?.loginAccessRule),
-    earlyInAllowed: wholeNumber(config.earlyInAllowed, fallback?.earlyInAllowed ?? 15),
+    punchAccessRule: normalizePunchAccessRule(
+      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+    ),
+    earlyPunchAllowed: wholeNumber(
+      config.earlyPunchAllowed || config.earlyInAllowed,
+      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+    ),
+    loginAccessRule: normalizePunchAccessRule(
+      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+    ),
+    earlyInAllowed: wholeNumber(
+      config.earlyPunchAllowed || config.earlyInAllowed,
+      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+    ),
     minimumWorkBeforePunchOut: wholeNumber(config.minimumWorkBeforePunchOut, fallback?.minimumWorkBeforePunchOut ?? 60),
   };
 }
@@ -657,7 +671,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.loginAccessRule) === "shift_time_only") {
+  if (payload.punch_type === "in" && normalizePunchAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule) === "shift_time_only") {
     const { data: shiftRows, error: shiftError } = await supabase
       .from("company_shift_definitions")
       .select("name,type,start_time,end_time,early_window_mins,active")
@@ -695,7 +709,7 @@ Deno.serve(async (req) => {
           type: resolvedShift.shiftType,
           startTime: resolvedShift.shiftStartTime,
           endTime: resolvedShift.shiftEndTime,
-          earlyWindowMins: resolvedShift.earlyInAllowed,
+          earlyWindowMins: resolvedShift.earlyPunchAllowed,
         }
       : findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
     if (
@@ -710,7 +724,7 @@ Deno.serve(async (req) => {
     ) {
       return json(
         {
-          code: "SHIFT_TIME_ONLY_LOGIN_BLOCKED",
+          code: "SHIFT_TIME_ONLY_PUNCH_BLOCKED",
           error: "Punch In is allowed only during the configured shift window.",
         },
         403
@@ -786,7 +800,7 @@ Deno.serve(async (req) => {
           type: resolvedShift.shiftType,
           startTime: resolvedShift.shiftStartTime,
           endTime: resolvedShift.shiftEndTime,
-          earlyWindowMins: resolvedShift.earlyInAllowed,
+          earlyWindowMins: resolvedShift.earlyPunchAllowed,
           minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
         }
       : findMatchingShiftRule(
@@ -913,3 +927,4 @@ Deno.serve(async (req) => {
   });
 });
 
+const normalizeLoginAccessRule = normalizePunchAccessRule;

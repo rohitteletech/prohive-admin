@@ -501,12 +501,12 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
         type: resolvedShift.shiftType,
         startTime: resolvedShift.shiftStartTime,
         endTime: resolvedShift.shiftEndTime,
-        earlyWindowMins: resolvedShift.earlyInAllowed,
+        earlyWindowMins: resolvedShift.earlyPunchAllowed,
         minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
       }
     : findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
 
-  if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.loginAccessRule) === "shift_time_only") {
+  if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule) === "shift_time_only") {
 
     if (
       matchedShift &&
@@ -521,7 +521,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
       return {
         status: 403,
         body: {
-          code: "SHIFT_TIME_ONLY_LOGIN_BLOCKED",
+          code: "SHIFT_TIME_ONLY_PUNCH_BLOCKED",
           error: "Punch In is allowed only during the configured shift window.",
         },
       };

@@ -20,6 +20,8 @@ type ShiftBridgePayload = {
   shiftEndTime?: string;
   halfDayAvailable?: "Yes" | "No";
   halfDayHours?: string;
+  punchAccessRule?: "any_time" | "shift_time_only";
+  earlyPunchAllowed?: string;
   loginAccessRule?: "any_time" | "shift_time_only";
   earlyInAllowed?: string;
   gracePeriod?: string;
@@ -145,8 +147,10 @@ export async function GET(req: NextRequest) {
         config.halfDayHours ||
           minutesToClock(derivedHalfDayMinutes, "04:00")
       ),
-      loginAccessRule: normalizeLoginAccessRule(config.loginAccessRule),
-      earlyInAllowed: String(config.earlyInAllowed || effectiveLegacy.earlyWindowMins || 15),
+      punchAccessRule: normalizeLoginAccessRule(config.punchAccessRule || config.loginAccessRule),
+      earlyPunchAllowed: String(config.earlyPunchAllowed || config.earlyInAllowed || effectiveLegacy.earlyWindowMins || 15),
+      loginAccessRule: normalizeLoginAccessRule(config.punchAccessRule || config.loginAccessRule),
+      earlyInAllowed: String(config.earlyPunchAllowed || config.earlyInAllowed || effectiveLegacy.earlyWindowMins || 15),
       gracePeriod: String(config.gracePeriod || effectiveLegacy.graceMins || 10),
       minimumWorkBeforePunchOut: String(config.minimumWorkBeforePunchOut || effectiveLegacy.minWorkBeforeOutMins || 60),
       legacyShiftId: String(config.legacyShiftId || effectiveLegacy.id || ""),
@@ -170,6 +174,9 @@ export async function PUT(req: NextRequest) {
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "shift")
     : null;
 
+  const normalizedPunchAccessRule = body.punchAccessRule || body.loginAccessRule || "any_time";
+  const normalizedEarlyPunchAllowed = String(body.earlyPunchAllowed || body.earlyInAllowed || "15");
+
   const configJson = {
     policyName: body.policyName || policy?.policyName || "Standard Shift Policy",
     policyCode: body.policyCode || policy?.policyCode || "SFT-001",
@@ -184,11 +191,16 @@ export async function PUT(req: NextRequest) {
     shiftEndTime: body.shiftEndTime || "18:00",
     halfDayAvailable: body.halfDayAvailable || "Yes",
     halfDayHours: body.halfDayAvailable === "No" ? "00:00" : String(body.halfDayHours || "04:00"),
-    loginAccessRule: body.loginAccessRule || "any_time",
-    earlyInAllowed:
-      (body.loginAccessRule || "any_time") === "any_time"
+    punchAccessRule: normalizedPunchAccessRule,
+    earlyPunchAllowed:
+      normalizedPunchAccessRule === "any_time"
         ? "0"
-        : String(body.earlyInAllowed || "15"),
+        : normalizedEarlyPunchAllowed,
+    loginAccessRule: normalizedPunchAccessRule,
+    earlyInAllowed:
+      normalizedPunchAccessRule === "any_time"
+        ? "0"
+        : normalizedEarlyPunchAllowed,
     gracePeriod: String(body.gracePeriod || "10"),
     minimumWorkBeforePunchOut: String(body.minimumWorkBeforePunchOut || "60"),
     legacyShiftId: body.legacyShiftId || "",
@@ -282,7 +294,7 @@ export async function PUT(req: NextRequest) {
     start_time: configJson.shiftStartTime,
     end_time: configJson.shiftEndTime,
     grace_mins: asNumber(configJson.gracePeriod, 10),
-    early_window_mins: asNumber(configJson.earlyInAllowed, 15),
+    early_window_mins: asNumber(configJson.earlyPunchAllowed, 15),
     min_work_before_out_mins: asNumber(configJson.minimumWorkBeforePunchOut, 60),
     active: true,
   };

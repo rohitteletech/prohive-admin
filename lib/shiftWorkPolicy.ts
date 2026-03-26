@@ -15,9 +15,11 @@ export function normalizeExtraHoursPolicy(value: unknown) {
   return String(value || "").trim().toLowerCase() === "no" ? "no" : "yes";
 }
 
-export function normalizeLoginAccessRule(value: unknown) {
+export function normalizePunchAccessRule(value: unknown) {
   return String(value || "").trim().toLowerCase() === "shift_time_only" ? "shift_time_only" : "any_time";
 }
+
+export const normalizeLoginAccessRule = normalizePunchAccessRule;
 
 export function normalizeHalfDayMinWorkMins(value: unknown, fallback = 240) {
   const parsed = Number(value);

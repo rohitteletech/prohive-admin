@@ -193,17 +193,18 @@ export async function POST(req: NextRequest) {
           startTime: resolvedShift.shiftStartTime,
           endTime: resolvedShift.shiftEndTime,
           graceMins: resolvedShift.gracePeriod,
-          earlyWindowMins: resolvedShift.earlyInAllowed,
+          earlyWindowMins: resolvedShift.earlyPunchAllowed,
           minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
         }
       : findMatchingShiftRule(employeeShiftName, shiftPool);
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
+  const shiftEndMin = matchedShift ? timeToMinutes(matchedShift.endTime) || 1080 : 1080;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;
   const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance);
   const resolvedCorrection = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const extraHoursPolicy = normalizeExtraHoursPolicy(resolvedAttendance.extraHoursPolicy);
-  const loginAccessRule = normalizeLoginAccessRule(resolvedShift.loginAccessRule);
+  const punchAccessRule = normalizeLoginAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule);
   const actualWorkedMinutes = resolveWorkedMinutesForAttendance({
     checkInIso: checkInAt,
     checkOutIso: checkOutAt,
@@ -336,13 +337,15 @@ export async function POST(req: NextRequest) {
     config: {
       shiftName: matchedShift?.name || resolvedShift.shiftName || employeeShiftName,
       shiftStartMin,
+      shiftEndMin,
       graceMins: matchedShift?.graceMins || resolvedShift.gracePeriod || 10,
-      earlyWindowMin: matchedShift?.earlyWindowMins || resolvedShift.earlyInAllowed || 15,
+      earlyWindowMin: matchedShift?.earlyWindowMins || resolvedShift.earlyPunchAllowed || 15,
       minWorkBeforeOutMin: matchedShift?.minWorkBeforeOutMins || resolvedShift.minimumWorkBeforePunchOut || 60,
       scheduledWorkMin: effectiveScheduledWorkMin || 0,
       extraHoursPolicy,
       halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
-      loginAccessRule,
+      punchAccessRule,
+      loginAccessRule: punchAccessRule,
       weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
       allowPunchOnHoliday: resolvedHoliday.allowPunchOnHoliday,
       allowPunchOnWeeklyOff: resolvedHoliday.allowPunchOnWeeklyOff,

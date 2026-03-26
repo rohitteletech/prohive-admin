@@ -28,8 +28,8 @@ type ShiftPolicyState = {
   shiftEndTime: string;
   halfDayAvailable: "Yes" | "No";
   halfDayHours: string;
-  loginAccessRule: "any_time" | "shift_time_only";
-  earlyInAllowed: string;
+  punchAccessRule: "any_time" | "shift_time_only";
+  earlyPunchAllowed: string;
   gracePeriod: string;
   minimumWorkBeforePunchOut: string;
   legacyShiftId: string;
@@ -50,8 +50,8 @@ const initialState: ShiftPolicyState = {
   shiftEndTime: "18:00",
   halfDayAvailable: "Yes",
   halfDayHours: "04:00",
-  loginAccessRule: "any_time",
-  earlyInAllowed: "15",
+  punchAccessRule: "any_time",
+  earlyPunchAllowed: "15",
   gracePeriod: "10",
   minimumWorkBeforePunchOut: "60",
   legacyShiftId: "",
@@ -143,14 +143,23 @@ export default function NewShiftPolicyPage() {
     const response = await fetch("/api/company/policies/shift-bridge", {
       headers: { authorization: `Bearer ${token}` },
     });
-    const result = (await response.json().catch(() => ({}))) as Partial<ShiftPolicyState> & { error?: string };
+    const result = (await response.json().catch(() => ({}))) as Partial<ShiftPolicyState> & {
+      error?: string;
+      loginAccessRule?: ShiftPolicyState["punchAccessRule"];
+      earlyInAllowed?: string;
+    };
     if (!response.ok) {
       notify(result.error || "Unable to load shift policy.");
       setLoading(false);
       return;
     }
 
-    const nextPolicy = { ...initialState, ...result };
+    const nextPolicy = {
+      ...initialState,
+      ...result,
+      punchAccessRule: String(result.punchAccessRule || result.loginAccessRule || initialState.punchAccessRule) as ShiftPolicyState["punchAccessRule"],
+      earlyPunchAllowed: String(result.earlyPunchAllowed || result.earlyInAllowed || initialState.earlyPunchAllowed),
+    };
     setDraft(nextPolicy);
     const policiesResponse = await fetch("/api/company/policies?policy_type=shift", {
       headers: { authorization: `Bearer ${token}` },
@@ -177,7 +186,10 @@ export default function NewShiftPolicyPage() {
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
         ? policiesResult.policies.map((policy) => {
-            const config = (policy.configJson || {}) as Partial<ShiftPolicyState>;
+            const config = (policy.configJson || {}) as Partial<ShiftPolicyState> & {
+              loginAccessRule?: ShiftPolicyState["punchAccessRule"];
+              earlyInAllowed?: string;
+            };
             return {
               ...initialState,
               ...config,
@@ -186,6 +198,8 @@ export default function NewShiftPolicyPage() {
               policyCode: String(config.policyCode || policy.policyCode || ""),
               effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
               nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
+              punchAccessRule: String(config.punchAccessRule || config.loginAccessRule || initialState.punchAccessRule) as ShiftPolicyState["punchAccessRule"],
+              earlyPunchAllowed: String(config.earlyPunchAllowed || config.earlyInAllowed || initialState.earlyPunchAllowed),
               status:
                 policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
@@ -270,7 +284,7 @@ export default function NewShiftPolicyPage() {
         ...draft,
         status: targetStatus,
         halfDayHours: draft.halfDayAvailable === "No" ? "00:00" : halfDayHours,
-        earlyInAllowed: draft.loginAccessRule === "any_time" ? "0" : draft.earlyInAllowed,
+        earlyPunchAllowed: draft.punchAccessRule === "any_time" ? "0" : draft.earlyPunchAllowed,
       }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string; policyId?: string };
@@ -468,8 +482,8 @@ export default function NewShiftPolicyPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Punch Access Rule">
                 <Select
-                  value={draft.loginAccessRule}
-                  onChange={(e) => update("loginAccessRule", e.target.value as ShiftPolicyState["loginAccessRule"])}
+                  value={draft.punchAccessRule}
+                  onChange={(e) => update("punchAccessRule", e.target.value as ShiftPolicyState["punchAccessRule"])}
                 >
                   <option value="any_time">Allow Punch Any Time</option>
                   <option value="shift_time_only">Allow Punch Only During Shift Time</option>
@@ -479,7 +493,7 @@ export default function NewShiftPolicyPage() {
                 label={
                   <span className="inline-flex items-center gap-2">
                     <span>Early Punch Allowed (mins)</span>
-                    {draft.loginAccessRule === "any_time" ? (
+                    {draft.punchAccessRule === "any_time" ? (
                       <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
                         Not applicable for this punch rule
                       </span>
@@ -492,9 +506,9 @@ export default function NewShiftPolicyPage() {
                 }
               >
                 <TextInput
-                  value={draft.loginAccessRule === "any_time" ? "0" : draft.earlyInAllowed}
-                  onChange={(e) => update("earlyInAllowed", e.target.value)}
-                  disabled={draft.loginAccessRule === "any_time"}
+                  value={draft.punchAccessRule === "any_time" ? "0" : draft.earlyPunchAllowed}
+                  onChange={(e) => update("earlyPunchAllowed", e.target.value)}
+                  disabled={draft.punchAccessRule === "any_time"}
                 />
               </Field>
               <Field label="Grace Period (mins)">
