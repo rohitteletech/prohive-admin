@@ -315,6 +315,44 @@ export function PolicySuccessOverlay({
   );
 }
 
+export function PolicyFormModal({
+  open,
+  title,
+  description,
+  children,
+  onClose,
+}: {
+  open: boolean;
+  title: string;
+  description: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] overflow-y-auto bg-slate-950/35 px-4 py-6 sm:px-6 sm:py-10">
+      <div className="mx-auto w-full max-w-5xl rounded-[28px] border border-slate-200 bg-white shadow-2xl">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 rounded-t-[28px] border-b border-slate-200 bg-white px-5 py-4 sm:px-6">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950 sm:text-xl">{title}</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">{description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close policy form"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 bg-white text-lg font-semibold text-slate-600 hover:bg-slate-50"
+          >
+            ×
+          </button>
+        </div>
+        <div className="space-y-4 px-5 py-5 sm:px-6 sm:py-6">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export function PolicyToast({
   message,
 }: {
