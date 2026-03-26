@@ -28,36 +28,6 @@ type CorrectionPolicyState = CorrectionPolicyBridgeState & {
   createdOn?: string;
 };
 
-function InlineStatusBadge({ text }: { text: string }) {
-  return (
-    <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
-      {text}
-    </span>
-  );
-}
-
-function sectionTitle(title: string, badgeText?: string) {
-  return (
-    <span className="flex flex-wrap items-center gap-2">
-      <span>{title}</span>
-      {badgeText ? <InlineStatusBadge text={badgeText} /> : null}
-    </span>
-  );
-}
-
-function inactiveFieldLabel(label: string, badgeText?: string) {
-  return (
-    <span className="flex flex-wrap items-center gap-2">
-      <span>{label}</span>
-      {badgeText ? <InlineStatusBadge text={badgeText} /> : null}
-    </span>
-  );
-}
-
-function getInactiveFieldClassName(disabled: boolean) {
-  return disabled ? "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-500 opacity-80" : "";
-}
-
 function DisabledFieldValue({ text = "Disabled" }: { text?: string }) {
   return (
     <div className="inline-flex min-h-[44px] w-full items-center rounded-xl border border-orange-300 bg-orange-50 px-4 py-2.5 text-[14px] font-semibold text-orange-700 shadow-sm">
@@ -462,10 +432,7 @@ export default function CorrectionRegularizationPolicyPage() {
           </PolicySection>
 
           <PolicySection
-            title={sectionTitle(
-              "Correction Request Rules",
-              correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
-            )}
+            title="Correction Request Rules"
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Attendance Correction Enabled">
@@ -478,10 +445,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 </Select>
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Missing Punch Correction Allowed",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Missing Punch Correction Allowed"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -496,10 +460,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Late Punch Regularization Allowed",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Late Punch Regularization Allowed"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -514,10 +475,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Early Go Regularization Allowed",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Early Go Regularization Allowed"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -535,17 +493,11 @@ export default function CorrectionRegularizationPolicyPage() {
           </PolicySection>
 
           <PolicySection
-            title={sectionTitle(
-              "Request Window & Limits",
-              correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
-            )}
+            title="Request Window & Limits"
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
-                label={inactiveFieldLabel(
-                  "Correction Request Window (Days)",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Correction Request Window (Days)"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -562,10 +514,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Backdated Correction Allowed",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Backdated Correction Allowed"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -580,10 +529,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Maximum Backdated Days",
-                  backdatedSettingsDisabled ? "Auto-inactive" : undefined,
-                )}
+                label="Maximum Backdated Days"
               >
                 {backdatedSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -600,10 +546,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Maximum Requests Per Month",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Maximum Requests Per Month"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -623,17 +566,11 @@ export default function CorrectionRegularizationPolicyPage() {
           </PolicySection>
 
           <PolicySection
-            title={sectionTitle(
-              "Approval Rules",
-              correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
-            )}
+            title="Approval Rules"
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
-                label={inactiveFieldLabel(
-                  "Approval Required",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Approval Required"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
@@ -648,10 +585,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 )}
               </Field>
               <Field
-                label={inactiveFieldLabel(
-                  "Approval Flow",
-                  approvalFlowDisabled ? "Not applicable" : undefined,
-                )}
+                label="Approval Flow"
               >
                 {approvalFlowDisabled ? (
                   <DisabledFieldValue />
@@ -670,17 +604,11 @@ export default function CorrectionRegularizationPolicyPage() {
           </PolicySection>
 
           <PolicySection
-            title={sectionTitle(
-              "Reason Rules",
-              correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
-            )}
+            title="Reason Rules"
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
-                label={inactiveFieldLabel(
-                  "Reason Mandatory",
-                  correctionSettingsDisabled ? "Not applicable when disabled" : undefined,
-                )}
+                label="Reason Mandatory"
               >
                 {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
