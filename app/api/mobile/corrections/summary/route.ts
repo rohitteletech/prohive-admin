@@ -54,6 +54,9 @@ export async function POST(req: NextRequest) {
     policy: {
       evaluatedOn: policyDate,
       ...correctionPolicy,
+      // Backward-compatible aliases for older Android clients.
+      requestWindowDays: correctionPolicy.maximumBackdatedDays,
+      backdatedAllowed: correctionPolicy.maximumBackdatedDays > 0,
     },
     requests: (data || []).map((row) => ({
       id: row.id,
