@@ -466,7 +466,6 @@ export default function CorrectionRegularizationPolicyPage() {
               "Correction Request Rules",
               correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
             )}
-            description="Define which attendance scenarios are eligible for correction or regularization under this policy."
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Attendance Correction Enabled">
@@ -540,7 +539,6 @@ export default function CorrectionRegularizationPolicyPage() {
               "Request Window & Limits",
               correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
             )}
-            description="Define the submission window, backdated request permission, and monthly correction request thresholds."
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
@@ -629,7 +627,6 @@ export default function CorrectionRegularizationPolicyPage() {
               "Approval Rules",
               correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
             )}
-            description="Define whether correction requests require approval and which authority should review them."
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
@@ -677,7 +674,6 @@ export default function CorrectionRegularizationPolicyPage() {
               "Reason Rules",
               correctionSettingsDisabled ? "Inactive while correction is disabled" : undefined,
             )}
-            description="Define the minimum justification requirement expected when employees raise correction or regularization requests."
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field

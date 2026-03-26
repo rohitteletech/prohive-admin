@@ -47,14 +47,14 @@ export function PolicySection({
   children,
 }: {
   title: React.ReactNode;
-  description: string;
+  description?: string;
   tone?: "white" | "slate";
   children: React.ReactNode;
 }) {
   return (
     <section className={`rounded-2xl border border-slate-300 ${tone === "slate" ? "bg-slate-50" : "bg-white"} p-4 shadow-sm sm:p-5`}>
       <h2 className="text-[15px] font-semibold text-slate-900 sm:text-base">{title}</h2>
-      <p className="mt-1 text-[13px] leading-6 text-slate-600">{description}</p>
+      {description ? <p className="mt-1 text-[13px] leading-6 text-slate-600">{description}</p> : null}
       <div className="mt-4">{children}</div>
     </section>
   );
