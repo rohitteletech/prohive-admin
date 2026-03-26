@@ -452,7 +452,7 @@ export default function CorrectionRegularizationPolicyPage() {
           </PolicySection>
 
           <PolicySection
-            title="Request Window & Limits"
+            title="Correction Limits"
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
