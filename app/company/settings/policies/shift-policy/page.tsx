@@ -423,14 +423,17 @@ export default function NewShiftPolicyPage() {
               <Field label="Shift Type">
                 <TextInput value={draft.shiftType} onChange={(e) => update("shiftType", e.target.value)} />
               </Field>
-              <Field label="Shift Structure">
-                <Select
-                  value={draft.shiftStructure}
-                  onChange={(e) => update("shiftStructure", e.target.value as ShiftPolicyState["shiftStructure"])}
-                >
-                  <option value="fixed">Fixed Shift</option>
-                  <option value="rotational">Rotational Shift</option>
-                </Select>
+              <Field
+                label={
+                  <span className="inline-flex items-center gap-2">
+                    <span>Shift Structure</span>
+                    <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">
+                      Fixed only
+                    </span>
+                  </span>
+                }
+              >
+                <TextInput value="Fixed Shift" readOnly disabled />
               </Field>
               <Field label="Shift Duration">
                 <TextInput value={shiftDuration} readOnly />
