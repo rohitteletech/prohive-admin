@@ -415,44 +415,50 @@ export default function CorrectionRegularizationPolicyPage() {
                   <option value="No">No</option>
                 </Select>
               </Field>
-              <Field label="Missing Punch Correction Allowed">
-                <Select
-                  value={draft.missingPunchCorrectionAllowed}
-                  onChange={(e) => update("missingPunchCorrectionAllowed", e.target.value as CorrectionPolicyState["missingPunchCorrectionAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
-              <Field label="Late Punch Regularization Allowed">
-                <Select
-                  value={draft.latePunchRegularizationAllowed}
-                  onChange={(e) => update("latePunchRegularizationAllowed", e.target.value as CorrectionPolicyState["latePunchRegularizationAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
-              <Field label="Early Go Regularization Allowed">
-                <Select
-                  value={draft.earlyGoRegularizationAllowed}
-                  onChange={(e) => update("earlyGoRegularizationAllowed", e.target.value as CorrectionPolicyState["earlyGoRegularizationAllowed"])}
-                  disabled={correctionSettingsDisabled}
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </Select>
-              </Field>
+              {!correctionSettingsDisabled ? (
+                <>
+                  <Field label="Missing Punch Correction Allowed">
+                    <Select
+                      value={draft.missingPunchCorrectionAllowed}
+                      onChange={(e) => update("missingPunchCorrectionAllowed", e.target.value as CorrectionPolicyState["missingPunchCorrectionAllowed"])}
+                    >
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </Select>
+                  </Field>
+                  <Field label="Late Punch Regularization Allowed">
+                    <Select
+                      value={draft.latePunchRegularizationAllowed}
+                      onChange={(e) => update("latePunchRegularizationAllowed", e.target.value as CorrectionPolicyState["latePunchRegularizationAllowed"])}
+                    >
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </Select>
+                  </Field>
+                  <Field label="Early Go Regularization Allowed">
+                    <Select
+                      value={draft.earlyGoRegularizationAllowed}
+                      onChange={(e) => update("earlyGoRegularizationAllowed", e.target.value as CorrectionPolicyState["earlyGoRegularizationAllowed"])}
+                    >
+                      <option value="Yes">Yes</option>
+                      <option value="No">No</option>
+                    </Select>
+                  </Field>
+                </>
+              ) : null}
             </div>
-            <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Attendance correction is disabled, so the request, approval, and reason settings below are inactive until you enable it again."
-                : "When enabled, the request window, approval flow, and reason rules below control employee correction requests."}
-            </p>
+            {correctionSettingsDisabled ? (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                Attendance correction is disabled. All request eligibility, limits, approval, and reason settings stay hidden until you enable it again.
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                When enabled, the request window, approval flow, and reason rules below control employee correction requests.
+              </p>
+            )}
           </PolicySection>
 
+          {!correctionSettingsDisabled ? (
           <PolicySection
             title="Request Window & Limits"
             description="Define the submission window, backdated request permission, and monthly correction request thresholds."
@@ -506,14 +512,14 @@ export default function CorrectionRegularizationPolicyPage() {
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Attendance correction is disabled, so request window and backdated controls are inactive."
-                : draft.backdatedCorrectionAllowed === "Yes"
+              {draft.backdatedCorrectionAllowed === "Yes"
                 ? "Employees can raise backdated corrections only within the configured maximum days."
                 : "Backdated correction is disabled, so maximum backdated days is inactive."}
             </p>
           </PolicySection>
+          ) : null}
 
+          {!correctionSettingsDisabled ? (
           <PolicySection
             title="Approval Rules"
             description="Define whether correction requests require approval and which authority should review them."
@@ -523,7 +529,6 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.approvalRequired}
                   onChange={(e) => update("approvalRequired", e.target.value as CorrectionPolicyState["approvalRequired"])}
-                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -542,14 +547,14 @@ export default function CorrectionRegularizationPolicyPage() {
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Attendance correction is disabled, so approval rules are inactive."
-                : draft.approvalRequired === "Yes"
+              {draft.approvalRequired === "Yes"
                 ? "Requests will follow the selected approval workflow."
                 : "Requests will auto-approve when approval is not required."}
             </p>
           </PolicySection>
+          ) : null}
 
+          {!correctionSettingsDisabled ? (
           <PolicySection
             title="Reason Rules"
             description="Define the minimum justification requirement expected when employees raise correction or regularization requests."
@@ -559,7 +564,6 @@ export default function CorrectionRegularizationPolicyPage() {
                 <Select
                   value={draft.reasonMandatory}
                   onChange={(e) => update("reasonMandatory", e.target.value as CorrectionPolicyState["reasonMandatory"])}
-                  disabled={correctionSettingsDisabled}
                 >
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
@@ -567,9 +571,7 @@ export default function CorrectionRegularizationPolicyPage() {
               </Field>
             </div>
             <p className="mt-2 text-xs text-slate-500">
-              {correctionSettingsDisabled
-                ? "Attendance correction is disabled, so reason validation is inactive."
-                : "Reason validation is enforced when employees submit eligible correction requests."}
+              Reason validation is enforced when employees submit eligible correction requests.
             </p>
 
             <div className="mt-5 flex flex-wrap gap-2">
@@ -633,6 +635,68 @@ export default function CorrectionRegularizationPolicyPage() {
               </button>
             </div>
           </PolicySection>
+          ) : (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {isCreatingNew ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void saveCorrectionPolicy("Active")}
+                    disabled={saving}
+                    className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {saving ? "Processing..." : "Enforce Policy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveCorrectionPolicy("Draft")}
+                    disabled={saving}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    {saving ? "Processing..." : "Save as Draft"}
+                  </button>
+                </>
+              ) : draft.status === "Draft" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void saveCorrectionPolicy("Active")}
+                    disabled={saving}
+                    className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                  >
+                    {saving ? "Processing..." : "Enforce Policy"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void saveExistingCorrectionPolicy()}
+                    disabled={saving}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  >
+                    {saving ? "Processing..." : "Save"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void saveExistingCorrectionPolicy()}
+                  disabled={saving}
+                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+                >
+                  {saving ? "Processing..." : "Save"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  notify("Correction policy form closed.");
+                }}
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
         </PolicyFormModal>
       ) : null}
     </PolicyPage>
