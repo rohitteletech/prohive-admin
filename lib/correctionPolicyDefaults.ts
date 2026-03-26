@@ -9,7 +9,6 @@ export const DEFAULT_CORRECTION_POLICY_NAME = "Standard Correction Policy";
 export const DEFAULT_CORRECTION_POLICY_CODE_PREFIX = "COR";
 
 export const CORRECTION_POLICY_LIMITS = {
-  correctionRequestWindow: { min: 0, max: 31 },
   maximumBackdatedDays: { min: 0, max: 31 },
   maximumRequestsPerMonth: { min: 0, max: 31 },
 } as const;
@@ -19,9 +18,7 @@ export const DEFAULT_CORRECTION_POLICY_BEHAVIOR = {
   missingPunchCorrectionAllowed: "Yes",
   latePunchRegularizationAllowed: "Yes",
   earlyGoRegularizationAllowed: "Yes",
-  correctionRequestWindow: "2",
-  backdatedCorrectionAllowed: "No",
-  maximumBackdatedDays: "0",
+  maximumBackdatedDays: "2",
   approvalRequired: "Yes",
   approvalFlow: "Manager + HR Approval",
   maximumRequestsPerMonth: "3",
@@ -31,8 +28,6 @@ export const DEFAULT_CORRECTION_POLICY_BEHAVIOR = {
   missingPunchCorrectionAllowed: CorrectionPolicyYesNo;
   latePunchRegularizationAllowed: CorrectionPolicyYesNo;
   earlyGoRegularizationAllowed: CorrectionPolicyYesNo;
-  correctionRequestWindow: string;
-  backdatedCorrectionAllowed: CorrectionPolicyYesNo;
   maximumBackdatedDays: string;
   approvalRequired: CorrectionPolicyYesNo;
   approvalFlow: CorrectionPolicyApprovalFlow;
@@ -51,8 +46,6 @@ export type CorrectionPolicyStoredConfig = {
   missingPunchCorrectionAllowed: CorrectionPolicyYesNo;
   latePunchRegularizationAllowed: CorrectionPolicyYesNo;
   earlyGoRegularizationAllowed: CorrectionPolicyYesNo;
-  correctionRequestWindow: string;
-  backdatedCorrectionAllowed: CorrectionPolicyYesNo;
   maximumBackdatedDays: string;
   approvalRequired: CorrectionPolicyYesNo;
   approvalFlow: CorrectionPolicyApprovalFlow;
@@ -155,24 +148,25 @@ export function normalizeCorrectionPolicyConfig(
 ) {
   const defaults = createDefaultCorrectionPolicyConfig(overrides);
   const config = (rawConfig || {}) as Record<string, unknown>;
-  const correctionRequestWindow = clampWholeNumberString(
-    config.correctionRequestWindow,
-    defaults.correctionRequestWindow,
-    CORRECTION_POLICY_LIMITS.correctionRequestWindow.min,
-    CORRECTION_POLICY_LIMITS.correctionRequestWindow.max,
-  );
-  const backdatedCorrectionAllowed =
-    String(config.backdatedCorrectionAllowed ?? "").trim() === "Yes" ? "Yes" : defaults.backdatedCorrectionAllowed;
   const maximumBackdatedDaysRaw = clampWholeNumberString(
     config.maximumBackdatedDays,
     defaults.maximumBackdatedDays,
     CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min,
     CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max,
   );
+  const legacyCorrectionRequestWindow = clampWholeNumberString(
+    config.correctionRequestWindow,
+    defaults.maximumBackdatedDays,
+    CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min,
+    CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max,
+  );
+  const legacyBackdatedAllowed = String(config.backdatedCorrectionAllowed ?? "").trim() === "Yes";
   const maximumBackdatedDays =
-    backdatedCorrectionAllowed === "Yes"
-      ? String(Math.min(Number(correctionRequestWindow), Number(maximumBackdatedDaysRaw)))
-      : "0";
+    config.maximumBackdatedDays != null
+      ? maximumBackdatedDaysRaw
+      : legacyBackdatedAllowed
+        ? String(Math.min(Number(legacyCorrectionRequestWindow), Number(maximumBackdatedDaysRaw)))
+        : "0";
 
   return {
     policyName: text(config.policyName, defaults.policyName),
@@ -194,8 +188,6 @@ export function normalizeCorrectionPolicyConfig(
       config.earlyGoRegularizationAllowed,
       defaults.earlyGoRegularizationAllowed,
     ),
-    correctionRequestWindow,
-    backdatedCorrectionAllowed,
     maximumBackdatedDays,
     approvalRequired: normalizeYesNo(config.approvalRequired, defaults.approvalRequired),
     approvalFlow: normalizeApprovalFlow(config.approvalFlow, defaults.approvalFlow),

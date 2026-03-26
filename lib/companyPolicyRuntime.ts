@@ -269,8 +269,6 @@ export function resolveCorrectionPolicyRuntime(policy: PolicyDefinition | null) 
     missingPunchCorrectionAllowed: config.missingPunchCorrectionAllowed === "Yes",
     latePunchRegularizationAllowed: config.latePunchRegularizationAllowed === "Yes",
     earlyGoRegularizationAllowed: config.earlyGoRegularizationAllowed === "Yes",
-    correctionRequestWindow: wholeNumber(config.correctionRequestWindow, 2),
-    backdatedCorrectionAllowed: config.backdatedCorrectionAllowed === "Yes",
     maximumBackdatedDays: wholeNumber(config.maximumBackdatedDays, 0),
     approvalRequired: config.approvalRequired === "Yes",
     approvalFlow: config.approvalFlow,

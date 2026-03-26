@@ -46,8 +46,6 @@ function normalizeCorrectionDraftForSave(current: CorrectionPolicyState): Correc
     missingPunchCorrectionAllowed: "No",
     latePunchRegularizationAllowed: "No",
     earlyGoRegularizationAllowed: "No",
-    correctionRequestWindow: "0",
-    backdatedCorrectionAllowed: "No",
     maximumBackdatedDays: "0",
     approvalRequired: "No",
     maximumRequestsPerMonth: "0",
@@ -96,51 +94,12 @@ export default function CorrectionRegularizationPolicyPage() {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const correctionSettingsDisabled = draft.attendanceCorrectionEnabled === "No";
-  const backdatedSettingsDisabled = correctionSettingsDisabled || draft.backdatedCorrectionAllowed === "No";
   const approvalFlowDisabled = correctionSettingsDisabled || draft.approvalRequired === "No";
   const defaultPolicyHelperText =
     "Default Company Policy applies only when the policy is enforced as active. Draft saves keep this as No until activation.";
 
   function update<K extends keyof CorrectionPolicyState>(key: K, value: CorrectionPolicyState[K]) {
-    setDraft((current) => {
-      const next = { ...current, [key]: value };
-
-      if (key === "backdatedCorrectionAllowed") {
-        if (value === "No") {
-          next.maximumBackdatedDays = "0";
-        } else if (current.maximumBackdatedDays === "0") {
-          next.maximumBackdatedDays = current.correctionRequestWindow || initialState.correctionRequestWindow;
-        }
-      }
-
-      if (key === "correctionRequestWindow") {
-        const nextWindow = Number(value);
-        const currentBackdatedDays = Number(current.maximumBackdatedDays);
-        if (
-          current.backdatedCorrectionAllowed === "Yes" &&
-          Number.isFinite(nextWindow) &&
-          Number.isFinite(currentBackdatedDays) &&
-          currentBackdatedDays > nextWindow
-        ) {
-          next.maximumBackdatedDays = String(Math.max(0, Math.trunc(nextWindow)));
-        }
-      }
-
-      if (key === "maximumBackdatedDays") {
-        const nextBackdatedDays = Number(value);
-        const currentWindow = Number(current.correctionRequestWindow);
-        if (
-          current.backdatedCorrectionAllowed === "Yes" &&
-          Number.isFinite(nextBackdatedDays) &&
-          Number.isFinite(currentWindow) &&
-          nextBackdatedDays > currentWindow
-        ) {
-          next.maximumBackdatedDays = String(Math.max(0, Math.trunc(currentWindow)));
-        }
-      }
-
-      return next;
-    });
+    setDraft((current) => ({ ...current, [key]: value }));
   }
 
   function notify(message: string) {
@@ -497,41 +456,9 @@ export default function CorrectionRegularizationPolicyPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field
-                label="Correction Request Window (Days)"
-              >
-                {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
-                ) : (
-                  <TextInput
-                    type="number"
-                    min={CORRECTION_POLICY_LIMITS.correctionRequestWindow.min}
-                    max={CORRECTION_POLICY_LIMITS.correctionRequestWindow.max}
-                    step="1"
-                    inputMode="numeric"
-                    value={draft.correctionRequestWindow}
-                    onChange={(e) => update("correctionRequestWindow", e.target.value)}
-                  />
-                )}
-              </Field>
-              <Field
-                label="Backdated Correction Allowed"
-              >
-                {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
-                ) : (
-                  <Select
-                    value={draft.backdatedCorrectionAllowed}
-                    onChange={(e) => update("backdatedCorrectionAllowed", e.target.value as CorrectionPolicyState["backdatedCorrectionAllowed"])}
-                  >
-                    <option value="Yes">Yes</option>
-                    <option value="No">No</option>
-                  </Select>
-                )}
-              </Field>
-              <Field
                 label="Maximum Backdated Days"
               >
-                {backdatedSettingsDisabled ? (
+                {correctionSettingsDisabled ? (
                   <DisabledFieldValue />
                 ) : (
                   <TextInput

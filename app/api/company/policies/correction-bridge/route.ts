@@ -135,9 +135,6 @@ export async function PUT(req: NextRequest) {
   const earlyGoRegularizationAllowed = correctionIsEnabled
     ? normalizeYesNo(body.earlyGoRegularizationAllowed, existingConfig.earlyGoRegularizationAllowed)
     : "No";
-  const backdatedCorrectionAllowed = correctionIsEnabled
-    ? normalizeYesNo(body.backdatedCorrectionAllowed, existingConfig.backdatedCorrectionAllowed)
-    : "No";
   const approvalRequired = correctionIsEnabled
     ? normalizeYesNo(body.approvalRequired, existingConfig.approvalRequired)
     : "No";
@@ -161,21 +158,8 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
   }
 
-  const correctionRequestWindow = parseWholeNumberInRange(
-    correctionIsEnabled ? body.correctionRequestWindow ?? existingConfig.correctionRequestWindow : "0",
-    CORRECTION_POLICY_LIMITS.correctionRequestWindow.min,
-    CORRECTION_POLICY_LIMITS.correctionRequestWindow.max,
-  );
-  if (correctionRequestWindow == null) {
-    return NextResponse.json({
-      error: `Correction Request Window must be a whole number between ${CORRECTION_POLICY_LIMITS.correctionRequestWindow.min} and ${CORRECTION_POLICY_LIMITS.correctionRequestWindow.max}.`,
-    }, { status: 400 });
-  }
-
   const maximumBackdatedDays = parseWholeNumberInRange(
-    backdatedCorrectionAllowed === "Yes"
-      ? body.maximumBackdatedDays ?? existingConfig.maximumBackdatedDays
-      : "0",
+    correctionIsEnabled ? body.maximumBackdatedDays ?? existingConfig.maximumBackdatedDays : "0",
     CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min,
     CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max,
   );
@@ -184,12 +168,6 @@ export async function PUT(req: NextRequest) {
       error: `Maximum Backdated Days must be a whole number between ${CORRECTION_POLICY_LIMITS.maximumBackdatedDays.min} and ${CORRECTION_POLICY_LIMITS.maximumBackdatedDays.max}.`,
     }, { status: 400 });
   }
-  if (backdatedCorrectionAllowed === "Yes" && maximumBackdatedDays > correctionRequestWindow) {
-    return NextResponse.json({
-      error: "Maximum Backdated Days cannot be greater than Correction Request Window.",
-    }, { status: 400 });
-  }
-
   const maximumRequestsPerMonth = parseWholeNumberInRange(
     correctionIsEnabled ? body.maximumRequestsPerMonth ?? existingConfig.maximumRequestsPerMonth : "0",
     CORRECTION_POLICY_LIMITS.maximumRequestsPerMonth.min,
@@ -212,9 +190,7 @@ export async function PUT(req: NextRequest) {
     missingPunchCorrectionAllowed,
     latePunchRegularizationAllowed,
     earlyGoRegularizationAllowed,
-    correctionRequestWindow: String(correctionRequestWindow),
-    backdatedCorrectionAllowed,
-    maximumBackdatedDays: backdatedCorrectionAllowed === "Yes" ? String(maximumBackdatedDays) : "0",
+    maximumBackdatedDays: String(maximumBackdatedDays),
     approvalRequired,
     approvalFlow: body.approvalFlow ?? existingConfig.approvalFlow,
     maximumRequestsPerMonth: String(maximumRequestsPerMonth),

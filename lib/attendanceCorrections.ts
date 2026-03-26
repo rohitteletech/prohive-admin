@@ -66,25 +66,11 @@ export function validateCorrectionWindow(correctionDateIso: string) {
 
 export function validateCorrectionWindowWithPolicy(params: {
   correctionDateIso: string;
-  requestWindowDays: number;
-  backdatedAllowed: boolean;
   maximumBackdatedDays: number;
 }) {
   const todayIso = todayISOInIndia();
   if (params.correctionDateIso > todayIso) return "Correction date cannot be in the future.";
-  if (!params.backdatedAllowed && params.correctionDateIso < todayIso) {
-    return "Backdated correction is not allowed by policy.";
-  }
-
-  const allowedDays = Math.max(
-    0,
-    Math.min(
-      31,
-      params.backdatedAllowed
-        ? Math.min(params.requestWindowDays || 0, params.maximumBackdatedDays || 0)
-        : 0,
-    ),
-  );
+  const allowedDays = Math.max(0, Math.min(31, params.maximumBackdatedDays || 0));
   const minIso = shiftIsoDate(todayIso, -allowedDays);
   if (!minIso) return "Correction window validation failed.";
   if (params.correctionDateIso < minIso) {

@@ -84,8 +84,6 @@ export async function POST(req: NextRequest) {
 
   const windowError = validateCorrectionWindowWithPolicy({
     correctionDateIso: correctionDate,
-    requestWindowDays: correctionPolicy.correctionRequestWindow,
-    backdatedAllowed: correctionPolicy.backdatedCorrectionAllowed,
     maximumBackdatedDays: correctionPolicy.maximumBackdatedDays,
   });
   if (windowError) return NextResponse.json({ error: windowError }, { status: 400 });
