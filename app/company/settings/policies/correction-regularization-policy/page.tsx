@@ -355,7 +355,11 @@ export default function CorrectionRegularizationPolicyPage() {
         <PolicyFormModal
           open={showForm}
           title={isCreatingNew ? "Create New Policy" : "Edit Policy"}
-          description="Update the correction policy in a focused popup so the form is immediately visible."
+          description={
+            isCreatingNew
+              ? "Enter the details below to create a new policy."
+              : "Update the policy details below."
+          }
           onClose={() => {
             setShowForm(false);
             notify("Correction policy form closed.");
