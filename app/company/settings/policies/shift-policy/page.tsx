@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import {
   Field,
+  PolicyFormModal,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
@@ -209,6 +210,17 @@ export default function NewShiftPolicyPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (!showForm) return undefined;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showForm]);
+
   function startNewPolicy() {
     setDraft(createNewPolicyDraft());
     setShowForm(true);
@@ -338,7 +350,19 @@ export default function NewShiftPolicyPage() {
       {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading shift policy...</div> : null}
 
       {!loading && showForm ? (
-        <>
+        <PolicyFormModal
+          open={showForm}
+          title={isCreatingNew ? "Create New Policy" : "Edit Policy"}
+          description={
+            isCreatingNew
+              ? "Enter the details below to create a new policy."
+              : "Update the policy details below."
+          }
+          onClose={() => {
+            setShowForm(false);
+            notify("Shift policy form closed.");
+          }}
+        >
           {isCreatingNew ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
               New shift policy draft. Fill the form and save to create a separate policy.
@@ -542,7 +566,7 @@ export default function NewShiftPolicyPage() {
               </button>
             </div>
           </PolicySection>
-        </>
+        </PolicyFormModal>
       ) : null}
     </PolicyPage>
   );

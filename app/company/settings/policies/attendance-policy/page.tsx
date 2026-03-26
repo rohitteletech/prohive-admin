@@ -5,6 +5,7 @@ import { createAttendancePolicyGovernanceDates, DEFAULT_ATTENDANCE_POLICY_BEHAVI
 import { formatDisplayDateTime } from "@/lib/dateTime";
 import {
   Field,
+  PolicyFormModal,
   PolicyPage,
   PolicyMessageDialog,
   PolicyRegisterSection,
@@ -274,6 +275,17 @@ export default function NewAttendancePolicyPage() {
     return () => window.clearTimeout(timeoutId);
   }, [loadAttendanceBridge]);
 
+  useEffect(() => {
+    if (!showForm) return undefined;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showForm]);
+
   function openNewForm() {
     setDraft(createNewPolicyDraft());
     setShowForm(true);
@@ -410,7 +422,19 @@ export default function NewAttendancePolicyPage() {
       {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading attendance policy...</div> : null}
 
       {!loading && showForm ? (
-        <>
+        <PolicyFormModal
+          open={showForm}
+          title={isCreatingNew ? "Create New Policy" : "Edit Policy"}
+          description={
+            isCreatingNew
+              ? "Enter the details below to create a new policy."
+              : "Update the policy details below."
+          }
+          onClose={() => {
+            setShowForm(false);
+            notify("Attendance policy form closed.");
+          }}
+        >
           {isCreatingNew ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
               New attendance policy draft. Fill the form and save to create a separate policy.
@@ -676,7 +700,7 @@ export default function NewAttendancePolicyPage() {
               </button>
             </div>
           </PolicySection>
-        </>
+        </PolicyFormModal>
       ) : null}
     </PolicyPage>
   );

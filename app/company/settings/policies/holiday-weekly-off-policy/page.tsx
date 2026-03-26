@@ -3,6 +3,7 @@
 import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
+  PolicyFormModal,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
@@ -160,6 +161,17 @@ export default function HolidayWeeklyOffPolicyPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    if (!showForm) return undefined;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [showForm]);
+
   function openNewForm() {
     setDraft(createNewPolicyDraft());
     setShowForm(true);
@@ -288,7 +300,19 @@ export default function HolidayWeeklyOffPolicyPage() {
       {loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">Loading holiday policy...</div> : null}
 
       {!loading && showForm ? (
-        <>
+        <PolicyFormModal
+          open={showForm}
+          title={isCreatingNew ? "Create New Policy" : "Edit Policy"}
+          description={
+            isCreatingNew
+              ? "Enter the details below to create a new policy."
+              : "Update the policy details below."
+          }
+          onClose={() => {
+            setShowForm(false);
+            notify("Holiday policy form closed.");
+          }}
+        >
           {isCreatingNew ? (
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
               New holiday / weekly off policy draft. Fill the form and save to create a separate policy.
@@ -471,7 +495,7 @@ export default function HolidayWeeklyOffPolicyPage() {
               </button>
             </div>
           </PolicySection>
-        </>
+        </PolicyFormModal>
       ) : null}
     </PolicyPage>
   );
