@@ -52,12 +52,16 @@ type Payload = {
   };
 };
 
+function formatDateInput(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
 const initialForm = {
   policyType: "shift" as PolicyType,
   policyId: "",
   assignmentLevel: "department" as AssignmentLevel,
   targetId: "",
-  effectiveFrom: "2026-03-13",
+  effectiveFrom: formatDateInput(new Date()),
   effectiveTo: "",
 };
 
