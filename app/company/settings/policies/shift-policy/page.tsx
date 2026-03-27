@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useMemo, useState } from "react";
 import {
   Field,
   PolicyFormModal,
+  PolicyDisabledFieldValue,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
@@ -458,7 +459,7 @@ export default function NewShiftPolicyPage() {
                   </span>
                 }
               >
-                <TextInput value="Fixed Shift" readOnly disabled />
+                <PolicyDisabledFieldValue text="Fixed Shift" />
               </Field>
               <Field label="Shift Duration">
                 <TextInput value={shiftDuration} readOnly />
@@ -494,11 +495,7 @@ export default function NewShiftPolicyPage() {
                   </span>
                 }
               >
-                <TextInput
-                  value={draft.halfDayAvailable === "No" ? "00:00" : halfDayHours}
-                  readOnly
-                  disabled
-                />
+                <PolicyDisabledFieldValue text={draft.halfDayAvailable === "No" ? "00:00" : halfDayHours} />
               </Field>
             </div>
           </PolicySection>
@@ -533,11 +530,14 @@ export default function NewShiftPolicyPage() {
                   </span>
                 }
               >
-                <TextInput
-                  value={draft.punchAccessRule === "any_time" ? "0" : draft.earlyPunchAllowed}
-                  onChange={(e) => update("earlyPunchAllowed", e.target.value)}
-                  disabled={draft.punchAccessRule === "any_time"}
-                />
+                {draft.punchAccessRule === "any_time" ? (
+                  <PolicyDisabledFieldValue text="0" />
+                ) : (
+                  <TextInput
+                    value={draft.earlyPunchAllowed}
+                    onChange={(e) => update("earlyPunchAllowed", e.target.value)}
+                  />
+                )}
               </Field>
               <Field label="Grace Period (mins)">
                 <TextInput value={draft.gracePeriod} onChange={(e) => update("gracePeriod", e.target.value)} />

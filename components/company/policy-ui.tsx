@@ -91,6 +91,14 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   return <textarea {...props} className={`rounded-2xl border border-slate-300 bg-white px-3.5 py-3 text-[14px] leading-6 text-slate-700 outline-none ${props.className || ""}`.trim()} />;
 }
 
+export function PolicyDisabledFieldValue({ text = "Disabled" }: { text?: string }) {
+  return (
+    <div className="inline-flex min-h-[44px] w-full items-center rounded-xl border border-orange-300 bg-orange-50 px-4 py-2.5 text-[14px] font-semibold text-orange-700 shadow-sm">
+      {text}
+    </div>
+  );
+}
+
 export function InfoTile({ label, value, tone = "slate" }: { label: string; value: string; tone?: "slate" | "sky" | "emerald" }) {
   const toneClass =
     tone === "sky"

@@ -6,6 +6,7 @@ import { formatDisplayDateTime } from "@/lib/dateTime";
 import {
   Field,
   PolicyFormModal,
+  PolicyDisabledFieldValue,
   PolicyPage,
   PolicyMessageDialog,
   PolicyRegisterSection,
@@ -542,30 +543,39 @@ export default function NewAttendancePolicyPage() {
             </div>
             <div className={`grid gap-4 md:grid-cols-2 ${draft.latePunchRule === "flag_only" ? "opacity-60" : ""}`}>
               <Field label="Late Arrival Up To (mins)">
-                <TextInput
-                  value={draft.latePunchUpToMinutes}
-                  onChange={(e) => updateMinutesField("latePunchUpToMinutes", e.target.value)}
-                  inputMode="numeric"
-                  disabled={draft.latePunchRule === "flag_only"}
-                />
+                {draft.latePunchRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.latePunchUpToMinutes}
+                    onChange={(e) => updateMinutesField("latePunchUpToMinutes", e.target.value)}
+                    inputMode="numeric"
+                  />
+                )}
               </Field>
               <Field label="Repeat Late Count In Month">
-                <TextInput
-                  value={draft.repeatLateDaysInMonth}
-                  onChange={(e) => updateCountField("repeatLateDaysInMonth", e.target.value)}
-                  inputMode="numeric"
-                  disabled={draft.latePunchRule === "flag_only"}
-                />
+                {draft.latePunchRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.repeatLateDaysInMonth}
+                    onChange={(e) => updateCountField("repeatLateDaysInMonth", e.target.value)}
+                    inputMode="numeric"
+                  />
+                )}
               </Field>
               <Field label="Attendance Value After Repeat Late">
-                <Select
-                  value={draft.penaltyForRepeatLate}
-                  onChange={(e) => update("penaltyForRepeatLate", e.target.value as AttendancePolicyState["penaltyForRepeatLate"])}
-                  disabled={draft.latePunchRule === "flag_only"}
-                >
-                  <option value="0.5">0.5</option>
-                  <option value="0">0</option>
-                </Select>
+                {draft.latePunchRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.penaltyForRepeatLate}
+                    onChange={(e) => update("penaltyForRepeatLate", e.target.value as AttendancePolicyState["penaltyForRepeatLate"])}
+                  >
+                    <option value="0.5">0.5</option>
+                    <option value="0">0</option>
+                  </Select>
+                )}
               </Field>
               <Field label="Late Arrival Above (mins)">
                 <TextInput
@@ -574,14 +584,17 @@ export default function NewAttendancePolicyPage() {
                 />
               </Field>
               <Field label="Attendance Value After Late Above Limit">
-                <Select
-                  value={draft.penaltyForLateAboveLimit}
-                  onChange={(e) => update("penaltyForLateAboveLimit", e.target.value as AttendancePolicyState["penaltyForLateAboveLimit"])}
-                  disabled={draft.latePunchRule === "flag_only"}
-                >
-                  <option value="0.5">0.5</option>
-                  <option value="0">0</option>
-                </Select>
+                {draft.latePunchRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.penaltyForLateAboveLimit}
+                    onChange={(e) => update("penaltyForLateAboveLimit", e.target.value as AttendancePolicyState["penaltyForLateAboveLimit"])}
+                  >
+                    <option value="0.5">0.5</option>
+                    <option value="0">0</option>
+                  </Select>
+                )}
               </Field>
             </div>
 
@@ -596,30 +609,39 @@ export default function NewAttendancePolicyPage() {
 
             <div className={`mt-4 grid gap-4 border-t border-slate-200 pt-5 md:grid-cols-2 ${draft.earlyGoRule === "flag_only" ? "opacity-60" : ""}`}>
               <Field label="Early Go Up To (mins)">
-                <TextInput
-                  value={draft.earlyGoUpToMinutes}
-                  onChange={(e) => updateMinutesField("earlyGoUpToMinutes", e.target.value)}
-                  inputMode="numeric"
-                  disabled={draft.earlyGoRule === "flag_only"}
-                />
+                {draft.earlyGoRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.earlyGoUpToMinutes}
+                    onChange={(e) => updateMinutesField("earlyGoUpToMinutes", e.target.value)}
+                    inputMode="numeric"
+                  />
+                )}
               </Field>
               <Field label="Repeat Early Go Count In Month">
-                <TextInput
-                  value={draft.repeatEarlyGoDaysInMonth}
-                  onChange={(e) => updateCountField("repeatEarlyGoDaysInMonth", e.target.value)}
-                  inputMode="numeric"
-                  disabled={draft.earlyGoRule === "flag_only"}
-                />
+                {draft.earlyGoRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.repeatEarlyGoDaysInMonth}
+                    onChange={(e) => updateCountField("repeatEarlyGoDaysInMonth", e.target.value)}
+                    inputMode="numeric"
+                  />
+                )}
               </Field>
               <Field label="Attendance Value After Repeat Early Go">
-                <Select
-                  value={draft.penaltyForRepeatEarlyGo}
-                  onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value as AttendancePolicyState["penaltyForRepeatEarlyGo"])}
-                  disabled={draft.earlyGoRule === "flag_only"}
-                >
-                  <option value="0.5">0.5</option>
-                  <option value="0">0</option>
-                </Select>
+                {draft.earlyGoRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.penaltyForRepeatEarlyGo}
+                    onChange={(e) => update("penaltyForRepeatEarlyGo", e.target.value as AttendancePolicyState["penaltyForRepeatEarlyGo"])}
+                  >
+                    <option value="0.5">0.5</option>
+                    <option value="0">0</option>
+                  </Select>
+                )}
               </Field>
               <Field label="Early Go Above (mins)">
                 <TextInput
@@ -628,14 +650,17 @@ export default function NewAttendancePolicyPage() {
                 />
               </Field>
               <Field label="Attendance Value After Early Go Above Limit">
-                <Select
-                  value={draft.penaltyForEarlyGoAboveLimit}
-                  onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value as AttendancePolicyState["penaltyForEarlyGoAboveLimit"])}
-                  disabled={draft.earlyGoRule === "flag_only"}
-                >
-                  <option value="0.5">0.5</option>
-                  <option value="0">0</option>
-                </Select>
+                {draft.earlyGoRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.penaltyForEarlyGoAboveLimit}
+                    onChange={(e) => update("penaltyForEarlyGoAboveLimit", e.target.value as AttendancePolicyState["penaltyForEarlyGoAboveLimit"])}
+                  >
+                    <option value="0.5">0.5</option>
+                    <option value="0">0</option>
+                  </Select>
+                )}
               </Field>
             </div>
 

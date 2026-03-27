@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
   PolicyFormModal,
+  PolicyDisabledFieldValue,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
@@ -397,7 +398,7 @@ export default function HolidayWeeklyOffPolicyPage() {
           >
             <div className="grid gap-4 md:grid-cols-2">
               <Field label="Holiday Source">
-                <TextInput value="Company Holidays" readOnly />
+                <PolicyDisabledFieldValue text="Company Holidays" />
               </Field>
               <Field label="Weekly Off Pattern">
                 <Select
@@ -436,30 +437,36 @@ export default function HolidayWeeklyOffPolicyPage() {
                 </Select>
               </Field>
               <Field label="If Punched On Holiday">
-                <Select
-                  value={draft.holidayWorkedStatus}
-                  onChange={(e) => update("holidayWorkedStatus", e.target.value as HolidayPolicyState["holidayWorkedStatus"])}
-                  disabled={!holidayPunchConfigActive}
-                >
-                  <option value="Record Only">Record Only</option>
-                  <option value="OT Only">OT Only</option>
-                  <option value="Grant Comp Off">Grant Comp Off</option>
-                  <option value="Present + OT">Present + OT</option>
-                  <option value="Manual Review">Manual Review</option>
-                </Select>
+                {!holidayPunchConfigActive ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.holidayWorkedStatus}
+                    onChange={(e) => update("holidayWorkedStatus", e.target.value as HolidayPolicyState["holidayWorkedStatus"])}
+                  >
+                    <option value="Record Only">Record Only</option>
+                    <option value="OT Only">OT Only</option>
+                    <option value="Grant Comp Off">Grant Comp Off</option>
+                    <option value="Present + OT">Present + OT</option>
+                    <option value="Manual Review">Manual Review</option>
+                  </Select>
+                )}
               </Field>
               <Field label="If Punched On Weekly Off">
-                <Select
-                  value={draft.weeklyOffWorkedStatus}
-                  onChange={(e) => update("weeklyOffWorkedStatus", e.target.value as HolidayPolicyState["weeklyOffWorkedStatus"])}
-                  disabled={!weeklyOffPunchConfigActive}
-                >
-                  <option value="Record Only">Record Only</option>
-                  <option value="OT Only">OT Only</option>
-                  <option value="Grant Comp Off">Grant Comp Off</option>
-                  <option value="Present + OT">Present + OT</option>
-                  <option value="Manual Review">Manual Review</option>
-                </Select>
+                {!weeklyOffPunchConfigActive ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <Select
+                    value={draft.weeklyOffWorkedStatus}
+                    onChange={(e) => update("weeklyOffWorkedStatus", e.target.value as HolidayPolicyState["weeklyOffWorkedStatus"])}
+                  >
+                    <option value="Record Only">Record Only</option>
+                    <option value="OT Only">OT Only</option>
+                    <option value="Grant Comp Off">Grant Comp Off</option>
+                    <option value="Present + OT">Present + OT</option>
+                    <option value="Manual Review">Manual Review</option>
+                  </Select>
+                )}
               </Field>
               <Field
                 label="Comp Off Validity (Days)"
@@ -469,15 +476,18 @@ export default function HolidayWeeklyOffPolicyPage() {
                     : "Inactive until punch is allowed and Grant Comp Off is selected above."
                 }
               >
-                <TextInput
-                  type="text"
-                  value={compOffSelected ? draft.compOffValidityDays : "0"}
-                  onChange={(e) => update("compOffValidityDays", normalizeDayCountInput(e.target.value))}
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={3}
-                  disabled={!compOffSelected}
-                />
+                {!compOffSelected ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    type="text"
+                    value={draft.compOffValidityDays}
+                    onChange={(e) => update("compOffValidityDays", normalizeDayCountInput(e.target.value))}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={3}
+                  />
+                )}
               </Field>
             </div>
 

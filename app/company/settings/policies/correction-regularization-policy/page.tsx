@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
   PolicyFormModal,
+  PolicyDisabledFieldValue,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
@@ -27,14 +28,6 @@ type CorrectionPolicyState = CorrectionPolicyBridgeState & {
   createdBy?: string;
   createdOn?: string;
 };
-
-function DisabledFieldValue({ text = "Disabled" }: { text?: string }) {
-  return (
-    <div className="inline-flex min-h-[44px] w-full items-center rounded-xl border border-orange-300 bg-orange-50 px-4 py-2.5 text-[14px] font-semibold text-orange-700 shadow-sm">
-      {text}
-    </div>
-  );
-}
 
 function normalizeCorrectionDraftForSave(current: CorrectionPolicyState): CorrectionPolicyState {
   if (current.attendanceCorrectionEnabled !== "No") {
@@ -407,7 +400,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Missing Punch Correction Allowed"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <Select
                     value={draft.missingPunchCorrectionAllowed}
@@ -422,7 +415,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Late Punch Regularization Allowed"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <Select
                     value={draft.latePunchRegularizationAllowed}
@@ -437,7 +430,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Early Go Regularization Allowed"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <Select
                     value={draft.earlyGoRegularizationAllowed}
@@ -459,7 +452,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Maximum Backdated Days"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <TextInput
                     type="number"
@@ -476,7 +469,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Maximum Requests Per Month"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <TextInput
                     type="number"
@@ -500,7 +493,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Approval Required"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <Select
                     value={draft.approvalRequired}
@@ -515,7 +508,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Approval Flow"
               >
                 {approvalFlowDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <Select
                     value={draft.approvalFlow}
@@ -538,7 +531,7 @@ export default function CorrectionRegularizationPolicyPage() {
                 label="Reason Mandatory"
               >
                 {correctionSettingsDisabled ? (
-                  <DisabledFieldValue />
+                  <PolicyDisabledFieldValue />
                 ) : (
                   <Select
                     value={draft.reasonMandatory}

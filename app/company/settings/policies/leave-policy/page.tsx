@@ -4,6 +4,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import {
   Field,
   PolicyFormModal,
+  PolicyDisabledFieldValue,
   PolicyPage,
   PolicyRegisterSection,
   PolicySection,
@@ -546,18 +547,24 @@ export default function LeavePolicyPage() {
                       </Select>
                     </Field>
                     <Field label="Maximum Carry Forward Days">
-                      <TextInput
-                        value={leaveType.maximumCarryForwardDays}
-                        onChange={(e) => updateLeaveType(leaveType.id, "maximumCarryForwardDays", e.target.value)}
-                        disabled={leaveType.carryForwardAllowed !== "Yes"}
-                      />
+                      {leaveType.carryForwardAllowed !== "Yes" ? (
+                        <PolicyDisabledFieldValue />
+                      ) : (
+                        <TextInput
+                          value={leaveType.maximumCarryForwardDays}
+                          onChange={(e) => updateLeaveType(leaveType.id, "maximumCarryForwardDays", e.target.value)}
+                        />
+                      )}
                     </Field>
                     <Field label="Carry Forward Expiry (Days)">
-                      <TextInput
-                        value={leaveType.carryForwardExpiryDays}
-                        onChange={(e) => updateLeaveType(leaveType.id, "carryForwardExpiryDays", e.target.value)}
-                        disabled={leaveType.carryForwardAllowed !== "Yes"}
-                      />
+                      {leaveType.carryForwardAllowed !== "Yes" ? (
+                        <PolicyDisabledFieldValue />
+                      ) : (
+                        <TextInput
+                          value={leaveType.carryForwardExpiryDays}
+                          onChange={(e) => updateLeaveType(leaveType.id, "carryForwardExpiryDays", e.target.value)}
+                        />
+                      )}
                     </Field>
                   </div>
                 </div>
@@ -603,11 +610,14 @@ export default function LeavePolicyPage() {
                 </Select>
               </Field>
               <Field label="Maximum Backdated Leave Days">
-                <TextInput
-                  value={draft.maximumBackdatedLeaveDays}
-                  onChange={(e) => updatePolicy("maximumBackdatedLeaveDays", e.target.value)}
-                  disabled={draft.backdatedLeaveAllowed !== "Yes"}
-                />
+                {draft.backdatedLeaveAllowed !== "Yes" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.maximumBackdatedLeaveDays}
+                    onChange={(e) => updatePolicy("maximumBackdatedLeaveDays", e.target.value)}
+                  />
+                )}
               </Field>
               <Field label="If Employee Punches On Approved Leave">
                 <Select
@@ -634,14 +644,7 @@ export default function LeavePolicyPage() {
                   </span>
                 }
               >
-                <Select
-                  value={draft.sandwichLeave}
-                  disabled
-                  className="cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500"
-                >
-                  <option value="Enabled">Enabled</option>
-                  <option value="Disabled">Disabled</option>
-                </Select>
+                <PolicyDisabledFieldValue text={draft.sandwichLeave} />
               </Field>
             </div>
           </PolicySection>
