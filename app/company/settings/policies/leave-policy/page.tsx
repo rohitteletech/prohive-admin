@@ -12,7 +12,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
-import { formatDisplayDateTime } from "@/lib/dateTime";
+import { addYearsToIsoDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type LeaveType = {
@@ -46,70 +46,32 @@ type LeavePolicyState = {
   sandwichLeave: "Enabled" | "Disabled";
 };
 
-const initialPolicyState: LeavePolicyState = {
-  policyId: "",
-  policyName: "Standard Leave Policy",
-  policyCode: "LEV-001",
-  effectiveFrom: "2026-03-13",
-  nextReviewDate: "2027-03-13",
-  status: "Draft",
-  defaultCompanyPolicy: "Yes",
-  leaveCycleType: "Calendar Year",
-  approvalFlow: "manager_hr",
-  noticePeriodDays: "1",
-  backdatedLeaveAllowed: "No",
-  maximumBackdatedLeaveDays: "5",
-  ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval",
-  sandwichLeave: "Disabled",
-};
-
-function createNewPolicyDraft(): LeavePolicyState {
+function createInitialPolicyState(): LeavePolicyState {
+  const effectiveFrom = todayISOInIndia();
   return {
-    ...initialPolicyState,
+    policyId: "",
     policyName: "",
     policyCode: "",
-    defaultCompanyPolicy: "No",
+    effectiveFrom,
+    nextReviewDate: addYearsToIsoDate(effectiveFrom, 1),
+    status: "Draft",
+    defaultCompanyPolicy: "Yes",
+    leaveCycleType: "Calendar Year",
+    approvalFlow: "manager_hr",
+    noticePeriodDays: "1",
+    backdatedLeaveAllowed: "No",
+    maximumBackdatedLeaveDays: "5",
+    ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval",
+    sandwichLeave: "Disabled",
   };
 }
 
-const initialLeaveTypes: LeaveType[] = [
-  {
-    id: "casual",
-    name: "Casual Leave",
-    code: "CL",
-    paymentMode: "Paid",
-    annualQuota: "12",
-    halfDayAllowed: "Yes",
-    accrualRule: "Yearly Upfront",
-    carryForwardAllowed: "No",
-    maximumCarryForwardDays: "0",
-    carryForwardExpiryDays: "0",
-  },
-  {
-    id: "sick",
-    name: "Sick Leave",
-    code: "SL",
-    paymentMode: "Paid",
-    annualQuota: "12",
-    halfDayAllowed: "Yes",
-    accrualRule: "Yearly Upfront",
-    carryForwardAllowed: "No",
-    maximumCarryForwardDays: "0",
-    carryForwardExpiryDays: "0",
-  },
-  {
-    id: "earned",
-    name: "Earned Leave",
-    code: "EL",
-    paymentMode: "Paid",
-    annualQuota: "18",
-    halfDayAllowed: "Yes",
-    accrualRule: "Monthly Accrual",
-    carryForwardAllowed: "Yes",
-    maximumCarryForwardDays: "10",
-    carryForwardExpiryDays: "90",
-  },
-];
+function createNewPolicyDraft(): LeavePolicyState {
+  return {
+    ...createInitialPolicyState(),
+    defaultCompanyPolicy: "No",
+  };
+}
 
 function createBlankLeaveType(): LeaveType {
   return {
@@ -128,11 +90,11 @@ function createBlankLeaveType(): LeaveType {
 
 export default function LeavePolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
-  const [draft, setDraft] = useState(initialPolicyState);
+  const [draft, setDraft] = useState<LeavePolicyState>(() => createInitialPolicyState());
   const [savedPolicies, setSavedPolicies] = useState<LeavePolicyState[]>([]);
   const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
-  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
-  const [savedLeaveTypes, setSavedLeaveTypes] = useState<LeaveType[]>(initialLeaveTypes);
+  const [leaveTypes, setLeaveTypes] = useState<LeaveType[]>(() => [createBlankLeaveType()]);
+  const [savedLeaveTypes, setSavedLeaveTypes] = useState<LeaveType[]>(() => [createBlankLeaveType()]);
   const [savedLeaveTypesByPolicy, setSavedLeaveTypesByPolicy] = useState<Record<string, LeaveType[]>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -200,12 +162,17 @@ export default function LeavePolicyPage() {
       return;
     }
 
+    const initialState = createInitialPolicyState();
     const { leaveTypes: nextLeaveTypes, ...policy } = result;
-    const nextPolicy = { ...initialPolicyState, ...policy };
+    const nextPolicy = { ...initialState, ...policy };
     setDraft(nextPolicy);
     if (Array.isArray(nextLeaveTypes) && nextLeaveTypes.length > 0) {
       setLeaveTypes(nextLeaveTypes);
       setSavedLeaveTypes(nextLeaveTypes);
+    } else {
+      const blankLeaveType = createBlankLeaveType();
+      setLeaveTypes([blankLeaveType]);
+      setSavedLeaveTypes([blankLeaveType]);
     }
     const policiesResponse = await fetch("/api/company/policies?policy_type=leave", {
       headers: { authorization: `Bearer ${token}` },
@@ -232,16 +199,17 @@ export default function LeavePolicyPage() {
     };
     const loadedPolicies = Array.isArray(policiesResult.policies)
       ? policiesResult.policies.map((policyRow) => {
+          const initialStateForRow = createInitialPolicyState();
           const config = (policyRow.configJson || {}) as Partial<LeavePolicyState> & { leaveTypes?: LeaveType[] };
           return {
-            ...initialPolicyState,
+            ...initialStateForRow,
             ...config,
             policyId: policyRow.id,
             createdAt: String(policyRow.createdAt || ""),
             policyName: String(config.policyName || policyRow.policyName || ""),
             policyCode: String(config.policyCode || policyRow.policyCode || ""),
-            effectiveFrom: String(config.effectiveFrom || policyRow.effectiveFrom || initialPolicyState.effectiveFrom),
-            nextReviewDate: String(config.nextReviewDate || policyRow.nextReviewDate || initialPolicyState.nextReviewDate),
+            effectiveFrom: String(config.effectiveFrom || policyRow.effectiveFrom || initialStateForRow.effectiveFrom),
+            nextReviewDate: String(config.nextReviewDate || policyRow.nextReviewDate || initialStateForRow.nextReviewDate),
             status: policyRow.status === "active" ? "Active" : policyRow.status === "archived" ? "Archived" : "Draft",
             defaultCompanyPolicy: policyRow.isDefault ? "Yes" : "No",
           } satisfies LeavePolicyState;
