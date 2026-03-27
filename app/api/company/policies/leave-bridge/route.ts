@@ -28,6 +28,7 @@ type LeaveBridgePayload = {
   approvalFlow?: "manager" | "manager_hr" | "hr";
   noticePeriodDays?: string;
   backdatedLeaveAllowed?: "Yes" | "No";
+  maximumBackdatedLeaveDays?: string;
   ifEmployeePunchesOnApprovedLeave?: "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
   sandwichLeave?: "Enabled" | "Disabled";
   leaveTypes?: LeaveTypePayload[];
@@ -149,6 +150,7 @@ export async function GET(req: NextRequest) {
           : "manager_hr",
       noticePeriodDays: toNumberString(config.noticePeriodDays, "1"),
       backdatedLeaveAllowed: config.backdatedLeaveAllowed === "Yes" ? "Yes" : "No",
+      maximumBackdatedLeaveDays: toNumberString(config.maximumBackdatedLeaveDays, "5"),
       ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(
         config.ifEmployeePunchesOnApprovedLeave ?? config.leaveOverridesAttendance,
       ),
@@ -190,6 +192,8 @@ export async function PUT(req: NextRequest) {
     approvalFlow: body.approvalFlow || "manager_hr",
     noticePeriodDays: body.noticePeriodDays || "1",
     backdatedLeaveAllowed: body.backdatedLeaveAllowed || "No",
+    maximumBackdatedLeaveDays:
+      body.backdatedLeaveAllowed === "Yes" ? toNumberString(body.maximumBackdatedLeaveDays, "5") : "0",
     ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(
       body.ifEmployeePunchesOnApprovedLeave,
     ),

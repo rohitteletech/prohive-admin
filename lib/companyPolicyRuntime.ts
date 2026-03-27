@@ -243,6 +243,7 @@ export function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
           : "manager_hr",
     noticePeriodDays: wholeNumber(config.noticePeriodDays, 1),
     backdatedLeaveAllowed: yesNo(config.backdatedLeaveAllowed, "No") === "Yes",
+    maximumBackdatedLeaveDays: wholeNumber(config.maximumBackdatedLeaveDays, 5),
     ifEmployeePunchesOnApprovedLeave:
       action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Approval"
         ? action

@@ -17,7 +17,6 @@ import {
 } from "@/lib/leaveAccrual";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
-const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
 const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
 
 export async function POST(req: NextRequest) {
@@ -326,7 +325,7 @@ export async function POST(req: NextRequest) {
     },
     settings: {
       backdatedLeaveAllowed: leavePolicyRuntime.backdatedLeaveAllowed,
-      maxBackdatedLeaveDays: FIXED_MAX_BACKDATED_LEAVE_DAYS,
+      maxBackdatedLeaveDays: leavePolicyRuntime.maximumBackdatedLeaveDays,
     },
     balances: balanceRows,
     requests: requests.map((row) => ({

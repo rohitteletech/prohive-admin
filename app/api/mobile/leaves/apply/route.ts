@@ -16,7 +16,6 @@ import {
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
-const FIXED_MAX_BACKDATED_LEAVE_DAYS = 5;
 const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
 
 function isoDateToUtcMs(value: string) {
@@ -166,10 +165,11 @@ export async function POST(req: NextRequest) {
   }
 
   if (fromDate < todayIso && leavePolicyRuntime.backdatedLeaveAllowed) {
-    const earliestBackdatedStartDate = addDaysToIsoDate(todayIso, -FIXED_MAX_BACKDATED_LEAVE_DAYS);
+    const maxBackdatedLeaveDays = Math.max(0, leavePolicyRuntime.maximumBackdatedLeaveDays || 0);
+    const earliestBackdatedStartDate = addDaysToIsoDate(todayIso, -maxBackdatedLeaveDays);
     if (earliestBackdatedStartDate && fromDate < earliestBackdatedStartDate) {
       return NextResponse.json(
-        { error: `Backdated leave can only be applied for the last ${FIXED_MAX_BACKDATED_LEAVE_DAYS} day(s).` },
+        { error: `Backdated leave can only be applied for the last ${maxBackdatedLeaveDays} day(s).` },
         { status: 400 },
       );
     }

@@ -40,6 +40,7 @@ type LeavePolicyState = {
   approvalFlow: "manager" | "manager_hr" | "hr";
   noticePeriodDays: string;
   backdatedLeaveAllowed: "Yes" | "No";
+  maximumBackdatedLeaveDays: string;
   ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
   sandwichLeave: "Enabled" | "Disabled";
 };
@@ -56,6 +57,7 @@ const initialPolicyState: LeavePolicyState = {
   approvalFlow: "manager_hr",
   noticePeriodDays: "1",
   backdatedLeaveAllowed: "No",
+  maximumBackdatedLeaveDays: "5",
   ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval",
   sandwichLeave: "Disabled",
 };
@@ -585,7 +587,7 @@ export default function LeavePolicyPage() {
                         <span className="inline-flex items-center gap-2">
                           <span>Backdated Leave Allowed</span>
                           <span className="rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700">
-                            Allowed for 5 days
+                            Allowed for {draft.maximumBackdatedLeaveDays || "0"} days
                           </span>
                         </span>
                       )
@@ -599,6 +601,13 @@ export default function LeavePolicyPage() {
                   <option value="Yes">Yes</option>
                   <option value="No">No</option>
                 </Select>
+              </Field>
+              <Field label="Maximum Backdated Leave Days">
+                <TextInput
+                  value={draft.maximumBackdatedLeaveDays}
+                  onChange={(e) => updatePolicy("maximumBackdatedLeaveDays", e.target.value)}
+                  disabled={draft.backdatedLeaveAllowed !== "Yes"}
+                />
               </Field>
               <Field label="If Employee Punches On Approved Leave">
                 <Select
