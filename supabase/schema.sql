@@ -284,12 +284,11 @@ to authenticated
 using (true)
 with check (true);
 
-create or replace view public.attendance_punch_events_ordered as
+create or replace view public.attendance_punch_events_ordered
+with (security_invoker = true) as
 select
   company_name_snapshot,
   employee_name_snapshot,
-  day_type,
-  is_extra_work,
   company_id,
   employee_id,
   device_id,
@@ -322,7 +321,9 @@ select
   approval_reason_codes,
   raw_payload,
   created_at,
-  id
+  id,
+  day_type,
+  is_extra_work
 from public.attendance_punch_events;
 
 create table if not exists public.company_leave_policies (
@@ -642,6 +643,7 @@ using (true);
 create or replace function public.sync_company_policy_default_flags()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   if new.is_default = true and new.status = 'active' then
@@ -676,6 +678,7 @@ execute function public.sync_company_policy_default_flags();
 create or replace function public.guard_leave_policy_active_schedule()
 returns trigger
 language plpgsql
+set search_path = public
 as $$
 begin
   if new.policy_type <> 'leave' or new.status <> 'active' then
@@ -732,6 +735,67 @@ on public.company_policy_definitions
 for each row
 when (new.policy_type = 'leave' and new.status = 'active')
 execute function public.guard_leave_policy_active_schedule();
+
+create or replace function public.guard_holiday_policy_active_schedule()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.policy_type <> 'holiday_weekoff' or new.status <> 'active' then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+      from public.company_policy_definitions
+     where company_id = new.company_id
+       and policy_type = 'holiday_weekoff'
+       and status = 'active'
+       and id <> new.id
+       and effective_from = new.effective_from
+  ) then
+    raise exception 'Another active holiday policy is already scheduled for %.', new.effective_from;
+  end if;
+
+  if new.effective_from > current_date then
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'holiday_weekoff'
+         and status = 'active'
+         and id <> new.id
+         and effective_from > current_date
+    ) then
+      raise exception 'Another future active holiday policy is already scheduled for this company.';
+    end if;
+  else
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'holiday_weekoff'
+         and status = 'active'
+         and id <> new.id
+         and effective_from <= current_date
+    ) then
+      raise exception 'Another current active holiday policy already exists for this company.';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_holiday_policy_active_schedule on public.company_policy_definitions;
+
+create trigger guard_holiday_policy_active_schedule
+before insert or update of policy_type, status, effective_from
+on public.company_policy_definitions
+for each row
+when (new.policy_type = 'holiday_weekoff' and new.status = 'active')
+execute function public.guard_holiday_policy_active_schedule();
 
 create table if not exists public.employee_leave_requests (
   id uuid primary key default gen_random_uuid(),
@@ -798,6 +862,47 @@ for delete
 to authenticated
 using (true);
 
+create table if not exists public.employee_claim_requests (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  employee_id uuid not null references public.employees(id) on delete cascade,
+  from_date date not null,
+  to_date date not null,
+  days integer not null,
+  claim_type text not null check (claim_type in ('travel', 'meal', 'misc', 'other')),
+  claim_type_other_text text null,
+  amount numeric(12,2) not null check (amount > 0),
+  reason text not null,
+  attachment_url text null,
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  admin_remark text null,
+  submitted_at timestamptz not null default now(),
+  reviewed_at timestamptz null,
+  reviewed_by text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint employee_claim_requests_period_check
+    check (to_date >= from_date and days = ((to_date - from_date) + 1)),
+  constraint employee_claim_requests_other_type_text_check
+    check (claim_type <> 'other' or nullif(btrim(claim_type_other_text), '') is not null),
+  constraint employee_claim_requests_not_future_check
+    check (
+      from_date <= ((now() at time zone 'Asia/Kolkata')::date)
+      and to_date <= ((now() at time zone 'Asia/Kolkata')::date)
+    )
+);
+
+create index if not exists idx_employee_claim_requests_company_submitted
+  on public.employee_claim_requests(company_id, submitted_at desc);
+
+create index if not exists idx_employee_claim_requests_employee_submitted
+  on public.employee_claim_requests(employee_id, submitted_at desc);
+
+create index if not exists idx_employee_claim_requests_status
+  on public.employee_claim_requests(company_id, status);
+
+alter table public.employee_claim_requests enable row level security;
+
 create table if not exists public.government_holiday_template_sets (
   id uuid primary key default gen_random_uuid(),
   year integer not null check (year >= 2000 and year <= 9999),
@@ -811,7 +916,7 @@ create table if not exists public.government_holiday_template_sets (
   unique (year, state)
 );
 
-create table if not exists public.government_holiday_template_items (
+create table if not exists public.government_holiday_template_rows (
   id uuid primary key default gen_random_uuid(),
   template_set_id uuid not null references public.government_holiday_template_sets(id) on delete cascade,
   holiday_date date not null,
@@ -824,8 +929,8 @@ create table if not exists public.government_holiday_template_items (
 create index if not exists govt_holiday_template_sets_year_state_idx
   on public.government_holiday_template_sets(year asc, state asc);
 
-create index if not exists govt_holiday_template_items_template_idx
-  on public.government_holiday_template_items(template_set_id, holiday_date asc);
+create index if not exists govt_holiday_template_rows_set_date_idx
+  on public.government_holiday_template_rows(template_set_id, holiday_date asc);
 
 alter table public.government_holiday_template_sets enable row level security;
-alter table public.government_holiday_template_items enable row level security;
+alter table public.government_holiday_template_rows enable row level security;

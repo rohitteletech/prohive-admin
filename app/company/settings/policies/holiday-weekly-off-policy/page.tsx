@@ -94,60 +94,92 @@ export default function HolidayWeeklyOffPolicyPage() {
   }
 
   async function loadHolidayBridge() {
-    const token = await accessToken();
-    if (!token) {
-      setLoading(false);
-      return;
-    }
+    setLoading(true);
 
-    const response = await fetch("/api/company/policies/holiday-bridge", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const result = (await response.json().catch(() => ({}))) as Partial<HolidayPolicyState> & { error?: string };
-    if (!response.ok) {
-      notify(result.error || "Unable to load holiday policy.");
-      setLoading(false);
-      return;
-    }
+    try {
+      const token = await accessToken();
+      if (!token) {
+        notify("Company session not found. Please login again.");
+        return;
+      }
 
-    const nextPolicy = { ...initialState, ...result };
-    setDraft(nextPolicy);
-    const policiesResponse = await fetch("/api/company/policies?policy_type=holiday_weekoff", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const assignmentsResponse = await fetch("/api/company/policy-assignments", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
-      policies?: Array<{ id: string; policyName: string; policyCode: string; effectiveFrom: string; nextReviewDate: string; status: string; isDefault: boolean; createdAt?: string; configJson?: Record<string, unknown> }>;
-    };
-    const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
-      assignments?: Array<{ policyId: string; isActive: boolean }>;
-      workforceCounts?: { byPolicyType?: { holiday_weekoff?: Record<string, number> } };
-    };
-    const loadedPolicies =
-      Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
-        ? policiesResult.policies.map((policy) => {
-            const config = (policy.configJson || {}) as Partial<HolidayPolicyState>;
-            return {
-              ...initialState,
-              ...config,
-              policyId: policy.id,
-              policyName: String(config.policyName || policy.policyName || ""),
-              policyCode: String(config.policyCode || policy.policyCode || ""),
-              effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
-              nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
-              status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
-              createdAt: policy.createdAt || "",
-              defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
-            } satisfies HolidayPolicyState;
-          })
-        : [nextPolicy];
-    setSavedPolicies(loadedPolicies);
-    const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.holiday_weekoff || {};
-    setAssignedCounts(nextAssignedCounts);
-    setIsCreatingNew(false);
-    setLoading(false);
+      const response = await fetch("/api/company/policies/holiday-bridge", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const result = (await response.json().catch(() => ({}))) as Partial<HolidayPolicyState> & { error?: string };
+      if (!response.ok) {
+        notify(result.error || "Unable to load holiday policy.");
+        return;
+      }
+
+      const nextPolicy = { ...initialState, ...result };
+      setDraft(nextPolicy);
+
+      const [policiesResponse, assignmentsResponse] = await Promise.all([
+        fetch("/api/company/policies?policy_type=holiday_weekoff", {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        fetch("/api/company/policy-assignments", {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      ]);
+
+      const policiesResult = (await policiesResponse.json().catch(() => ({}))) as {
+        error?: string;
+        policies?: Array<{
+          id: string;
+          policyName: string;
+          policyCode: string;
+          effectiveFrom: string;
+          nextReviewDate: string;
+          status: string;
+          isDefault: boolean;
+          createdAt?: string;
+          configJson?: Record<string, unknown>;
+        }>;
+      };
+      const assignmentsResult = (await assignmentsResponse.json().catch(() => ({}))) as {
+        error?: string;
+        assignments?: Array<{ policyId: string; isActive: boolean }>;
+        workforceCounts?: { byPolicyType?: { holiday_weekoff?: Record<string, number> } };
+      };
+
+      if (!policiesResponse.ok) {
+        notify(policiesResult.error || "Unable to load holiday policy register.");
+      }
+      if (!assignmentsResponse.ok) {
+        notify(assignmentsResult.error || "Unable to load holiday policy workforce counts.");
+      }
+
+      const loadedPolicies =
+        policiesResponse.ok && Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
+          ? policiesResult.policies.map((policy) => {
+              const config = (policy.configJson || {}) as Partial<HolidayPolicyState>;
+              return {
+                ...initialState,
+                ...config,
+                policyId: policy.id,
+                policyName: String(config.policyName || policy.policyName || ""),
+                policyCode: String(config.policyCode || policy.policyCode || ""),
+                effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
+                nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
+                status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
+                createdAt: policy.createdAt || "",
+                defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+              } satisfies HolidayPolicyState;
+            })
+          : [nextPolicy];
+
+      setSavedPolicies(loadedPolicies);
+      setAssignedCounts(assignmentsResponse.ok ? assignmentsResult.workforceCounts?.byPolicyType?.holiday_weekoff || {} : {});
+      setIsCreatingNew(false);
+    } catch {
+      notify("Unable to load holiday policy due to a network error.");
+      setSavedPolicies([]);
+      setAssignedCounts({});
+    } finally {
+      setLoading(false);
+    }
   }
 
   const loadHolidayBridgeEffect = useEffectEvent(() => {

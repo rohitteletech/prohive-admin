@@ -40,6 +40,10 @@ function normalizeWorkedDayTreatment(
   return fallback;
 }
 
+function isValidIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -121,14 +125,34 @@ export async function PUT(req: NextRequest) {
   const policy = body.policyId
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "holiday_weekoff")
     : null;
+  const policyName = String(body.policyName || policy?.policyName || "").trim();
+  const policyCode = String(body.policyCode || policy?.policyCode || "").trim();
+  const effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || "").trim();
+  const nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || "").trim();
+
+  if (!policyName) {
+    return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
+  }
+  if (!policyCode) {
+    return NextResponse.json({ error: "Policy Code is required." }, { status: 400 });
+  }
+  if (!effectiveFrom || !isValidIsoDate(effectiveFrom)) {
+    return NextResponse.json({ error: "Valid Effective From date is required." }, { status: 400 });
+  }
+  if (!nextReviewDate || !isValidIsoDate(nextReviewDate)) {
+    return NextResponse.json({ error: "Valid Next Review Date is required." }, { status: 400 });
+  }
+  if (nextReviewDate < effectiveFrom) {
+    return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
+  }
 
   const configJson = {
     holidayPunchAllowed: body.holidayPunchAllowed || "Yes",
     weeklyOffPunchAllowed: body.weeklyOffPunchAllowed || "Yes",
-    policyName: body.policyName || policy?.policyName || "Standard Holiday Policy",
-    policyCode: body.policyCode || policy?.policyCode || "HOL-001",
-    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
-    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
+    policyName,
+    policyCode,
+    effectiveFrom,
+    nextReviewDate,
     status: (body.status || "Draft").toLowerCase(),
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
     holidaySource: "Company",
@@ -150,6 +174,38 @@ export async function PUT(req: NextRequest) {
   configJson.compOffValidityDays = String(compOffApplies ? body.compOffValidityDays || "60" : "0");
   const today = new Date().toISOString().slice(0, 10);
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
+  const existingPolicyId = policy?.id || "";
+  const otherHolidayPolicies = definitions.filter(
+    (definition) => definition.policyType === "holiday_weekoff" && definition.id !== existingPolicyId,
+  );
+
+  if (configJson.status === "active") {
+    const sameEffectiveDateActive = otherHolidayPolicies.find(
+      (definition) => definition.status === "active" && definition.effectiveFrom === configJson.effectiveFrom,
+    );
+    if (sameEffectiveDateActive) {
+      return NextResponse.json(
+        { error: `Another active holiday policy is already scheduled for ${configJson.effectiveFrom}.` },
+        { status: 400 },
+      );
+    }
+  }
+
+  if (isFutureEffectiveActive) {
+    const overlappingFuturePolicy = otherHolidayPolicies.find(
+      (definition) => definition.status === "active" && definition.effectiveFrom > today,
+    );
+    if (overlappingFuturePolicy) {
+      return NextResponse.json(
+        {
+          error:
+            `Another future active holiday policy is already scheduled from ${overlappingFuturePolicy.effectiveFrom}. ` +
+            "Edit or archive that policy before scheduling a new one.",
+        },
+        { status: 400 },
+      );
+    }
+  }
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
