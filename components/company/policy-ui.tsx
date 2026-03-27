@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
 
 export function PolicyPage({
   badge,
@@ -200,6 +201,8 @@ export function PolicyRegisterSection({
   }>;
   emptyState?: string;
 }) {
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   function renderCreatedOn(value: string) {
     const parts = value.trim().split(/\s+/);
     if (parts.length < 2) return value;
@@ -214,6 +217,8 @@ export function PolicyRegisterSection({
       </span>
     );
   }
+
+  const pendingDeleteRow = pendingDeleteId ? rows.find((row) => row.id === pendingDeleteId) || null : null;
 
   return (
     <section className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
@@ -282,7 +287,7 @@ export function PolicyRegisterSection({
                       {onDelete ? (
                         <button
                           type="button"
-                          onClick={() => onDelete(row.id)}
+                          onClick={() => setPendingDeleteId(row.id)}
                           className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-100"
                         >
                           Delete
@@ -296,7 +301,76 @@ export function PolicyRegisterSection({
           </tbody>
         </table>
       </div>
+
+      {onDelete && pendingDeleteRow ? (
+        <PolicyDeleteConfirmDialog
+          open
+          title="Delete Policy"
+          message={`Delete "${pendingDeleteRow.name}"? This action cannot be undone.`}
+          detail="The policy will be deleted only if all backend safety rules pass, such as assignment and active-policy protections."
+          confirmLabel="Delete Policy"
+          onCancel={() => setPendingDeleteId(null)}
+          onConfirm={() => {
+            onDelete(pendingDeleteRow.id);
+            setPendingDeleteId(null);
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+export function PolicyDeleteConfirmDialog({
+  open,
+  title,
+  message,
+  detail,
+  confirmLabel = "Delete",
+  onCancel,
+  onConfirm,
+}: {
+  open: boolean;
+  title: string;
+  message: string;
+  detail?: string;
+  confirmLabel?: string;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/40 px-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="policy-delete-confirm-title"
+        className="w-full max-w-lg rounded-[28px] border border-rose-200 bg-white p-6 shadow-2xl sm:p-7"
+      >
+        <div className="mx-auto h-1.5 w-16 rounded-full bg-rose-500" />
+        <h3 id="policy-delete-confirm-title" className="mt-5 text-lg font-semibold text-slate-950 sm:text-xl">
+          {title}
+        </h3>
+        <p className="mt-3 text-sm leading-7 text-slate-700">{message}</p>
+        {detail ? <p className="mt-2 text-sm leading-6 text-slate-500">{detail}</p> : null}
+        <div className="mt-6 flex flex-wrap justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="rounded-xl border border-rose-200 bg-rose-50 px-5 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-100"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
