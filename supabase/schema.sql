@@ -691,6 +691,8 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_business_date date := public.policy_business_date_india();
 begin
   if new.policy_type <> 'leave' or new.status <> 'active' then
     return new;
@@ -708,7 +710,7 @@ begin
     raise exception 'Another active leave policy is already scheduled for %.', new.effective_from;
   end if;
 
-  if new.effective_from > current_date then
+  if new.effective_from > v_business_date then
     if exists (
       select 1
         from public.company_policy_definitions
@@ -716,7 +718,7 @@ begin
          and policy_type = 'leave'
          and status = 'active'
          and id <> new.id
-         and effective_from > current_date
+         and effective_from > v_business_date
     ) then
       raise exception 'Another future active leave policy is already scheduled for this company.';
     end if;
@@ -728,7 +730,7 @@ begin
          and policy_type = 'leave'
          and status = 'active'
          and id <> new.id
-         and effective_from <= current_date
+         and effective_from <= v_business_date
     ) then
       raise exception 'Another current active leave policy already exists for this company.';
     end if;

@@ -230,24 +230,23 @@ export default function LeavePolicyPage() {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
       workforceCounts?: { byPolicyType?: { leave?: Record<string, number> } };
     };
-    const loadedPolicies =
-      Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
-        ? policiesResult.policies.map((policyRow) => {
+    const loadedPolicies = Array.isArray(policiesResult.policies)
+      ? policiesResult.policies.map((policyRow) => {
           const config = (policyRow.configJson || {}) as Partial<LeavePolicyState> & { leaveTypes?: LeaveType[] };
-            return {
-              ...initialPolicyState,
-              ...config,
-              policyId: policyRow.id,
-              createdAt: String(policyRow.createdAt || ""),
-              policyName: String(config.policyName || policyRow.policyName || ""),
-              policyCode: String(config.policyCode || policyRow.policyCode || ""),
-              effectiveFrom: String(config.effectiveFrom || policyRow.effectiveFrom || initialPolicyState.effectiveFrom),
-              nextReviewDate: String(config.nextReviewDate || policyRow.nextReviewDate || initialPolicyState.nextReviewDate),
-              status: policyRow.status === "active" ? "Active" : policyRow.status === "archived" ? "Archived" : "Draft",
-              defaultCompanyPolicy: policyRow.isDefault ? "Yes" : "No",
-            } satisfies LeavePolicyState;
-          })
-        : [nextPolicy];
+          return {
+            ...initialPolicyState,
+            ...config,
+            policyId: policyRow.id,
+            createdAt: String(policyRow.createdAt || ""),
+            policyName: String(config.policyName || policyRow.policyName || ""),
+            policyCode: String(config.policyCode || policyRow.policyCode || ""),
+            effectiveFrom: String(config.effectiveFrom || policyRow.effectiveFrom || initialPolicyState.effectiveFrom),
+            nextReviewDate: String(config.nextReviewDate || policyRow.nextReviewDate || initialPolicyState.nextReviewDate),
+            status: policyRow.status === "active" ? "Active" : policyRow.status === "archived" ? "Archived" : "Draft",
+            defaultCompanyPolicy: policyRow.isDefault ? "Yes" : "No",
+          } satisfies LeavePolicyState;
+        })
+      : [];
     setSavedPolicies(loadedPolicies);
     const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.leave || {};
     setAssignedCounts(nextAssignedCounts);

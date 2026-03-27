@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISOInIndia();
     const leavePolicies = definitions.filter((policy) => policy.policyType === "leave");
     const effectiveLeavePolicies = leavePolicies
       .filter((policy) => policy.status === "active")
