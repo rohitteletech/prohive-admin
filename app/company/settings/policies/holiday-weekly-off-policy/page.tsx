@@ -11,7 +11,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
-import { formatDisplayDateTime } from "@/lib/dateTime";
+import { addYearsToIsoDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type HolidayPolicyState = {
@@ -32,25 +32,28 @@ type HolidayPolicyState = {
   compOffValidityDays: string;
 };
 
-const initialState: HolidayPolicyState = {
-  policyId: "",
-  policyName: "Standard Holiday Policy",
-  policyCode: "HOL-001",
-  effectiveFrom: "2026-03-13",
-  nextReviewDate: "2027-03-13",
-  status: "Draft",
-  defaultCompanyPolicy: "Yes",
-  weeklyOffPattern: "Sunday Only",
-  holidayPunchAllowed: "Yes",
-  weeklyOffPunchAllowed: "Yes",
-  holidayWorkedStatus: "Grant Comp Off",
-  weeklyOffWorkedStatus: "Grant Comp Off",
-  compOffValidityDays: "60",
-};
+function createInitialState(): HolidayPolicyState {
+  const effectiveFrom = todayISOInIndia();
+  return {
+    policyId: "",
+    policyName: "Standard Holiday Policy",
+    policyCode: "",
+    effectiveFrom,
+    nextReviewDate: addYearsToIsoDate(effectiveFrom, 1),
+    status: "Draft",
+    defaultCompanyPolicy: "Yes",
+    weeklyOffPattern: "Sunday Only",
+    holidayPunchAllowed: "Yes",
+    weeklyOffPunchAllowed: "Yes",
+    holidayWorkedStatus: "Grant Comp Off",
+    weeklyOffWorkedStatus: "Grant Comp Off",
+    compOffValidityDays: "60",
+  };
+}
 
 function createNewPolicyDraft(): HolidayPolicyState {
   return {
-    ...initialState,
+    ...createInitialState(),
     policyName: "",
     policyCode: "",
     defaultCompanyPolicy: "No",
@@ -62,6 +65,7 @@ function normalizeDayCountInput(value: string) {
 }
 
 export default function HolidayWeeklyOffPolicyPage() {
+  const initialState = createInitialState();
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
   const [savedPolicies, setSavedPolicies] = useState<HolidayPolicyState[]>([]);
@@ -158,7 +162,7 @@ export default function HolidayWeeklyOffPolicyPage() {
       }
 
       const loadedPolicies =
-        policiesResponse.ok && Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
+        policiesResponse.ok && Array.isArray(policiesResult.policies)
           ? policiesResult.policies.map((policy) => {
               const config = (policy.configJson || {}) as Partial<HolidayPolicyState>;
               return {
@@ -175,7 +179,7 @@ export default function HolidayWeeklyOffPolicyPage() {
                 defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
               } satisfies HolidayPolicyState;
             })
-          : [nextPolicy];
+          : [];
 
       setSavedPolicies(loadedPolicies);
       setAssignedCounts(assignmentsResponse.ok ? assignmentsResult.workforceCounts?.byPolicyType?.holiday_weekoff || {} : {});
