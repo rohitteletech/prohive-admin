@@ -32,6 +32,7 @@ type LeavePolicyState = {
   policyId: string;
   policyName: string;
   policyCode: string;
+  createdBy?: string;
   createdAt?: string;
   effectiveFrom: string;
   nextReviewDate: string;
@@ -189,6 +190,7 @@ export default function LeavePolicyPage() {
         nextReviewDate: string;
         status: string;
         isDefault: boolean;
+        createdBy?: string;
         createdAt?: string;
         configJson?: Record<string, unknown>;
       }>;
@@ -205,6 +207,7 @@ export default function LeavePolicyPage() {
             ...initialStateForRow,
             ...config,
             policyId: policyRow.id,
+            createdBy: String(policyRow.createdBy || ""),
             createdAt: String(policyRow.createdAt || ""),
             policyName: String(config.policyName || policyRow.policyName || ""),
             policyCode: String(config.policyCode || policyRow.policyCode || ""),
@@ -379,7 +382,7 @@ export default function LeavePolicyPage() {
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
-          createdBy: "Company Admin",
+          createdBy: policy.createdBy || "-",
           createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
