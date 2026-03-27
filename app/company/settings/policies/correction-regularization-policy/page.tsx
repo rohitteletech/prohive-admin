@@ -143,30 +143,29 @@ export default function CorrectionRegularizationPolicyPage() {
       assignments?: Array<{ policyId: string; isActive: boolean }>;
       workforceCounts?: { byPolicyType?: { correction?: Record<string, number> } };
     };
-    const loadedPolicies =
-      Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
-        ? policiesResult.policies.map((policy) => {
-            const normalizedConfig = correctionPolicyBridgeStateFromStoredConfig(
-              normalizeCorrectionPolicyConfig((policy.configJson || {}) as Record<string, unknown>, {
-                policyName: String(policy.policyName || ""),
-                policyCode: String(policy.policyCode || ""),
-                effectiveFrom: String(policy.effectiveFrom || initialState.effectiveFrom),
-                nextReviewDate: String(policy.nextReviewDate || initialState.nextReviewDate),
-                status: policy.status === "active" ? "active" : policy.status === "archived" ? "archived" : "draft",
-                defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
-              }),
-            );
-            return {
-              ...initialState,
-              ...normalizedConfig,
-              policyId: policy.id,
-              status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
+    const loadedPolicies = Array.isArray(policiesResult.policies)
+      ? policiesResult.policies.map((policy) => {
+          const normalizedConfig = correctionPolicyBridgeStateFromStoredConfig(
+            normalizeCorrectionPolicyConfig((policy.configJson || {}) as Record<string, unknown>, {
+              policyName: String(policy.policyName || ""),
+              policyCode: String(policy.policyCode || ""),
+              effectiveFrom: String(policy.effectiveFrom || initialState.effectiveFrom),
+              nextReviewDate: String(policy.nextReviewDate || initialState.nextReviewDate),
+              status: policy.status === "active" ? "active" : policy.status === "archived" ? "archived" : "draft",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
-              createdBy: policy.createdBy ? String(policy.createdBy) : "-",
-              createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
-            } satisfies CorrectionPolicyState;
-          })
-        : [nextPolicy];
+            }),
+          );
+          return {
+            ...initialState,
+            ...normalizedConfig,
+            policyId: policy.id,
+            status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
+            defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
+            createdBy: policy.createdBy ? String(policy.createdBy) : "-",
+            createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
+          } satisfies CorrectionPolicyState;
+        })
+      : [];
     setSavedPolicies(loadedPolicies);
     const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.correction || {};
     setAssignedCounts(nextAssignedCounts);
