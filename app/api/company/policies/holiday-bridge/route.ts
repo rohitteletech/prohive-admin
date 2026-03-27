@@ -44,6 +44,16 @@ function isValidIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
+function isAllowedChoice<T extends string>(value: string, allowed: readonly T[]): value is T {
+  return allowed.includes(value as T);
+}
+
+const HOLIDAY_STATUS_VALUES = ["draft", "active", "archived"] as const;
+const DEFAULT_POLICY_VALUES = ["Yes", "No"] as const;
+const PUNCH_ALLOWED_VALUES = ["Yes", "No"] as const;
+const WEEKLY_OFF_PATTERN_VALUES = ["Sunday Only", "Saturday + Sunday", "2nd and 4th Saturday + Sunday"] as const;
+const WORKED_DAY_VALUES = ["Record Only", "OT Only", "Grant Comp Off", "Present + OT", "Manual Review"] as const;
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -129,6 +139,13 @@ export async function PUT(req: NextRequest) {
   const policyCode = String(body.policyCode || policy?.policyCode || "").trim();
   const effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || "").trim();
   const nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || "").trim();
+  const normalizedStatus = String(body.status || policy?.status || "Draft").trim().toLowerCase();
+  const normalizedDefaultCompanyPolicy = String(body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No")).trim();
+  const holidayPunchAllowed = String(body.holidayPunchAllowed || "Yes").trim();
+  const weeklyOffPunchAllowed = String(body.weeklyOffPunchAllowed || "Yes").trim();
+  const weeklyOffPattern = String(body.weeklyOffPattern || "Sunday Only").trim();
+  const holidayWorkedStatus = String(body.holidayWorkedStatus || "Grant Comp Off").trim();
+  const weeklyOffWorkedStatus = String(body.weeklyOffWorkedStatus || "Grant Comp Off").trim();
 
   if (!policyName) {
     return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
@@ -145,25 +162,46 @@ export async function PUT(req: NextRequest) {
   if (nextReviewDate < effectiveFrom) {
     return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
   }
+  if (!isAllowedChoice(normalizedStatus, HOLIDAY_STATUS_VALUES)) {
+    return NextResponse.json({ error: "Valid policy status is required." }, { status: 400 });
+  }
+  if (!isAllowedChoice(normalizedDefaultCompanyPolicy, DEFAULT_POLICY_VALUES)) {
+    return NextResponse.json({ error: "Default Company Policy must be Yes or No." }, { status: 400 });
+  }
+  if (!isAllowedChoice(holidayPunchAllowed, PUNCH_ALLOWED_VALUES)) {
+    return NextResponse.json({ error: "Holiday Punch Allowed must be Yes or No." }, { status: 400 });
+  }
+  if (!isAllowedChoice(weeklyOffPunchAllowed, PUNCH_ALLOWED_VALUES)) {
+    return NextResponse.json({ error: "Weekly Off Punch Allowed must be Yes or No." }, { status: 400 });
+  }
+  if (!isAllowedChoice(weeklyOffPattern, WEEKLY_OFF_PATTERN_VALUES)) {
+    return NextResponse.json({ error: "Weekly Off Pattern is invalid." }, { status: 400 });
+  }
+  if (!isAllowedChoice(holidayWorkedStatus, WORKED_DAY_VALUES)) {
+    return NextResponse.json({ error: "If Punched On Holiday value is invalid." }, { status: 400 });
+  }
+  if (!isAllowedChoice(weeklyOffWorkedStatus, WORKED_DAY_VALUES)) {
+    return NextResponse.json({ error: "If Punched On Weekly Off value is invalid." }, { status: 400 });
+  }
 
   const configJson = {
-    holidayPunchAllowed: body.holidayPunchAllowed || "Yes",
-    weeklyOffPunchAllowed: body.weeklyOffPunchAllowed || "Yes",
+    holidayPunchAllowed,
+    weeklyOffPunchAllowed,
     policyName,
     policyCode,
     effectiveFrom,
     nextReviewDate,
-    status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
+    status: normalizedStatus,
+    defaultCompanyPolicy: normalizedDefaultCompanyPolicy,
     holidaySource: "Company",
-    weeklyOffPattern: body.weeklyOffPattern || "Sunday Only",
+    weeklyOffPattern,
     holidayWorkedStatus:
-      (body.holidayPunchAllowed || "Yes") === "Yes"
-        ? body.holidayWorkedStatus || "Grant Comp Off"
+      holidayPunchAllowed === "Yes"
+        ? holidayWorkedStatus
         : "Record Only",
     weeklyOffWorkedStatus:
-      (body.weeklyOffPunchAllowed || "Yes") === "Yes"
-        ? body.weeklyOffWorkedStatus || "Grant Comp Off"
+      weeklyOffPunchAllowed === "Yes"
+        ? weeklyOffWorkedStatus
         : "Record Only",
     compOffValidityDays: "0",
   };
@@ -171,7 +209,19 @@ export async function PUT(req: NextRequest) {
   const compOffApplies =
     (configJson.holidayPunchAllowed === "Yes" && configJson.holidayWorkedStatus === "Grant Comp Off") ||
     (configJson.weeklyOffPunchAllowed === "Yes" && configJson.weeklyOffWorkedStatus === "Grant Comp Off");
-  configJson.compOffValidityDays = String(compOffApplies ? body.compOffValidityDays || "60" : "0");
+  const compOffValidityText = String(body.compOffValidityDays || "").trim();
+  if (compOffApplies) {
+    if (!/^\d+$/.test(compOffValidityText || "60")) {
+      return NextResponse.json({ error: "Comp Off Validity (Days) must be a whole number." }, { status: 400 });
+    }
+    const compOffValidityDays = Number(compOffValidityText || "60");
+    if (!Number.isFinite(compOffValidityDays) || compOffValidityDays < 1 || compOffValidityDays > 365) {
+      return NextResponse.json({ error: "Comp Off Validity (Days) must be between 1 and 365." }, { status: 400 });
+    }
+    configJson.compOffValidityDays = String(compOffValidityDays);
+  } else {
+    configJson.compOffValidityDays = "0";
+  }
   const today = new Date().toISOString().slice(0, 10);
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
   const existingPolicyId = policy?.id || "";

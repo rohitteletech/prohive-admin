@@ -57,6 +57,10 @@ function createNewPolicyDraft(): HolidayPolicyState {
   };
 }
 
+function normalizeDayCountInput(value: string) {
+  return value.replace(/\D/g, "").slice(0, 3);
+}
+
 export default function HolidayWeeklyOffPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [draft, setDraft] = useState(initialState);
@@ -462,8 +466,12 @@ export default function HolidayWeeklyOffPolicyPage() {
                 }
               >
                 <TextInput
+                  type="text"
                   value={compOffSelected ? draft.compOffValidityDays : "0"}
-                  onChange={(e) => update("compOffValidityDays", e.target.value)}
+                  onChange={(e) => update("compOffValidityDays", normalizeDayCountInput(e.target.value))}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={3}
                   disabled={!compOffSelected}
                 />
               </Field>
