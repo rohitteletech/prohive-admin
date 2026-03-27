@@ -21,6 +21,7 @@ type HolidayPolicyState = {
   effectiveFrom: string;
   nextReviewDate: string;
   status: "Draft" | "Active" | "Archived";
+  createdBy?: string;
   createdAt?: string;
   defaultCompanyPolicy: "Yes" | "No";
   weeklyOffPattern: "Sunday Only" | "Saturday + Sunday" | "2nd and 4th Saturday + Sunday";
@@ -134,6 +135,7 @@ export default function HolidayWeeklyOffPolicyPage() {
           nextReviewDate: string;
           status: string;
           isDefault: boolean;
+          createdBy?: string;
           createdAt?: string;
           configJson?: Record<string, unknown>;
         }>;
@@ -164,6 +166,7 @@ export default function HolidayWeeklyOffPolicyPage() {
                 effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
                 nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
                 status: policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
+                createdBy: policy.createdBy ? String(policy.createdBy) : "-",
                 createdAt: policy.createdAt || "",
                 defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
               } satisfies HolidayPolicyState;
@@ -323,7 +326,7 @@ export default function HolidayWeeklyOffPolicyPage() {
           effectiveFrom: policy.effectiveFrom,
           reviewDueOn: policy.nextReviewDate,
           status: policy.status,
-          createdBy: "Company Admin",
+          createdBy: policy.createdBy || "-",
           createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
         }))}
