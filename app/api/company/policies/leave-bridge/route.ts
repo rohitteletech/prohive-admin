@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { leavePolicyFromDb } from "@/lib/companyLeaves";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 import { todayISOInIndia } from "@/lib/dateTime";
 
@@ -53,10 +52,6 @@ function toLegacyAccrualMode(value: LeaveTypePayload["accrualRule"]) {
   return value === "Yearly Upfront" ? "upfront" : "monthly";
 }
 
-function fromLegacyAccrualMode(value: unknown): LeaveTypePayload["accrualRule"] {
-  return value === "upfront" ? "Yearly Upfront" : "Monthly Accrual";
-}
-
 function toNumberString(value: unknown, fallback: string) {
   const text = String(value ?? "").trim();
   return text || fallback;
@@ -104,36 +99,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Leave policy definition not found." }, { status: 404 });
     }
 
-    const { data, error } = await context.admin
-      .from("company_leave_policies")
-      .select("id,name,code,annual_quota,carry_forward,accrual_mode,encashable,active")
-      .eq("company_id", context.companyId)
-      .order("active", { ascending: false })
-      .order("name", { ascending: true });
-
-    if (error) {
-      return NextResponse.json({ error: error.message || "Unable to load legacy leave policies." }, { status: 400 });
-    }
-
     const config = (leavePolicy.configJson || {}) as Record<string, unknown>;
-    const configLeaveTypes = Array.isArray(config.leaveTypes) ? (config.leaveTypes as LeaveTypePayload[]) : null;
-    const legacyLeaveTypes = Array.isArray(data)
-      ? data.map((row) => {
-          const legacy = leavePolicyFromDb(row as Record<string, unknown>);
-          return {
-            id: legacy.id,
-            name: legacy.name,
-            code: legacy.code,
-            paymentMode: "Paid" as const,
-            annualQuota: String(legacy.annualQuota),
-            halfDayAllowed: "Yes" as const,
-            accrualRule: fromLegacyAccrualMode(legacy.accrualMode),
-            carryForwardAllowed: (legacy.carryForward > 0 ? "Yes" : "No") as "Yes" | "No",
-            maximumCarryForwardDays: String(legacy.carryForward > 0 ? legacy.carryForward : 0),
-            carryForwardExpiryDays: "90",
-          } satisfies LeaveTypePayload;
-        })
-      : [];
+    const configLeaveTypes = Array.isArray(config.leaveTypes) ? (config.leaveTypes as LeaveTypePayload[]) : [];
 
     return NextResponse.json({
       policyId: leavePolicy.id,
@@ -160,7 +127,7 @@ export async function GET(req: NextRequest) {
         config.ifEmployeePunchesOnApprovedLeave ?? config.leaveOverridesAttendance,
       ),
       sandwichLeave: config.sandwichLeave === "Enabled" ? "Enabled" : "Disabled",
-      leaveTypes: configLeaveTypes && configLeaveTypes.length > 0 ? configLeaveTypes : legacyLeaveTypes,
+      leaveTypes: configLeaveTypes,
     } satisfies LeaveBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load leave policy bridge." }, { status: 400 });
