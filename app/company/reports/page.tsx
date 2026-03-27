@@ -728,7 +728,7 @@ export default function Page() {
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
+    <div className="w-full px-0 pb-5 pt-0 lg:pb-6 lg:pt-0">
       <div className="mb-5 rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
         <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-700">
           Report Center
