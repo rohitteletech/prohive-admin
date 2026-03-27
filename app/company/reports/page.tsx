@@ -728,22 +728,25 @@ export default function Page() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Reports</h1>
-        <p className="mt-2 max-w-3xl text-sm text-zinc-600">
+    <div className="mx-auto max-w-6xl px-2 pb-5 pt-0 sm:px-3 lg:px-4 lg:pb-6 lg:pt-0">
+      <div className="mb-5 rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
+        <span className="inline-flex rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-sky-700">
+          Report Center
+        </span>
+        <h1 className="mt-4 text-2xl font-bold tracking-tight text-zinc-900">Reports</h1>
+        <p className="mt-2 max-w-3xl text-sm leading-7 text-zinc-600">
           Generate operational and HR reports with live preview and CSV export.
         </p>
       </div>
       <section className="space-y-4">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="rounded-2xl border border-slate-300 bg-white p-4 shadow-sm sm:p-5">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Report Type</p>
               <h2 className="mt-1 text-xl font-semibold text-slate-900">{selected.title}</h2>
               <p className="mt-2 max-w-3xl text-sm text-slate-600">{selected.description}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 xl:w-[440px]">
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Scope</div>
                 <div className="mt-1 text-sm font-semibold text-slate-900">{scopeLabel}</div>
@@ -793,8 +796,8 @@ export default function Page() {
           </div>
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="space-y-4 p-5">
+        <section className="rounded-2xl border border-slate-300 bg-white shadow-sm">
+          <div className="space-y-4 p-4 sm:p-5">
                 <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <label className="space-y-1.5">
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Selection Mode</span>
