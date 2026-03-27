@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getMobileSessionContext } from "@/lib/mobileSession";
-import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
+import { shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
+import {
+  applyNonWorkingDayTreatment,
+  buildAttendanceMetrics,
+  buildDailyAttendanceDecision,
+  type NonWorkingDayTreatment,
+} from "@/lib/attendancePolicy";
 import { isWeeklyOffDate, normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
 function pad2(value: number) {
@@ -63,7 +70,7 @@ export async function POST(req: NextRequest) {
     session.employee.company_id,
     session.employee.id,
     start,
-    ["holiday_weekoff"],
+    ["shift", "attendance", "holiday_weekoff"],
   );
 
   const yearStart = `${year}-01-01`;
@@ -101,13 +108,13 @@ export async function POST(req: NextRequest) {
       .order("from_date", { ascending: true }),
     session.admin
       .from("attendance_punch_events")
-      .select("effective_punch_at,server_received_at,approval_status")
+      .select("punch_type,effective_punch_at,server_received_at,approval_status")
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
       .in("approval_status", ["auto_approved", "approved"])
-      .gte("server_received_at", `${attendanceQueryStart}T00:00:00.000Z`)
-      .lt("server_received_at", `${attendanceQueryNextStart}T00:00:00.000Z`)
-      .order("server_received_at", { ascending: true }),
+      .gte("effective_punch_at", `${attendanceQueryStart}T00:00:00.000Z`)
+      .lt("effective_punch_at", `${attendanceQueryNextStart}T00:00:00.000Z`)
+      .order("effective_punch_at", { ascending: true }),
   ]);
 
   if (monthHolidayResult.error) {
@@ -133,7 +140,12 @@ export async function POST(req: NextRequest) {
   }
 
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+  const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
+    shiftName: policyContext.employee.shiftName || "General Shift",
+  });
+  const resolvedAttendance = resolveAttendancePolicyRuntime(policyContext.resolved.attendance);
   const weeklyOffPolicy = normalizeWeeklyOffPolicy(resolvedHoliday.weeklyOffPolicy);
+  const scheduledMinutes = shiftDurationMinutes(resolvedShift.shiftStartTime, resolvedShift.shiftEndTime);
 
   const holidayRows = (monthHolidayResult.data || []) as Array<{
     id: string;
@@ -150,6 +162,7 @@ export async function POST(req: NextRequest) {
     days: number | null;
   }>;
   const attendanceRows = (attendanceResult.data || []) as Array<{
+    punch_type: "in" | "out";
     effective_punch_at: string | null;
     server_received_at: string;
     approval_status: string;
@@ -160,22 +173,20 @@ export async function POST(req: NextRequest) {
     holidayRows.map((row) => [row.holiday_date, row.name || row.type || "Holiday"] as const)
   );
   const weeklyOffDates = new Set<string>();
-  const presentDates = new Set<string>();
-  const nonWorkingDayTreatmentByDate = new Map<string, string>();
+  const nonWorkingDayTreatmentByDate = new Map<string, NonWorkingDayTreatment>();
   const leaveDates = new Set<string>();
-  const punchMomentsByDate = new Map<string, string[]>();
+  const attendanceByDate = new Map<string, typeof attendanceRows>();
 
   attendanceRows.forEach((row) => {
     const punchAt = row.effective_punch_at || row.server_received_at;
     if (!punchAt) return;
     const isoDate = isoDateInIndia(punchAt);
     if (isoDate >= start && isoDate < nextStart) {
-      presentDates.add(isoDate);
-      const existingMoments = punchMomentsByDate.get(isoDate) || [];
-      existingMoments.push(punchAt);
-      punchMomentsByDate.set(isoDate, existingMoments);
+      const existingRows = attendanceByDate.get(isoDate) || [];
+      existingRows.push(row);
+      attendanceByDate.set(isoDate, existingRows);
       if (holidayDates.has(isoDate)) {
-        nonWorkingDayTreatmentByDate.set(isoDate, resolvedHoliday.holidayWorkedStatus);
+        nonWorkingDayTreatmentByDate.set(isoDate, resolvedHoliday.holidayWorkedStatus as NonWorkingDayTreatment);
       }
     }
   });
@@ -197,31 +208,111 @@ export async function POST(req: NextRequest) {
   const monthDate = new Date(Date.UTC(year, safeMonth - 1, 1));
   const monthlyStatuses: Array<{
     date: string;
-    status: "present" | "absent" | "leave" | "holiday" | "weekly_off";
+    status:
+      | "present"
+      | "late"
+      | "half_day"
+      | "absent"
+      | "leave"
+      | "holiday"
+      | "weekly_off"
+      | "off_day_worked"
+      | "manual_review";
     punchInAt: string | null;
     punchOutAt: string | null;
   }> = [];
+  let lateCycleCount = 0;
+  let earlyGoCycleCount = 0;
   while (monthDate.getUTCMonth() === safeMonth - 1) {
     const iso = monthDate.toISOString().slice(0, 10);
     const isPastDate = iso < today;
     if (isWeeklyOffDate(iso, weeklyOffPolicy)) {
       weeklyOffDates.add(iso);
-      if (presentDates.has(iso) && !holidayDates.has(iso)) {
-        nonWorkingDayTreatmentByDate.set(iso, resolvedHoliday.weeklyOffWorkedStatus);
+      if (attendanceByDate.has(iso) && !holidayDates.has(iso)) {
+        nonWorkingDayTreatmentByDate.set(iso, resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment);
       }
     }
 
-    let status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null = null;
+    let status:
+      | "present"
+      | "late"
+      | "half_day"
+      | "absent"
+      | "leave"
+      | "holiday"
+      | "weekly_off"
+      | "off_day_worked"
+      | "manual_review"
+      | null = null;
+    let punchInAt: string | null = null;
+    let punchOutAt: string | null = null;
+    const dayEvents = (attendanceByDate.get(iso) || []).slice().sort((left, right) => {
+      const leftTime = new Date(left.effective_punch_at || left.server_received_at).getTime();
+      const rightTime = new Date(right.effective_punch_at || right.server_received_at).getTime();
+      return leftTime - rightTime;
+    });
+
     if (!isPastDate) {
       status = null;
-    } else if (holidayDates.has(iso)) {
-      status = nonWorkingDayTreatmentByDate.get(iso) === "Present + OT" ? "present" : "holiday";
-    } else if (presentDates.has(iso) && weeklyOffDates.has(iso)) {
-      status = nonWorkingDayTreatmentByDate.get(iso) === "Present + OT" ? "present" : "weekly_off";
-    } else if (presentDates.has(iso)) {
-      status = "present";
+    } else if (dayEvents.length > 0) {
+      const firstIn = dayEvents.find((row) => row.punch_type === "in") || null;
+      const lastOut = [...dayEvents].reverse().find((row) => row.punch_type === "out") || null;
+      punchInAt = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
+      punchOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
+
+      const isHoliday = holidayDates.has(iso);
+      const isWeeklyOff = !isHoliday && weeklyOffDates.has(iso);
+      const metrics = buildAttendanceMetrics({
+        checkInIso: punchInAt,
+        checkOutIso: punchOutAt,
+        timeZone: "Asia/Kolkata",
+        shiftStart: resolvedShift.shiftStartTime,
+        shiftEnd: resolvedShift.shiftEndTime,
+        scheduledMinutes,
+        graceMins: resolvedShift.gracePeriod,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
+      });
+      const countsTowardLateCycle =
+        !isHoliday &&
+        !isWeeklyOff &&
+        metrics.lateMinutes > 0 &&
+        metrics.lateMinutes <= resolvedAttendance.latePunchUpToMinutes;
+      const countsTowardEarlyGoCycle =
+        !isHoliday &&
+        !isWeeklyOff &&
+        metrics.earlyGoMinutes > 0 &&
+        metrics.earlyGoMinutes <= resolvedAttendance.earlyGoUpToMinutes;
+
+      if (countsTowardLateCycle) lateCycleCount += 1;
+      if (countsTowardEarlyGoCycle) earlyGoCycleCount += 1;
+
+      const baseDecision = buildDailyAttendanceDecision({
+        checkInIso: punchInAt,
+        checkOutIso: punchOutAt,
+        timeZone: "Asia/Kolkata",
+        shiftStart: resolvedShift.shiftStartTime,
+        shiftEnd: resolvedShift.shiftEndTime,
+        scheduledMinutes,
+        graceMins: resolvedShift.gracePeriod,
+        halfDayMinWorkMins: resolvedShift.halfDayMinWorkMins,
+        policy: resolvedAttendance,
+        lateCycleOccurrenceCount: countsTowardLateCycle ? lateCycleCount : 0,
+        earlyGoCycleOccurrenceCount: countsTowardEarlyGoCycle ? earlyGoCycleCount : 0,
+      });
+      const { decision } = applyNonWorkingDayTreatment({
+        decision: baseDecision,
+        dayType: isHoliday ? "holiday" : isWeeklyOff ? "weekly_off" : null,
+        treatment: nonWorkingDayTreatmentByDate.get(iso) || null,
+      });
+
+      if (baseDecision.resetLateCycle) lateCycleCount = 0;
+      if (baseDecision.resetEarlyGoCycle) earlyGoCycleCount = 0;
+
+      status = decision.status;
     } else if (leaveDates.has(iso)) {
       status = "leave";
+    } else if (holidayDates.has(iso)) {
+      status = "holiday";
     } else if (weeklyOffDates.has(iso)) {
       status = "weekly_off";
     } else if (isPastDate) {
@@ -229,9 +320,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (status) {
-      const punches = (punchMomentsByDate.get(iso) || []).slice().sort();
-      const punchInAt = punches[0] || null;
-      const punchOutAt = punches.length >= 2 ? punches[punches.length - 1] : null;
       monthlyStatuses.push({
         date: iso,
         status,
@@ -268,7 +356,17 @@ export async function POST(req: NextRequest) {
       date: string;
       day: number;
       inMonth: boolean;
-      status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null;
+      status:
+        | "present"
+        | "late"
+        | "half_day"
+        | "absent"
+        | "leave"
+        | "holiday"
+        | "weekly_off"
+        | "off_day_worked"
+        | "manual_review"
+        | null;
       dots: Array<"green" | "yellow" | "red">;
       chipText: string;
     }>
@@ -276,19 +374,30 @@ export async function POST(req: NextRequest) {
   const cursor = new Date(firstCell.toISOString());
   while (cursor <= lastCell) {
     const week: Array<{
-      date: string;
-      day: number;
-      inMonth: boolean;
-      status: "present" | "absent" | "leave" | "holiday" | "weekly_off" | null;
-      dots: Array<"green" | "yellow" | "red">;
-      chipText: string;
-    }> = [];
+        date: string;
+        day: number;
+        inMonth: boolean;
+        status:
+          | "present"
+          | "late"
+          | "half_day"
+          | "absent"
+          | "leave"
+          | "holiday"
+          | "weekly_off"
+          | "off_day_worked"
+          | "manual_review"
+          | null;
+        dots: Array<"green" | "yellow" | "red">;
+        chipText: string;
+      }> = [];
     for (let i = 0; i < 7; i += 1) {
       const iso = cursor.toISOString().slice(0, 10);
       const status = statusByDate.get(iso) || null;
       const dots: Array<"green" | "yellow" | "red"> = [];
-      if (status === "present") dots.push("green");
+      if (status === "present" || status === "late" || status === "half_day") dots.push("green");
       if (status === "holiday" || status === "weekly_off") dots.push("yellow");
+      if (status === "off_day_worked" || status === "manual_review") dots.push("yellow");
       if (status === "absent") dots.push("red");
       const treatment = nonWorkingDayTreatmentByDate.get(iso) || "";
       week.push({
