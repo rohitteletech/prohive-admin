@@ -640,11 +640,22 @@ for delete
 to authenticated
 using (true);
 
+create or replace function public.policy_business_date_india()
+returns date
+language sql
+stable
+set search_path = public
+as $$
+  select (timezone('Asia/Kolkata', now()))::date;
+$$;
+
 create or replace function public.sync_company_policy_default_flags()
 returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_business_date date := public.policy_business_date_india();
 begin
   if new.is_default = true and new.status = 'active' then
     update public.company_policy_definitions
@@ -656,9 +667,9 @@ begin
        and is_default = true
        and status = 'active'
        and (
-         (new.effective_from > current_date and effective_from = new.effective_from)
+         (new.effective_from > v_business_date and effective_from = new.effective_from)
          or
-         (new.effective_from <= current_date and effective_from <= new.effective_from)
+         (new.effective_from <= v_business_date and effective_from <= new.effective_from)
        );
   end if;
 
@@ -741,6 +752,8 @@ returns trigger
 language plpgsql
 set search_path = public
 as $$
+declare
+  v_business_date date := public.policy_business_date_india();
 begin
   if new.policy_type <> 'holiday_weekoff' or new.status <> 'active' then
     return new;
@@ -758,7 +771,7 @@ begin
     raise exception 'Another active holiday policy is already scheduled for %.', new.effective_from;
   end if;
 
-  if new.effective_from > current_date then
+  if new.effective_from > v_business_date then
     if exists (
       select 1
         from public.company_policy_definitions
@@ -766,7 +779,7 @@ begin
          and policy_type = 'holiday_weekoff'
          and status = 'active'
          and id <> new.id
-         and effective_from > current_date
+         and effective_from > v_business_date
     ) then
       raise exception 'Another future active holiday policy is already scheduled for this company.';
     end if;
@@ -778,7 +791,7 @@ begin
          and policy_type = 'holiday_weekoff'
          and status = 'active'
          and id <> new.id
-         and effective_from <= current_date
+         and effective_from <= v_business_date
     ) then
       raise exception 'Another current active holiday policy already exists for this company.';
     end if;
@@ -816,7 +829,8 @@ as $$
 declare
   v_existing_policy public.company_policy_definitions%rowtype;
   v_policy_id uuid;
-  v_is_future_effective_active boolean := p_status = 'active' and p_effective_from > current_date;
+  v_business_date date := public.policy_business_date_india();
+  v_is_future_effective_active boolean := p_status = 'active' and p_effective_from > v_business_date;
   v_should_set_default boolean := coalesce(p_default_company_policy, false) and p_status = 'active';
 begin
   if p_policy_id is not null then

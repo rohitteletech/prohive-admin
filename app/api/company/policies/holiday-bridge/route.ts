@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
+import { todayISOInIndia } from "@/lib/dateTime";
 
 type HolidayBridgePayload = {
   policyId?: string;
@@ -64,7 +65,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISOInIndia();
     const holidayPolicies = definitions.filter((policy) => policy.policyType === "holiday_weekoff");
     const effectiveHolidayPolicies = holidayPolicies
       .filter((policy) => policy.status === "active")
