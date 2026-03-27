@@ -135,6 +135,25 @@ function isWeeklyOffDate(dateIso: string, policy: unknown) {
   return day === 0;
 }
 
+function resolveNonWorkingDayType(params: { isHoliday: boolean; isWeeklyOff: boolean }) {
+  if (params.isHoliday) {
+    return {
+      dayType: "holiday" as const,
+      isWeeklyOff: false,
+    };
+  }
+  if (params.isWeeklyOff) {
+    return {
+      dayType: "weekly_off" as const,
+      isWeeklyOff: true,
+    };
+  }
+  return {
+    dayType: "working_day" as const,
+    isWeeklyOff: false,
+  };
+}
+
 function haversineDistanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const earthRadius = 6371000;
@@ -431,7 +450,11 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const weeklyOff = isWeeklyOffDate(punchDate, resolvedHoliday.weeklyOffPolicy);
   const isHoliday = Boolean(holidayOnDate?.id);
-  const dayType = isHoliday ? "holiday" : weeklyOff ? "weekly_off" : "working_day";
+  const nonWorkingDay = resolveNonWorkingDayType({
+    isHoliday,
+    isWeeklyOff: weeklyOff,
+  });
+  const dayType = nonWorkingDay.dayType;
   const isExtraWork = dayType !== "working_day";
 
   if (isHoliday && !resolvedHoliday.allowPunchOnHoliday) {
@@ -444,7 +467,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     };
   }
 
-  if (weeklyOff && !resolvedHoliday.allowPunchOnWeeklyOff) {
+  if (nonWorkingDay.isWeeklyOff && !resolvedHoliday.allowPunchOnWeeklyOff) {
     return {
       status: 403,
       body: {

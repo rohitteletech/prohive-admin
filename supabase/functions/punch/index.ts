@@ -76,6 +76,25 @@ function normalizeWeeklyOffPolicy(value: unknown) {
   return "sunday_only";
 }
 
+function resolveNonWorkingDayType(params: { isHoliday: boolean; isWeeklyOff: boolean }) {
+  if (params.isHoliday) {
+    return {
+      dayType: "holiday" as const,
+      isWeeklyOff: false,
+    };
+  }
+  if (params.isWeeklyOff) {
+    return {
+      dayType: "weekly_off" as const,
+      isWeeklyOff: true,
+    };
+  }
+  return {
+    dayType: "working_day" as const,
+    isWeeklyOff: false,
+  };
+}
+
 function text(value: unknown, fallback = "") {
   const normalized = String(value ?? "").trim();
   return normalized || fallback;
@@ -646,7 +665,11 @@ Deno.serve(async (req) => {
 
   const weeklyOff = isWeeklyOffDate(punchDate, resolvedHoliday.weeklyOffPolicy);
   const isHoliday = Boolean(holidayOnDate?.id);
-  const dayType = isHoliday ? "holiday" : weeklyOff ? "weekly_off" : "working_day";
+  const nonWorkingDay = resolveNonWorkingDayType({
+    isHoliday,
+    isWeeklyOff: weeklyOff,
+  });
+  const dayType = nonWorkingDay.dayType;
   const isExtraWork = dayType !== "working_day";
   const allowOnHoliday = resolvedHoliday.allowPunchOnHoliday;
   const allowOnWeeklyOff = resolvedHoliday.allowPunchOnWeeklyOff;
@@ -661,7 +684,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (weeklyOff && !allowOnWeeklyOff) {
+  if (nonWorkingDay.isWeeklyOff && !allowOnWeeklyOff) {
     return json(
       {
         code: "WEEKLY_OFF_PUNCH_BLOCKED",
