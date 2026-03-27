@@ -80,15 +80,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Holiday policy definition not found." }, { status: 404 });
     }
 
-    const holidayResult = await context.admin
-        .from("company_holidays")
-        .select("id")
-        .eq("company_id", context.companyId)
-        .limit(1);
-    if (holidayResult.error) {
-      return NextResponse.json({ error: holidayResult.error.message || "Unable to inspect legacy holiday rows." }, { status: 400 });
-    }
-
     const config = (holidayPolicy.configJson || {}) as Record<string, unknown>;
 
     return NextResponse.json({
