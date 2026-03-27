@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { leavePolicyFromDb } from "@/lib/companyLeaves";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
+import { todayISOInIndia } from "@/lib/dateTime";
 
 type LeaveTypePayload = {
   id: string;
@@ -59,6 +60,10 @@ function fromLegacyAccrualMode(value: unknown): LeaveTypePayload["accrualRule"] 
 function toNumberString(value: unknown, fallback: string) {
   const text = String(value ?? "").trim();
   return text || fallback;
+}
+
+function isValidIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
 
 function normalizePunchOnApprovedLeaveAction(
@@ -181,13 +186,75 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "At least one leave type is required." }, { status: 400 });
   }
 
+  const policyName = String(body.policyName || policy?.policyName || "").trim();
+  const policyCode = String(body.policyCode || policy?.policyCode || "").trim();
+  const effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || "").trim();
+  const nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || "").trim();
+
+  if (!policyName) {
+    return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
+  }
+  if (!policyCode) {
+    return NextResponse.json({ error: "Policy Code is required." }, { status: 400 });
+  }
+  if (!effectiveFrom || !isValidIsoDate(effectiveFrom)) {
+    return NextResponse.json({ error: "Valid Effective From date is required." }, { status: 400 });
+  }
+  if (!nextReviewDate || !isValidIsoDate(nextReviewDate)) {
+    return NextResponse.json({ error: "Valid Next Review Date is required." }, { status: 400 });
+  }
+  if (nextReviewDate < effectiveFrom) {
+    return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
+  }
+
+  const existingPolicyId = policy?.id || "";
+  const normalizedStatus =
+    String(body.status || policy?.status || "Draft").trim().toLowerCase() === "active"
+      ? "active"
+      : String(body.status || policy?.status || "Draft").trim().toLowerCase() === "archived"
+        ? "archived"
+        : "draft";
+  const requestedDefaultCompanyPolicy =
+    String(body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No")).trim() === "Yes" ? "Yes" : "No";
+  const normalizedDefaultCompanyPolicy = normalizedStatus === "active" && requestedDefaultCompanyPolicy === "Yes" ? "Yes" : "No";
+
+  const trimmedLeaveTypes = leaveTypes.map((leaveType) => ({
+    ...leaveType,
+    id: String(leaveType.id || "").trim(),
+    name: String(leaveType.name || "").trim(),
+    code: String(leaveType.code || "").trim().toUpperCase(),
+  }));
+  const blankLeaveType = trimmedLeaveTypes.find((leaveType) => !leaveType.name || !leaveType.code);
+  if (blankLeaveType) {
+    return NextResponse.json({ error: "Each leave type must include both Leave Type Name and Leave Code." }, { status: 400 });
+  }
+  const duplicateLeaveCode = trimmedLeaveTypes.find((leaveType, index) =>
+    trimmedLeaveTypes.findIndex((candidate) => candidate.code === leaveType.code) !== index,
+  );
+  if (duplicateLeaveCode) {
+    return NextResponse.json({ error: `Leave Code ${duplicateLeaveCode.code} is duplicated in this policy.` }, { status: 400 });
+  }
+
+  const otherLeavePolicies = definitions.filter((definition) => definition.policyType === "leave" && definition.id !== existingPolicyId);
+  if (normalizedStatus === "active") {
+    const sameEffectiveDateActive = otherLeavePolicies.find(
+      (definition) => definition.status === "active" && definition.effectiveFrom === effectiveFrom,
+    );
+    if (sameEffectiveDateActive) {
+      return NextResponse.json(
+        { error: `Another active leave policy is already scheduled for ${effectiveFrom}.` },
+        { status: 400 },
+      );
+    }
+  }
+
   const configJson = {
-    policyName: body.policyName || policy?.policyName || "Standard Leave Policy",
-    policyCode: body.policyCode || policy?.policyCode || "LEV-001",
-    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
-    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
-    status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
+    policyName,
+    policyCode,
+    effectiveFrom,
+    nextReviewDate,
+    status: normalizedStatus,
+    defaultCompanyPolicy: normalizedDefaultCompanyPolicy,
     leaveCycleType: body.leaveCycleType === "Financial Year" ? "Financial Year" : "Calendar Year",
     approvalFlow: body.approvalFlow || "manager_hr",
     noticePeriodDays: body.noticePeriodDays || "1",
@@ -198,7 +265,7 @@ export async function PUT(req: NextRequest) {
       body.ifEmployeePunchesOnApprovedLeave,
     ),
     sandwichLeave: body.sandwichLeave || "Disabled",
-    leaveTypes: leaveTypes.map((leaveType) => ({
+    leaveTypes: trimmedLeaveTypes.map((leaveType) => ({
       ...leaveType,
       accrualRule: normalizeAccrualRule(leaveType.accrualRule),
       annualQuota: toNumberString(leaveType.annualQuota, "0"),
@@ -209,8 +276,24 @@ export async function PUT(req: NextRequest) {
         leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.carryForwardExpiryDays, "0") : "0",
     })),
   };
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISOInIndia();
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
+
+  if (isFutureEffectiveActive) {
+    const overlappingFuturePolicy = otherLeavePolicies.find(
+      (definition) => definition.status === "active" && definition.effectiveFrom > today,
+    );
+    if (overlappingFuturePolicy) {
+      return NextResponse.json(
+        {
+          error:
+            `Another future active leave policy is already scheduled from ${overlappingFuturePolicy.effectiveFrom}. ` +
+            "Edit or archive that policy before scheduling a new one.",
+        },
+        { status: 400 },
+      );
+    }
+  }
 
   if (configJson.status === "active") {
     const archiveQuery = context.admin
@@ -246,7 +329,7 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  let policyId = policy?.id || "";
+  let policyId = existingPolicyId;
   if (policy) {
     const { error: policyError } = await context.admin
       .from("company_policy_definitions")

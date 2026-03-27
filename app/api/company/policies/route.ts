@@ -42,6 +42,12 @@ export async function POST(req: NextRequest) {
   if (!["draft", "active", "archived"].includes(status)) {
     return NextResponse.json({ error: "Invalid policy status." }, { status: 400 });
   }
+  if (policyType === "leave") {
+    return NextResponse.json(
+      { error: "Leave policy creation must use the leave policy bridge." },
+      { status: 400 },
+    );
+  }
 
   const { data, error } = await context.admin
     .from("company_policy_definitions")
