@@ -197,86 +197,22 @@ export async function PUT(req: NextRequest) {
     reasonMandatory,
   });
 
-  const today = todayISOInIndia();
-  const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
+  const { data: savedPolicyId, error: saveError } = await context.admin.rpc("save_correction_policy_definition", {
+    p_company_id: context.companyId,
+    p_admin_email: context.adminEmail,
+    p_policy_id: policy?.id ?? null,
+    p_policy_name: configJson.policyName,
+    p_policy_code: configJson.policyCode,
+    p_status: configJson.status,
+    p_effective_from: configJson.effectiveFrom,
+    p_next_review_date: configJson.nextReviewDate,
+    p_default_company_policy: configJson.defaultCompanyPolicy === "Yes",
+    p_config_json: configJson,
+  });
 
-  if (configJson.status === "active") {
-    const archiveQuery = context.admin
-      .from("company_policy_definitions")
-      .update({
-        status: "archived",
-        is_default: false,
-      })
-      .eq("company_id", context.companyId)
-      .eq("policy_type", "correction")
-      .eq("status", "active");
-    const scopedArchiveQuery = isFutureEffectiveActive
-      ? archiveQuery.eq("effective_from", configJson.effectiveFrom)
-      : archiveQuery.lte("effective_from", configJson.effectiveFrom);
-
-    const { error: archiveError } = policy?.id ? await scopedArchiveQuery.neq("id", policy.id) : await scopedArchiveQuery;
-    if (archiveError) {
-      return NextResponse.json({ error: archiveError.message || "Unable to archive existing active correction policies." }, { status: 400 });
-    }
+  if (saveError || !savedPolicyId) {
+    return NextResponse.json({ error: saveError?.message || "Unable to save correction policy definition." }, { status: 400 });
   }
 
-  if (configJson.defaultCompanyPolicy === "Yes" && configJson.status === "active") {
-    const clearDefaultQuery = context.admin
-      .from("company_policy_definitions")
-      .update({ is_default: false })
-      .eq("company_id", context.companyId)
-      .eq("policy_type", "correction");
-    const scopedDefaultQuery = isFutureEffectiveActive
-      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
-      : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
-    const { error: clearDefaultError } = policy?.id ? await scopedDefaultQuery.neq("id", policy.id) : await scopedDefaultQuery;
-    if (clearDefaultError) {
-      return NextResponse.json({ error: clearDefaultError.message || "Unable to reset existing default correction policy." }, { status: 400 });
-    }
-  }
-
-  let policyId = policy?.id || "";
-  if (policy) {
-    const { error } = await context.admin
-      .from("company_policy_definitions")
-      .update({
-        policy_name: configJson.policyName,
-        policy_code: configJson.policyCode,
-        status: configJson.status,
-        is_default: configJson.defaultCompanyPolicy === "Yes",
-        effective_from: configJson.effectiveFrom,
-        next_review_date: configJson.nextReviewDate,
-        config_json: configJson,
-      })
-      .eq("company_id", context.companyId)
-      .eq("id", policy.id);
-
-    if (error) {
-      return NextResponse.json({ error: error.message || "Unable to save correction policy definition." }, { status: 400 });
-    }
-  } else {
-    const { data: insertedPolicy, error: insertPolicyError } = await context.admin
-      .from("company_policy_definitions")
-      .insert({
-        company_id: context.companyId,
-        policy_type: "correction",
-        policy_name: configJson.policyName,
-        policy_code: configJson.policyCode,
-        status: configJson.status,
-        is_default: configJson.defaultCompanyPolicy === "Yes",
-        effective_from: configJson.effectiveFrom,
-        next_review_date: configJson.nextReviewDate,
-        config_json: configJson,
-        created_by: context.adminEmail,
-      })
-      .select("id")
-      .maybeSingle();
-
-    if (insertPolicyError || !insertedPolicy?.id) {
-      return NextResponse.json({ error: insertPolicyError?.message || "Unable to create correction policy definition." }, { status: 400 });
-    }
-    policyId = insertedPolicy.id;
-  }
-
-  return NextResponse.json({ ok: true, policyId });
+  return NextResponse.json({ ok: true, policyId: savedPolicyId });
 }
