@@ -340,7 +340,10 @@ export async function PUT(req: NextRequest) {
       .eq("company_id", context.companyId)
       .eq("policy_type", "shift");
     const scopedDefaultQuery = isFutureEffectiveActive
-      ? clearDefaultQuery.eq("effective_from", configJson.effectiveFrom)
+      // Keep today's active default intact, but allow only one future scheduled default.
+      ? clearDefaultQuery
+          .eq("status", "active")
+          .gt("effective_from", today)
       : clearDefaultQuery.lte("effective_from", configJson.effectiveFrom);
     const { error: clearDefaultError } = currentPolicyId ? await scopedDefaultQuery.neq("id", currentPolicyId) : await scopedDefaultQuery;
     if (clearDefaultError) {
