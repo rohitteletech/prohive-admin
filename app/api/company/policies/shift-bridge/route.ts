@@ -30,6 +30,16 @@ type ShiftBridgePayload = {
   legacyShiftId?: string;
 };
 
+function readPunchAccessRule(config: Record<string, unknown>) {
+  return normalizeLoginAccessRule(config.punchAccessRule || config.loginAccessRule);
+}
+
+function readEarlyPunchAllowed(config: Record<string, unknown>, fallback: unknown) {
+  const primary = config.earlyPunchAllowed;
+  const legacy = config.earlyInAllowed;
+  return String(primary || legacy || fallback || 15);
+}
+
 const FALLBACK_SHIFT = {
   id: "default-shift",
   name: "General Shift",
@@ -188,10 +198,11 @@ export async function GET(req: NextRequest) {
         config.halfDayHours ||
           minutesToClock(derivedHalfDayMinutes, "04:00")
       ),
-      punchAccessRule: normalizeLoginAccessRule(config.punchAccessRule || config.loginAccessRule),
-      earlyPunchAllowed: String(config.earlyPunchAllowed || config.earlyInAllowed || effectiveLegacy.earlyWindowMins || 15),
-      loginAccessRule: normalizeLoginAccessRule(config.punchAccessRule || config.loginAccessRule),
-      earlyInAllowed: String(config.earlyPunchAllowed || config.earlyInAllowed || effectiveLegacy.earlyWindowMins || 15),
+      punchAccessRule: readPunchAccessRule(config),
+      earlyPunchAllowed: readEarlyPunchAllowed(config, effectiveLegacy.earlyWindowMins),
+      // Deprecated aliases kept in the response for backward compatibility with older clients.
+      loginAccessRule: readPunchAccessRule(config),
+      earlyInAllowed: readEarlyPunchAllowed(config, effectiveLegacy.earlyWindowMins),
       gracePeriod: String(config.gracePeriod || effectiveLegacy.graceMins || 10),
       minimumWorkBeforePunchOut: String(config.minimumWorkBeforePunchOut || effectiveLegacy.minWorkBeforeOutMins || 60),
       legacyShiftId: String(config.legacyShiftId || effectiveLegacy.id || ""),
@@ -303,8 +314,6 @@ export async function PUT(req: NextRequest) {
     halfDayHours: halfDayAvailable === "No" ? "00:00" : minutesToClock(Math.max(0, Math.floor(shiftDuration / 2)), "04:00"),
     punchAccessRule: normalizedPunchAccessRule,
     earlyPunchAllowed: String(earlyPunchAllowed),
-    loginAccessRule: normalizedPunchAccessRule,
-    earlyInAllowed: String(earlyPunchAllowed),
     gracePeriod: String(gracePeriod),
     minimumWorkBeforePunchOut: String(minimumWorkBeforePunchOut),
     legacyShiftId: body.legacyShiftId || existingConfig.legacyShiftId || "",

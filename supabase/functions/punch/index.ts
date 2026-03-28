@@ -105,6 +105,25 @@ function wholeNumber(value: unknown, fallback: number) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : fallback;
 }
 
+function shiftPunchAccessRule(config: Record<string, unknown>, fallback?: {
+  punchAccessRule?: string;
+  loginAccessRule?: string;
+}) {
+  return normalizePunchAccessRule(
+    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+  );
+}
+
+function shiftEarlyPunchAllowed(config: Record<string, unknown>, fallback?: {
+  earlyPunchAllowed?: number;
+  earlyInAllowed?: number;
+}) {
+  return wholeNumber(
+    config.earlyPunchAllowed || config.earlyInAllowed,
+    fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+  );
+}
+
 function yesNo(value: unknown, fallback: "Yes" | "No" = "No") {
   return String(value || "").trim() === "Yes" ? "Yes" : fallback;
 }
@@ -188,20 +207,11 @@ function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
     shiftType: text(config.shiftType, fallback?.shiftType || "General"),
     shiftStartTime: text(config.shiftStartTime, fallback?.shiftStartTime || "09:00"),
     shiftEndTime: text(config.shiftEndTime, fallback?.shiftEndTime || "18:00"),
-    punchAccessRule: normalizePunchAccessRule(
-      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
-    ),
-    earlyPunchAllowed: wholeNumber(
-      config.earlyPunchAllowed || config.earlyInAllowed,
-      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
-    ),
-    loginAccessRule: normalizePunchAccessRule(
-      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
-    ),
-    earlyInAllowed: wholeNumber(
-      config.earlyPunchAllowed || config.earlyInAllowed,
-      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
-    ),
+    punchAccessRule: shiftPunchAccessRule(config, fallback),
+    earlyPunchAllowed: shiftEarlyPunchAllowed(config, fallback),
+    // Deprecated aliases kept temporarily so older call sites remain safe during cleanup.
+    loginAccessRule: shiftPunchAccessRule(config, fallback),
+    earlyInAllowed: shiftEarlyPunchAllowed(config, fallback),
     minimumWorkBeforePunchOut: wholeNumber(config.minimumWorkBeforePunchOut, fallback?.minimumWorkBeforePunchOut ?? 60),
   };
 }

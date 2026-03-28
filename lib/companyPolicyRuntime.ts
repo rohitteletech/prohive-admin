@@ -32,6 +32,25 @@ function clockToMinutes(value: unknown, fallback: number) {
   return Math.max(0, hours * 60 + minutes);
 }
 
+function shiftPunchAccessRule(config: Record<string, unknown>, fallback?: {
+  punchAccessRule?: string;
+  loginAccessRule?: string;
+}) {
+  return normalizePunchAccessRule(
+    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+  );
+}
+
+function shiftEarlyPunchAllowed(config: Record<string, unknown>, fallback?: {
+  earlyPunchAllowed?: number;
+  earlyInAllowed?: number;
+}) {
+  return wholeNumber(
+    config.earlyPunchAllowed || config.earlyInAllowed,
+    fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+  );
+}
+
 export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
   shiftName?: string;
   shiftType?: string;
@@ -66,20 +85,11 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
       clockToMinutes(config.halfDayHours, clockToMinutes(halfDayHours, fallback?.halfDayMinWorkMins ?? 240)),
       fallback?.halfDayMinWorkMins ?? 240,
     ),
-    punchAccessRule: normalizePunchAccessRule(
-      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
-    ),
-    earlyPunchAllowed: wholeNumber(
-      config.earlyPunchAllowed || config.earlyInAllowed,
-      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
-    ),
-    loginAccessRule: normalizePunchAccessRule(
-      config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
-    ),
-    earlyInAllowed: wholeNumber(
-      config.earlyPunchAllowed || config.earlyInAllowed,
-      fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
-    ),
+    punchAccessRule: shiftPunchAccessRule(config, fallback),
+    earlyPunchAllowed: shiftEarlyPunchAllowed(config, fallback),
+    // Deprecated aliases kept temporarily so older call sites remain safe during cleanup.
+    loginAccessRule: shiftPunchAccessRule(config, fallback),
+    earlyInAllowed: shiftEarlyPunchAllowed(config, fallback),
     gracePeriod: wholeNumber(config.gracePeriod, fallback?.gracePeriod ?? 10),
     minimumWorkBeforePunchOut: wholeNumber(
       config.minimumWorkBeforePunchOut,
