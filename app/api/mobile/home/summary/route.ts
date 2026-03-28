@@ -8,7 +8,6 @@ import {
   resolveShiftPolicyRuntime,
 } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import {
   applyNonWorkingDayTreatment,
   buildAttendanceMetrics,
@@ -19,7 +18,6 @@ import {
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
 import {
   applyExtraHoursPolicy,
-  findMatchingShiftRule,
   normalizeExtraHoursPolicy,
   normalizeHalfDayMinWorkMins,
   normalizeLoginAccessRule,
@@ -78,7 +76,7 @@ export async function POST(req: NextRequest) {
     ["shift", "attendance", "holiday_weekoff", "correction"],
   );
 
-  const [employeeResult, companyResult, shiftResult, eventsResult, holidayResult] = await Promise.all([
+  const [employeeResult, companyResult, eventsResult, holidayResult] = await Promise.all([
     session.admin
       .from("employees")
       .select("full_name,employee_code,designation,shift_name")
@@ -90,11 +88,6 @@ export async function POST(req: NextRequest) {
       .select("name,company_tagline")
       .eq("id", session.employee.company_id)
       .maybeSingle(),
-    session.admin
-      .from("company_shift_definitions")
-      .select("id,name,type,start_time,end_time,grace_mins,early_window_mins,min_work_before_out_mins,active")
-      .eq("company_id", session.employee.company_id)
-      .order("created_at", { ascending: true }),
     session.admin
       .from("attendance_punch_events")
       .select("punch_type,effective_punch_at,server_received_at,approval_status")
@@ -117,9 +110,6 @@ export async function POST(req: NextRequest) {
   }
   if (companyResult.error) {
     return NextResponse.json({ error: companyResult.error.message || "Unable to load company profile." }, { status: 400 });
-  }
-  if (shiftResult.error) {
-    return NextResponse.json({ error: shiftResult.error.message || "Unable to load shift configuration." }, { status: 400 });
   }
   if (eventsResult.error) {
     return NextResponse.json({ error: eventsResult.error.message || "Unable to load today attendance." }, { status: 400 });
@@ -147,56 +137,19 @@ export async function POST(req: NextRequest) {
   const checkOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
   const currentStatus = checkInAt ? (checkOutAt ? "COMPLETED" : "PUNCHED_IN") : "NOT_PUNCHED_IN";
   const employeeShiftName = employeeResult.data?.shift_name || "General";
-
-  const availableShifts = ((shiftResult.data || []) as Array<{
-    id: string;
-    name: string;
-    type: string;
-    start_time: string;
-    end_time: string;
-    grace_mins: number;
-    early_window_mins: number;
-    min_work_before_out_mins: number;
-    active: boolean;
-    }>)
-    .filter((row) => row.active !== false)
-    .map((row) => ({
-      name: row.name,
-      type: row.type,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      graceMins: Number(row.grace_mins || 0),
-      earlyWindowMins: Number(row.early_window_mins || 0),
-      minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
-    }));
-
-  const defaultShifts = DEFAULT_COMPANY_SHIFTS.map((row) => ({
-    name: row.name,
-    type: row.type,
-    startTime: row.start,
-    endTime: row.end,
-    graceMins: row.graceMins,
-    earlyWindowMins: row.earlyWindowMins,
-    minWorkBeforeOutMins: row.minWorkBeforeOutMins,
-  }));
-
-  const shiftPool = availableShifts.length ? availableShifts : defaultShifts;
   const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
     shiftName: employeeShiftName,
     shiftType: employeeShiftName,
   });
-  const matchedShift =
-    policyContext.resolved.shift
-      ? {
-          name: resolvedShift.shiftName,
-          type: resolvedShift.shiftType,
-          startTime: resolvedShift.shiftStartTime,
-          endTime: resolvedShift.shiftEndTime,
-          graceMins: resolvedShift.gracePeriod,
-          earlyWindowMins: resolvedShift.earlyPunchAllowed,
-          minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
-        }
-      : findMatchingShiftRule(employeeShiftName, shiftPool);
+  const matchedShift = {
+    name: resolvedShift.shiftName,
+    type: resolvedShift.shiftType,
+    startTime: resolvedShift.shiftStartTime,
+    endTime: resolvedShift.shiftEndTime,
+    graceMins: resolvedShift.gracePeriod,
+    earlyWindowMins: resolvedShift.earlyPunchAllowed,
+    minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
+  };
   const shiftStartMin = matchedShift ? timeToMinutes(matchedShift.startTime) || 600 : 600;
   const shiftEndMin = matchedShift ? timeToMinutes(matchedShift.endTime) || 1080 : 1080;
   const effectiveScheduledWorkMin = matchedShift ? shiftDurationMinutes(matchedShift.startTime, matchedShift.endTime) : null;

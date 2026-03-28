@@ -705,46 +705,13 @@ Deno.serve(async (req) => {
   }
 
   if (payload.punch_type === "in" && normalizePunchAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule) === "shift_time_only") {
-    const { data: shiftRows, error: shiftError } = await supabase
-      .from("company_shift_definitions")
-      .select("name,type,start_time,end_time,early_window_mins,active")
-      .eq("company_id", payload.company_id)
-      .eq("active", true)
-      .order("created_at", { ascending: true });
-
-    if (shiftError) {
-      return json({ error: shiftError.message || "Unable to load shift window policy." }, 500);
-    }
-
-    const effectiveShiftRows = ((shiftRows || []) as Array<{
-      name: string;
-      type: string;
-      start_time: string;
-      end_time: string;
-      early_window_mins: number;
-    }>).map((row) => ({
-      name: row.name,
-      type: row.type,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      earlyWindowMins: Number(row.early_window_mins || 0),
-    }));
-
-    const fallbackShiftRows = [
-      { name: "General", type: "Day", startTime: "09:00", endTime: "18:00", earlyWindowMins: 15 },
-      { name: "Morning", type: "Early", startTime: "06:00", endTime: "15:00", earlyWindowMins: 15 },
-      { name: "Evening", type: "Late", startTime: "14:00", endTime: "22:00", earlyWindowMins: 15 },
-    ];
-
-    const matchedShift = resolvedShiftPolicy
-      ? {
-          name: resolvedShift.shiftName,
-          type: resolvedShift.shiftType,
-          startTime: resolvedShift.shiftStartTime,
-          endTime: resolvedShift.shiftEndTime,
-          earlyWindowMins: resolvedShift.earlyPunchAllowed,
-        }
-      : findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+    const matchedShift = {
+      name: resolvedShift.shiftName,
+      type: resolvedShift.shiftType,
+      startTime: resolvedShift.shiftStartTime,
+      endTime: resolvedShift.shiftEndTime,
+      earlyWindowMins: resolvedShift.earlyPunchAllowed,
+    };
     if (
       matchedShift &&
       !isPunchInAllowedByShiftWindow({
@@ -794,52 +761,14 @@ Deno.serve(async (req) => {
   }
 
   if (payload.punch_type === "out" && lastEvent?.punch_type === "in") {
-    const { data: shiftRows, error: shiftError } = await supabase
-      .from("company_shift_definitions")
-      .select("name,type,start_time,end_time,early_window_mins,min_work_before_out_mins,active")
-      .eq("company_id", payload.company_id)
-      .eq("active", true)
-      .order("created_at", { ascending: true });
-
-    if (shiftError) {
-      return json({ error: shiftError.message || "Unable to load shift work-out policy." }, 500);
-    }
-
-    const effectiveShiftRows = ((shiftRows || []) as Array<{
-      name: string;
-      type: string;
-      start_time: string;
-      end_time: string;
-      early_window_mins: number;
-      min_work_before_out_mins: number;
-    }>).map((row) => ({
-      name: row.name,
-      type: row.type,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      earlyWindowMins: Number(row.early_window_mins || 0),
-      minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
-    }));
-
-    const fallbackShiftRows = [
-      { name: "General", type: "Day", startTime: "09:00", endTime: "18:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
-      { name: "Morning", type: "Early", startTime: "06:00", endTime: "15:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
-      { name: "Evening", type: "Late", startTime: "14:00", endTime: "22:00", earlyWindowMins: 15, minWorkBeforeOutMins: 60 },
-    ];
-
-    const matchedShift = resolvedShiftPolicy
-      ? {
-          name: resolvedShift.shiftName,
-          type: resolvedShift.shiftType,
-          startTime: resolvedShift.shiftStartTime,
-          endTime: resolvedShift.shiftEndTime,
-          earlyWindowMins: resolvedShift.earlyPunchAllowed,
-          minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
-        }
-      : findMatchingShiftRule(
-          String(employee.shift_name || "General"),
-          effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows
-        );
+    const matchedShift = {
+      name: resolvedShift.shiftName,
+      type: resolvedShift.shiftType,
+      startTime: resolvedShift.shiftStartTime,
+      endTime: resolvedShift.shiftEndTime,
+      earlyWindowMins: resolvedShift.earlyPunchAllowed,
+      minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
+    };
     const lastPunchAt = lastEvent.effective_punch_at || lastEvent.server_received_at || null;
     const workedMinutes = rawWorkedMinutes(lastPunchAt, currentPunchIso);
     const minWorkBeforeOut = Math.max(0, Math.floor(Number(matchedShift?.minWorkBeforeOutMins || 0)));

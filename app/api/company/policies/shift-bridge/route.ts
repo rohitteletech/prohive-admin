@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
-import { shiftFromDb } from "@/lib/companyShiftDefinitions";
+import { createDefaultShiftPolicyConfig } from "@/lib/companyShiftDefaults";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 import { addYearsToIsoDate, todayISOInIndia } from "@/lib/dateTime";
 import { normalizeLoginAccessRule, shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
@@ -23,34 +22,13 @@ type ShiftBridgePayload = {
   halfDayHours?: string;
   punchAccessRule?: "any_time" | "shift_time_only";
   earlyPunchAllowed?: string;
-  loginAccessRule?: "any_time" | "shift_time_only";
-  earlyInAllowed?: string;
   gracePeriod?: string;
   minimumWorkBeforePunchOut?: string;
-  legacyShiftId?: string;
 };
 
 function readPunchAccessRule(config: Record<string, unknown>) {
-  return normalizeLoginAccessRule(config.punchAccessRule || config.loginAccessRule);
+  return normalizeLoginAccessRule(config.punchAccessRule);
 }
-
-function readEarlyPunchAllowed(config: Record<string, unknown>, fallback: unknown) {
-  const primary = config.earlyPunchAllowed;
-  const legacy = config.earlyInAllowed;
-  return String(primary || legacy || fallback || 15);
-}
-
-const FALLBACK_SHIFT = {
-  id: "default-shift",
-  name: "General Shift",
-  type: "General",
-  start: "09:00",
-  end: "18:00",
-  graceMins: 10,
-  earlyWindowMins: 15,
-  minWorkBeforeOutMins: 60,
-  active: true,
-};
 
 function comparePolicyPriority(
   a: { effectiveFrom: string; updatedAt: string; createdAt: string },
@@ -59,11 +37,6 @@ function comparePolicyPriority(
   if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
   if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
   return b.createdAt.localeCompare(a.createdAt);
-}
-
-function asNumber(value: unknown, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
 }
 
 function minutesToClock(value: number, fallback = "04:00") {
@@ -107,24 +80,6 @@ function fallbackShiftPolicyCode(policyId?: string) {
   return createShiftPolicyCode();
 }
 
-function fallbackLegacyShift() {
-  if (DEFAULT_COMPANY_SHIFTS[0]) {
-    return {
-      id: DEFAULT_COMPANY_SHIFTS[0].id,
-      name: DEFAULT_COMPANY_SHIFTS[0].name,
-      type: DEFAULT_COMPANY_SHIFTS[0].type,
-      start: DEFAULT_COMPANY_SHIFTS[0].start,
-      end: DEFAULT_COMPANY_SHIFTS[0].end,
-      graceMins: DEFAULT_COMPANY_SHIFTS[0].graceMins,
-      earlyWindowMins: DEFAULT_COMPANY_SHIFTS[0].earlyWindowMins,
-      minWorkBeforeOutMins: DEFAULT_COMPANY_SHIFTS[0].minWorkBeforeOutMins,
-      active: DEFAULT_COMPANY_SHIFTS[0].active,
-    };
-  }
-
-  return FALLBACK_SHIFT;
-}
-
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -152,28 +107,18 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Shift policy definition not found." }, { status: 404 });
     }
 
-    const legacyShiftResult = await context.admin
-      .from("company_shift_definitions")
-      .select("id,name,type,start_time,end_time,grace_mins,early_window_mins,min_work_before_out_mins,active")
-      .eq("company_id", context.companyId)
-      .order("active", { ascending: false })
-      .order("created_at", { ascending: true });
-
-    if (legacyShiftResult.error) {
-      return NextResponse.json({ error: legacyShiftResult.error.message || "Unable to load legacy shift definition." }, { status: 400 });
-    }
-    const config = (shiftPolicy.configJson || {}) as Record<string, unknown>;
-    const legacyShiftRows = Array.isArray(legacyShiftResult.data)
-      ? legacyShiftResult.data.map((row) => shiftFromDb(row as never))
-      : [];
-    const linkedLegacyShiftId = String(config.legacyShiftId || "").trim();
-    const effectiveLegacy: typeof FALLBACK_SHIFT =
-      legacyShiftRows.find((row) => row.id === linkedLegacyShiftId) ||
-      legacyShiftRows[0] ||
-      fallbackLegacyShift();
-    const effectiveLegacyStart = String(effectiveLegacy.start || FALLBACK_SHIFT.start);
-    const effectiveLegacyEnd = String(effectiveLegacy.end || FALLBACK_SHIFT.end);
-    const derivedShiftMinutes = Number(shiftDurationMinutes(effectiveLegacyStart, effectiveLegacyEnd) || 0);
+    const fallbackConfig = createDefaultShiftPolicyConfig({
+      policyName: shiftPolicy.policyName,
+      policyCode: shiftPolicy.policyCode,
+      effectiveFrom: shiftPolicy.effectiveFrom,
+      nextReviewDate: shiftPolicy.nextReviewDate,
+      status: shiftPolicy.status,
+      defaultCompanyPolicy: shiftPolicy.isDefault ? "Yes" : "No",
+    }) as Record<string, unknown>;
+    const config = { ...fallbackConfig, ...((shiftPolicy.configJson || {}) as Record<string, unknown>) };
+    const shiftStartTime = String(config.shiftStartTime || "09:00");
+    const shiftEndTime = String(config.shiftEndTime || "18:00");
+    const derivedShiftMinutes = Number(shiftDurationMinutes(shiftStartTime, shiftEndTime) || 0);
     const derivedHalfDayMinutes = Math.max(0, Math.floor(derivedShiftMinutes / 2));
     return NextResponse.json({
       policyId: shiftPolicy.id,
@@ -188,24 +133,20 @@ export async function GET(req: NextRequest) {
             ? "Archived"
             : "Draft",
       defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || shiftPolicy.isDefault === false) ? "No" : "Yes",
-      shiftName: String(config.shiftName || effectiveLegacy.name || "General Shift"),
-      shiftType: String(config.shiftType || effectiveLegacy.type || "General"),
+      shiftName: String(config.shiftName || "General Shift"),
+      shiftType: String(config.shiftType || "General"),
       shiftStructure: "fixed",
-      shiftStartTime: String(config.shiftStartTime || effectiveLegacyStart || "09:00"),
-      shiftEndTime: String(config.shiftEndTime || effectiveLegacyEnd || "18:00"),
+      shiftStartTime,
+      shiftEndTime,
       halfDayAvailable: config.halfDayAvailable === "No" ? "No" : "Yes",
       halfDayHours: String(
         config.halfDayHours ||
           minutesToClock(derivedHalfDayMinutes, "04:00")
       ),
       punchAccessRule: readPunchAccessRule(config),
-      earlyPunchAllowed: readEarlyPunchAllowed(config, effectiveLegacy.earlyWindowMins),
-      // Deprecated aliases kept in the response for backward compatibility with older clients.
-      loginAccessRule: readPunchAccessRule(config),
-      earlyInAllowed: readEarlyPunchAllowed(config, effectiveLegacy.earlyWindowMins),
-      gracePeriod: String(config.gracePeriod || effectiveLegacy.graceMins || 10),
-      minimumWorkBeforePunchOut: String(config.minimumWorkBeforePunchOut || effectiveLegacy.minWorkBeforeOutMins || 60),
-      legacyShiftId: String(config.legacyShiftId || effectiveLegacy.id || ""),
+      earlyPunchAllowed: String(config.earlyPunchAllowed || 15),
+      gracePeriod: String(config.gracePeriod || 10),
+      minimumWorkBeforePunchOut: String(config.minimumWorkBeforePunchOut || 60),
     } satisfies ShiftBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load shift policy bridge." }, { status: 400 });
@@ -225,8 +166,6 @@ export async function PUT(req: NextRequest) {
   const policy = body.policyId
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "shift")
     : null;
-  const existingConfig = (policy?.configJson || {}) as Partial<ShiftBridgePayload>;
-
   let policyCode = "";
   let policyName = "";
   let effectiveFrom = "";
@@ -252,10 +191,10 @@ export async function PUT(req: NextRequest) {
     shiftStartTime = String(body.shiftStartTime || "09:00").trim();
     shiftEndTime = String(body.shiftEndTime || "18:00").trim();
     halfDayAvailable = body.halfDayAvailable === "No" ? "No" : "Yes";
-    normalizedPunchAccessRule = normalizeLoginAccessRule(body.punchAccessRule || body.loginAccessRule || "any_time");
+    normalizedPunchAccessRule = normalizeLoginAccessRule(body.punchAccessRule || "any_time");
     earlyPunchAllowed = normalizedPunchAccessRule === "any_time"
       ? 0
-      : parseWholeNumber(body.earlyPunchAllowed || body.earlyInAllowed || "15", 0, 240, "Early Punch Allowed");
+      : parseWholeNumber(body.earlyPunchAllowed || "15", 0, 240, "Early Punch Allowed");
     gracePeriod = parseWholeNumber(body.gracePeriod || "10", 0, 120, "Grace Period");
     minimumWorkBeforePunchOut = parseWholeNumber(body.minimumWorkBeforePunchOut || "60", 0, 1440, "Minimum Work Before Punch Out");
     shiftDuration = shiftDurationMinutes(shiftStartTime, shiftEndTime);
@@ -316,7 +255,6 @@ export async function PUT(req: NextRequest) {
     earlyPunchAllowed: String(earlyPunchAllowed),
     gracePeriod: String(gracePeriod),
     minimumWorkBeforePunchOut: String(minimumWorkBeforePunchOut),
-    legacyShiftId: body.legacyShiftId || existingConfig.legacyShiftId || "",
   };
   const savePolicyResult = await context.admin.rpc("save_shift_policy_definition", {
     p_company_id: context.companyId,
@@ -340,65 +278,5 @@ export async function PUT(req: NextRequest) {
 
   const policyId = String(savePolicyResult.data);
 
-  const legacyPayload = {
-    company_id: context.companyId,
-    name: configJson.shiftName,
-    type: configJson.shiftType,
-    start_time: configJson.shiftStartTime,
-    end_time: configJson.shiftEndTime,
-    grace_mins: asNumber(configJson.gracePeriod, 10),
-    early_window_mins: asNumber(configJson.earlyPunchAllowed, 15),
-    min_work_before_out_mins: asNumber(configJson.minimumWorkBeforePunchOut, 60),
-    active: true,
-  };
-
-  let legacyShiftId = String(body.legacyShiftId || configJson.legacyShiftId || "").trim();
-  if (legacyShiftId) {
-    const { error: updateLegacyError } = await context.admin
-      .from("company_shift_definitions")
-      .update(legacyPayload)
-      .eq("company_id", context.companyId)
-      .eq("id", legacyShiftId);
-    if (updateLegacyError) {
-      return NextResponse.json({ error: updateLegacyError.message || "Unable to update legacy shift row." }, { status: 400 });
-    }
-  } else {
-    const { data: insertedLegacy, error: insertLegacyError } = await context.admin
-      .from("company_shift_definitions")
-      .insert({ ...legacyPayload, id: crypto.randomUUID() })
-      .select("id")
-      .maybeSingle();
-    if (insertLegacyError || !insertedLegacy?.id) {
-      return NextResponse.json({ error: insertLegacyError?.message || "Unable to insert legacy shift row." }, { status: 400 });
-    }
-    legacyShiftId = insertedLegacy.id;
-  }
-
-  const { error: patchConfigError } = await context.admin
-    .from("company_policy_definitions")
-    .update({
-      config_json: { ...configJson, legacyShiftId },
-    })
-    .eq("company_id", context.companyId)
-    .eq("id", policyId);
-
-  if (patchConfigError) {
-    return NextResponse.json({ error: patchConfigError.message || "Unable to finalize shift policy config." }, { status: 400 });
-  }
-
-  const { error: companyMirrorError } = await context.admin
-    .from("companies")
-    .update({
-      login_access_rule: normalizedPunchAccessRule,
-    })
-    .eq("id", context.companyId);
-
-  if (
-    companyMirrorError &&
-    !String(companyMirrorError.message || "").toLowerCase().includes("login_access_rule")
-  ) {
-    return NextResponse.json({ error: companyMirrorError.message || "Unable to mirror company login access rule." }, { status: 400 });
-  }
-
-  return NextResponse.json({ ok: true, policyId, legacyShiftId });
+  return NextResponse.json({ ok: true, policyId });
 }

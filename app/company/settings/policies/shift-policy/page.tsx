@@ -36,7 +36,6 @@ type ShiftPolicyState = {
   earlyPunchAllowed: string;
   gracePeriod: string;
   minimumWorkBeforePunchOut: string;
-  legacyShiftId: string;
 };
 
 function createShiftPolicyCode() {
@@ -64,7 +63,6 @@ function createInitialShiftPolicyState(): ShiftPolicyState {
     earlyPunchAllowed: "15",
     gracePeriod: "10",
     minimumWorkBeforePunchOut: "60",
-    legacyShiftId: "",
   };
 }
 
@@ -206,8 +204,6 @@ export default function NewShiftPolicyPage() {
     });
     const result = (await response.json().catch(() => ({}))) as Partial<ShiftPolicyState> & {
       error?: string;
-      loginAccessRule?: ShiftPolicyState["punchAccessRule"];
-      earlyInAllowed?: string;
     };
     if (!response.ok) {
       notify(result.error || "Unable to load shift policy.");
@@ -219,8 +215,8 @@ export default function NewShiftPolicyPage() {
     const nextPolicy = {
       ...initialState,
       ...result,
-      punchAccessRule: String(result.punchAccessRule || result.loginAccessRule || initialState.punchAccessRule) as ShiftPolicyState["punchAccessRule"],
-      earlyPunchAllowed: String(result.earlyPunchAllowed || result.earlyInAllowed || initialState.earlyPunchAllowed),
+      punchAccessRule: String(result.punchAccessRule || initialState.punchAccessRule) as ShiftPolicyState["punchAccessRule"],
+      earlyPunchAllowed: String(result.earlyPunchAllowed || initialState.earlyPunchAllowed),
     };
     setDraft(nextPolicy);
     const policiesResponse = await fetch("/api/company/policies?policy_type=shift", {
@@ -251,10 +247,7 @@ export default function NewShiftPolicyPage() {
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
         ? policiesResult.policies.map((policy) => {
             const initialState = createInitialShiftPolicyState();
-            const config = (policy.configJson || {}) as Partial<ShiftPolicyState> & {
-              loginAccessRule?: ShiftPolicyState["punchAccessRule"];
-              earlyInAllowed?: string;
-            };
+            const config = (policy.configJson || {}) as Partial<ShiftPolicyState>;
             return {
               ...initialState,
               ...config,
@@ -265,8 +258,8 @@ export default function NewShiftPolicyPage() {
               policyCode: String(config.policyCode || policy.policyCode || ""),
               effectiveFrom: String(config.effectiveFrom || policy.effectiveFrom || initialState.effectiveFrom),
               nextReviewDate: String(config.nextReviewDate || policy.nextReviewDate || initialState.nextReviewDate),
-              punchAccessRule: String(config.punchAccessRule || config.loginAccessRule || initialState.punchAccessRule) as ShiftPolicyState["punchAccessRule"],
-              earlyPunchAllowed: String(config.earlyPunchAllowed || config.earlyInAllowed || initialState.earlyPunchAllowed),
+              punchAccessRule: String(config.punchAccessRule || initialState.punchAccessRule) as ShiftPolicyState["punchAccessRule"],
+              earlyPunchAllowed: String(config.earlyPunchAllowed || initialState.earlyPunchAllowed),
               status:
                 policy.status === "active" ? "Active" : policy.status === "archived" ? "Archived" : "Draft",
               defaultCompanyPolicy: policy.isDefault ? "Yes" : "No",
@@ -367,7 +360,7 @@ export default function NewShiftPolicyPage() {
         minimumWorkBeforePunchOut: draft.minimumWorkBeforePunchOut.trim(),
       }),
     });
-    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string; policyId?: string };
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; policyId?: string };
     setSaving(false);
     if (!response.ok || !result.ok) {
       return notify(result.error || "Unable to save shift policy.");
@@ -377,7 +370,6 @@ export default function NewShiftPolicyPage() {
       defaultCompanyPolicy,
       status: targetStatus,
       policyId: result.policyId || draft.policyId,
-      legacyShiftId: result.legacyShiftId || draft.legacyShiftId,
     };
     setDraft(nextPolicy);
     setSavedPolicies((current) => {

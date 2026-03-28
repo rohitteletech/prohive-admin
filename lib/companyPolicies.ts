@@ -1,5 +1,6 @@
 import { createAttendancePolicyGovernanceDates, createDefaultAttendancePolicyConfig } from "@/lib/attendancePolicyDefaults";
 import { createDefaultCorrectionPolicyConfig } from "@/lib/correctionPolicyDefaults";
+import { createDefaultShiftPolicyConfig } from "@/lib/companyShiftDefaults";
 
 export type PolicyType = "shift" | "attendance" | "leave" | "holiday_weekoff" | "correction";
 export type PolicyStatus = "draft" | "active" | "archived";
@@ -115,7 +116,12 @@ export function defaultPolicyDefinitions(companyId: string, createdBy: string): 
       is_default: true,
       effective_from: today,
       next_review_date: nextReview,
-      config_json: {},
+      config_json: createDefaultShiftPolicyConfig({
+        effectiveFrom: today,
+        nextReviewDate: nextReview,
+        status: "active",
+        defaultCompanyPolicy: "Yes",
+      }),
       created_by: createdBy,
     },
     {

@@ -1,9 +1,8 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
-import { findMatchingShiftRule, isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
+import { isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type JsonBody = {
@@ -477,57 +476,18 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     };
   }
 
-  const { data: shiftRows, error: shiftError } = await admin
-    .from("company_shift_definitions")
-    .select("name,type,start_time,end_time,early_window_mins,min_work_before_out_mins,active")
-    .eq("company_id", payload.company_id)
-    .eq("active", true)
-    .order("created_at", { ascending: true });
-
-  if (shiftError) {
-    return { status: 500, body: { error: shiftError.message || "Unable to load shift policy." } };
-  }
-
-  const effectiveShiftRows =
-    ((shiftRows || []) as Array<{
-      name: string;
-      type: string;
-      start_time: string;
-      end_time: string;
-      early_window_mins: number;
-      min_work_before_out_mins: number;
-    }>).map((row) => ({
-      name: row.name,
-      type: row.type,
-      startTime: row.start_time,
-      endTime: row.end_time,
-      earlyWindowMins: Number(row.early_window_mins || 0),
-      minWorkBeforeOutMins: Number(row.min_work_before_out_mins || 0),
-    })) || [];
-
-  const fallbackShiftRows = DEFAULT_COMPANY_SHIFTS.map((row) => ({
-    name: row.name,
-    type: row.type,
-    startTime: row.start,
-    endTime: row.end,
-    earlyWindowMins: row.earlyWindowMins,
-    minWorkBeforeOutMins: row.minWorkBeforeOutMins,
-  }));
-
   const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
     shiftName: String(employee.shift_name || "General"),
     shiftType: String(employee.shift_name || "General"),
   });
-  const matchedShift = policyContext.resolved.shift
-    ? {
-        name: resolvedShift.shiftName,
-        type: resolvedShift.shiftType,
-        startTime: resolvedShift.shiftStartTime,
-        endTime: resolvedShift.shiftEndTime,
-        earlyWindowMins: resolvedShift.earlyPunchAllowed,
-        minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
-      }
-    : findMatchingShiftRule(String(employee.shift_name || "General"), effectiveShiftRows.length ? effectiveShiftRows : fallbackShiftRows);
+  const matchedShift = {
+    name: resolvedShift.shiftName,
+    type: resolvedShift.shiftType,
+    startTime: resolvedShift.shiftStartTime,
+    endTime: resolvedShift.shiftEndTime,
+    earlyWindowMins: resolvedShift.earlyPunchAllowed,
+    minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
+  };
 
   if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule) === "shift_time_only") {
 

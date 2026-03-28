@@ -11,7 +11,6 @@ import {
   nextEmployeeId,
 } from "@/lib/companyEmployees";
 import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
-import { COMPANY_SHIFT_STORAGE_KEY, loadActiveShiftNames } from "@/lib/companyShifts";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type EmploymentType = "full_time" | "contract" | "intern";
@@ -75,21 +74,20 @@ function nextEmployeeCode(rows: CompanyEmployee[]) {
 
 export default function NewEmployeePage() {
   const router = useRouter();
-  const [initialShiftOptions] = useState(() => loadActiveShiftNames());
   const [initialEmployees] = useState(() => loadCompanyEmployees());
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<"idle" | "checking" | "creating">("idle");
   const [fieldErrors, setFieldErrors] = useState<{ mobile?: string; employee_code?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
-  const [shiftOptions, setShiftOptions] = useState<string[]>(initialShiftOptions);
+  const [shiftOptions, setShiftOptions] = useState<string[]>(["General Shift"]);
   const [form, setForm] = useState<EmployeeDraft>({
     full_name: "",
     gender: "",
     mobile: "",
     designation: "",
     department: "",
-    shift_name: initialShiftOptions[0] || "",
+    shift_name: "General Shift",
     joining_date: todayISOInIndia(),
     employee_code: nextEmployeeCode(initialEmployees),
     reporting_manager: "Admin",
@@ -111,6 +109,33 @@ export default function NewEmployeePage() {
 
   useEffect(() => {
     let ignore = false;
+    async function hydrateShiftOptions() {
+      const supabase = getSupabaseBrowserClient("company");
+      const sessionResult = supabase ? await supabase.auth.getSession() : null;
+      const token = sessionResult?.data.session?.access_token || "";
+      if (!token) return;
+      const response = await fetch("/api/company/policies?policy_type=shift", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      const result = (await response.json().catch(() => ({}))) as {
+        policies?: Array<{
+          policyName?: string;
+          configJson?: { shiftName?: string };
+        }>;
+      };
+      const names = Array.from(
+        new Set(
+          (Array.isArray(result.policies) ? result.policies : [])
+            .map((policy) => String(policy.configJson?.shiftName || policy.policyName || "").trim())
+            .filter(Boolean),
+        ),
+      );
+      if (!ignore && names.length > 0) {
+        setShiftOptions(names);
+        setForm((prev) => (names.includes(prev.shift_name) ? prev : { ...prev, shift_name: names[0] || "General Shift" }));
+      }
+    }
+
     async function hydrateEmployees() {
       const rows = await loadCompanyEmployeesSupabase();
       if (!ignore) {
@@ -122,18 +147,10 @@ export default function NewEmployeePage() {
         );
       }
     }
+    void hydrateShiftOptions();
     hydrateEmployees();
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key && e.key !== COMPANY_SHIFT_STORAGE_KEY) return;
-      const names = loadActiveShiftNames();
-      setShiftOptions(names);
-      setForm((prev) => (names.includes(prev.shift_name) ? prev : { ...prev, shift_name: names[0] || "" }));
-    };
-    window.addEventListener("storage", onStorage);
     return () => {
       ignore = true;
-      window.removeEventListener("storage", onStorage);
     };
   }, [initialEmployees]);
 

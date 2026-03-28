@@ -1,7 +1,6 @@
 import { parseAttendanceScope } from "@/lib/companyReportsAttendance";
 import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
-import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { buildAttendanceMetrics, buildDailyAttendanceDecision } from "@/lib/attendancePolicy";
 import { shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
 import { isWeeklyOffDate } from "@/lib/weeklyOff";
@@ -77,22 +76,6 @@ function normalizeText(value: string | null | undefined) {
   return (value || "").trim().toLowerCase();
 }
 
-function findShiftConfig(
-  shiftName: string,
-  shiftRows: Array<{ name: string; type: string; start: string; end: string; graceMins: number }>
-) {
-  const normalized = normalizeText(shiftName);
-  return (
-    shiftRows.find((row) => {
-      const name = normalizeText(row.name);
-      const type = normalizeText(row.type);
-      return normalized ? normalized === name || normalized === type : false;
-    }) ||
-    shiftRows.find((row) => normalizeText(row.name) === "general") ||
-    shiftRows[0]
-  );
-}
-
 function buildQueryWindow(startDate: string, endDate: string) {
   const start = new Date(`${startDate}T00:00:00.000Z`);
   const end = new Date(`${endDate}T00:00:00.000Z`);
@@ -125,7 +108,7 @@ export async function getLatePenaltyReportData(params: {
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();
   const { fromIso, toIso } = buildQueryWindow(scope.startDate, scope.endDate);
 
-  const [eventsResult, shiftResult, holidayResult] = await Promise.all([
+  const [eventsResult, holidayResult] = await Promise.all([
     params.admin
       .from("attendance_punch_events")
       .select("employee_id,punch_type,effective_punch_at,server_received_at,approval_status")
@@ -135,11 +118,6 @@ export async function getLatePenaltyReportData(params: {
       .lt("effective_punch_at", toIso)
       .order("effective_punch_at", { ascending: true }),
     params.admin
-      .from("company_shift_definitions")
-      .select("name,type,start_time,end_time,grace_mins,active")
-      .eq("company_id", params.companyId)
-      .order("created_at", { ascending: true }),
-    params.admin
       .from("company_holidays")
       .select("holiday_date")
       .eq("company_id", params.companyId)
@@ -148,7 +126,6 @@ export async function getLatePenaltyReportData(params: {
   ]);
 
   if (eventsResult.error) return { ok: false as const, status: 400, error: eventsResult.error.message || "Unable to load attendance events." };
-  if (shiftResult.error) return { ok: false as const, status: 400, error: shiftResult.error.message || "Unable to load shift rules." };
   if (holidayResult.error) return { ok: false as const, status: 400, error: holidayResult.error.message || "Unable to load holiday markers." };
 
   const events = Array.isArray(eventsResult.data) ? (eventsResult.data as EventRow[]) : [];
@@ -168,26 +145,6 @@ export async function getLatePenaltyReportData(params: {
       if (row?.id) employeesById.set(row.id, row);
     }
   }
-
-  const shiftRows =
-    ((shiftResult.data || []) as Array<{ name: string; type: string; start_time: string; end_time: string; grace_mins: number; active: boolean }>)
-      .filter((row) => row.active !== false)
-      .map((row) => ({
-        name: row.name,
-        type: row.type,
-        start: row.start_time,
-        end: row.end_time,
-        graceMins: Number(row.grace_mins || 0),
-      }));
-  const effectiveShiftRows = shiftRows.length
-    ? shiftRows
-    : DEFAULT_COMPANY_SHIFTS.map((row) => ({
-        name: row.name,
-        type: row.type,
-        start: row.start,
-        end: row.end,
-        graceMins: row.graceMins,
-      }));
 
   const groupedByDay = new Map<string, EventRow[]>();
   const employeeContextsByDate = new Map<
@@ -268,15 +225,13 @@ export async function getLatePenaltyReportData(params: {
       });
       const resolvedAttendance = resolveAttendancePolicyRuntime(resolvedPolicies?.resolved?.attendance || null);
       const resolvedHoliday = resolveHolidayPolicyRuntime(resolvedPolicies?.resolved?.holiday_weekoff || null);
-      const shiftConfig = resolvedPolicies?.resolved?.shift
-        ? {
-            name: resolvedShift.shiftName,
-            type: resolvedShift.shiftType,
-            start: resolvedShift.shiftStartTime,
-            end: resolvedShift.shiftEndTime,
-            graceMins: resolvedShift.gracePeriod,
-          }
-        : findShiftConfig(shift, effectiveShiftRows);
+      const shiftConfig = {
+        name: resolvedShift.shiftName,
+        type: resolvedShift.shiftType,
+        start: resolvedShift.shiftStartTime,
+        end: resolvedShift.shiftEndTime,
+        graceMins: resolvedShift.gracePeriod,
+      };
       const scheduledMinutes = shiftConfig ? shiftDurationMinutes(shiftConfig.start, shiftConfig.end) : null;
       const metrics = buildAttendanceMetrics({
         checkInIso,
