@@ -289,7 +289,11 @@ export async function PUT(req: NextRequest) {
     effectiveFrom,
     nextReviewDate,
     status: (body.status || "Draft").toLowerCase(),
-    defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
+    defaultCompanyPolicy:
+      String(body.status || "Draft").toLowerCase() === "active" &&
+      (body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No")) === "Yes"
+        ? "Yes"
+        : "No",
     shiftName,
     shiftType,
     shiftStructure: "fixed",

@@ -343,6 +343,7 @@ export default function NewShiftPolicyPage() {
     if (validationError) return notify(validationError);
 
     const creating = !draft.policyId;
+    const defaultCompanyPolicy = targetStatus === "Active" ? draft.defaultCompanyPolicy : "No";
     setSaving(true);
     const response = await fetch("/api/company/policies/shift-bridge", {
       method: "PUT",
@@ -356,6 +357,7 @@ export default function NewShiftPolicyPage() {
         policyCode: draft.policyCode.trim(),
         effectiveFrom: draft.effectiveFrom.trim(),
         nextReviewDate: draft.nextReviewDate.trim(),
+        defaultCompanyPolicy,
         shiftName: draft.shiftName.trim(),
         shiftType: draft.shiftType.trim(),
         status: targetStatus,
@@ -372,6 +374,7 @@ export default function NewShiftPolicyPage() {
     }
     const nextPolicy = {
       ...draft,
+      defaultCompanyPolicy,
       status: targetStatus,
       policyId: result.policyId || draft.policyId,
       legacyShiftId: result.legacyShiftId || draft.legacyShiftId,
