@@ -129,6 +129,7 @@ export default function NewAttendancePolicyPage() {
   const [draft, setDraft] = useState<AttendancePolicyState>(() => createInitialAttendancePolicyState());
   const [savedPolicies, setSavedPolicies] = useState<AttendancePolicyState[]>([]);
   const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
+  const [activeAssignmentPolicyIds, setActiveAssignmentPolicyIds] = useState<Record<string, boolean>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -264,6 +265,12 @@ export default function NewAttendancePolicyPage() {
     setSavedPolicies(loadedPolicies);
     const nextAssignedCounts = assignmentsResult.workforceCounts?.byPolicyType?.attendance || {};
     setAssignedCounts(nextAssignedCounts);
+    setActiveAssignmentPolicyIds(
+      (assignmentsResult.assignments || []).reduce<Record<string, boolean>>((acc, assignment) => {
+        if (assignment.isActive && assignment.policyId) acc[assignment.policyId] = true;
+        return acc;
+      }, {}),
+    );
     setIsCreatingNew(false);
     setLoading(false);
   }, [accessToken, notify]);
@@ -297,8 +304,18 @@ export default function NewAttendancePolicyPage() {
   async function deleteAttendancePolicy(policyId: string) {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
-    if ((assignedCounts[policyId] || 0) > 0) {
-      return notify("This policy is currently assigned to employees. Reassign the workforce to another policy before deletion.");
+    const selectedPolicy = savedPolicies.find((policy) => policy.policyId === policyId);
+    if (!selectedPolicy) {
+      return notify("Selected attendance policy was not found.");
+    }
+    if (selectedPolicy.status === "Active" && selectedPolicy.defaultCompanyPolicy === "Yes") {
+      return notify("Current active default attendance policy cannot be deleted. Enforce another default attendance policy first.");
+    }
+    if (selectedPolicy.status === "Active") {
+      return notify("Active attendance policy cannot be deleted. Archive or replace it first.");
+    }
+    if ((assignedCounts[policyId] || 0) > 0 || activeAssignmentPolicyIds[policyId]) {
+      return notify("This attendance policy is linked to active workforce or policy assignments. Reassign the workforce before deletion.");
     }
 
     const response = await fetch(`/api/company/policies/${policyId}`, {
@@ -417,7 +434,6 @@ export default function NewAttendancePolicyPage() {
           createdBy: policy.createdBy || "Company Admin",
           createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
-          canDelete: policy.status !== "Active" && (assignedCounts[policy.policyId] || 0) === 0,
         }))}
       />
 
