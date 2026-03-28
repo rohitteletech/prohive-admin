@@ -97,6 +97,24 @@ function fallbackShiftPolicyCode(policyId?: string) {
   return createShiftPolicyCode();
 }
 
+function fallbackLegacyShift() {
+  if (DEFAULT_COMPANY_SHIFTS[0]) {
+    return {
+      id: DEFAULT_COMPANY_SHIFTS[0].id,
+      name: DEFAULT_COMPANY_SHIFTS[0].name,
+      type: DEFAULT_COMPANY_SHIFTS[0].type,
+      start: DEFAULT_COMPANY_SHIFTS[0].start,
+      end: DEFAULT_COMPANY_SHIFTS[0].end,
+      graceMins: DEFAULT_COMPANY_SHIFTS[0].graceMins,
+      earlyWindowMins: DEFAULT_COMPANY_SHIFTS[0].earlyWindowMins,
+      minWorkBeforeOutMins: DEFAULT_COMPANY_SHIFTS[0].minWorkBeforeOutMins,
+      active: DEFAULT_COMPANY_SHIFTS[0].active,
+    };
+  }
+
+  return FALLBACK_SHIFT;
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -134,31 +152,19 @@ export async function GET(req: NextRequest) {
     if (legacyShiftResult.error) {
       return NextResponse.json({ error: legacyShiftResult.error.message || "Unable to load legacy shift definition." }, { status: 400 });
     }
-    const firstLegacyCandidate =
-      Array.isArray(legacyShiftResult.data) && legacyShiftResult.data.length > 0
-        ? shiftFromDb(legacyShiftResult.data[0] as never)
-        : null;
+    const config = (shiftPolicy.configJson || {}) as Record<string, unknown>;
+    const legacyShiftRows = Array.isArray(legacyShiftResult.data)
+      ? legacyShiftResult.data.map((row) => shiftFromDb(row as never))
+      : [];
+    const linkedLegacyShiftId = String(config.legacyShiftId || "").trim();
     const effectiveLegacy: typeof FALLBACK_SHIFT =
-      firstLegacyCandidate ??
-      (DEFAULT_COMPANY_SHIFTS[0]
-        ? {
-            id: DEFAULT_COMPANY_SHIFTS[0].id,
-            name: DEFAULT_COMPANY_SHIFTS[0].name,
-            type: DEFAULT_COMPANY_SHIFTS[0].type,
-            start: DEFAULT_COMPANY_SHIFTS[0].start,
-            end: DEFAULT_COMPANY_SHIFTS[0].end,
-            graceMins: DEFAULT_COMPANY_SHIFTS[0].graceMins,
-            earlyWindowMins: DEFAULT_COMPANY_SHIFTS[0].earlyWindowMins,
-            minWorkBeforeOutMins: DEFAULT_COMPANY_SHIFTS[0].minWorkBeforeOutMins,
-            active: DEFAULT_COMPANY_SHIFTS[0].active,
-          }
-        : FALLBACK_SHIFT);
+      legacyShiftRows.find((row) => row.id === linkedLegacyShiftId) ||
+      legacyShiftRows[0] ||
+      fallbackLegacyShift();
     const effectiveLegacyStart = String(effectiveLegacy.start || FALLBACK_SHIFT.start);
     const effectiveLegacyEnd = String(effectiveLegacy.end || FALLBACK_SHIFT.end);
     const derivedShiftMinutes = Number(shiftDurationMinutes(effectiveLegacyStart, effectiveLegacyEnd) || 0);
     const derivedHalfDayMinutes = Math.max(0, Math.floor(derivedShiftMinutes / 2));
-
-    const config = (shiftPolicy.configJson || {}) as Record<string, unknown>;
     return NextResponse.json({
       policyId: shiftPolicy.id,
       policyName: String(config.policyName || shiftPolicy.policyName || "Standard Shift Policy"),
@@ -208,6 +214,7 @@ export async function PUT(req: NextRequest) {
   const policy = body.policyId
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "shift")
     : null;
+  const existingConfig = (policy?.configJson || {}) as Partial<ShiftBridgePayload>;
 
   let policyCode = "";
   let policyName = "";
@@ -296,7 +303,7 @@ export async function PUT(req: NextRequest) {
     earlyInAllowed: String(earlyPunchAllowed),
     gracePeriod: String(gracePeriod),
     minimumWorkBeforePunchOut: String(minimumWorkBeforePunchOut),
-    legacyShiftId: body.legacyShiftId || "",
+    legacyShiftId: body.legacyShiftId || existingConfig.legacyShiftId || "",
   };
   const currentPolicyId = policy?.id || "";
   const today = todayISOInIndia();

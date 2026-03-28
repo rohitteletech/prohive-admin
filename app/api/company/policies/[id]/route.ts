@@ -79,7 +79,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   const { data: policy, error: policyError } = await context.admin
     .from("company_policy_definitions")
-    .select("id,status,effective_from")
+    .select("id,status,effective_from,config_json")
     .eq("company_id", context.companyId)
     .eq("id", id)
     .maybeSingle();
@@ -111,6 +111,8 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: "This policy is currently assigned to workforce. Reassign it before deletion." }, { status: 400 });
   }
 
+  const legacyShiftId = String((policy.config_json as { legacyShiftId?: unknown } | null)?.legacyShiftId || "").trim();
+
   const { error: deleteError } = await context.admin
     .from("company_policy_definitions")
     .delete()
@@ -119,6 +121,35 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   if (deleteError) {
     return NextResponse.json({ error: deleteError.message || "Unable to delete policy." }, { status: 400 });
+  }
+
+  if (legacyShiftId) {
+    const { data: siblingPolicies, error: siblingPoliciesError } = await context.admin
+      .from("company_policy_definitions")
+      .select("id,config_json")
+      .eq("company_id", context.companyId)
+      .eq("policy_type", "shift");
+
+    if (siblingPoliciesError) {
+      return NextResponse.json({ error: siblingPoliciesError.message || "Policy deleted, but unable to verify linked legacy shift usage." }, { status: 400 });
+    }
+
+    const stillUsed = (Array.isArray(siblingPolicies) ? siblingPolicies : []).some((row) => {
+      const rowLegacyShiftId = String((row.config_json as { legacyShiftId?: unknown } | null)?.legacyShiftId || "").trim();
+      return rowLegacyShiftId === legacyShiftId;
+    });
+
+    if (!stillUsed) {
+      const { error: deleteLegacyError } = await context.admin
+        .from("company_shift_definitions")
+        .delete()
+        .eq("company_id", context.companyId)
+        .eq("id", legacyShiftId);
+
+      if (deleteLegacyError) {
+        return NextResponse.json({ error: deleteLegacyError.message || "Policy deleted, but unable to clean linked legacy shift row." }, { status: 400 });
+      }
+    }
   }
 
   return NextResponse.json({ ok: true });
