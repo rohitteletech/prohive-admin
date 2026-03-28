@@ -206,6 +206,7 @@ export function PolicyRegisterSection({
     createdBy: string;
     createdOn: string;
     defaultPolicy: string;
+    canDelete?: boolean;
   }>;
   emptyState?: string;
 }) {
@@ -292,7 +293,7 @@ export function PolicyRegisterSection({
                       >
                         Edit
                       </button>
-                      {onDelete ? (
+                      {onDelete && row.canDelete !== false ? (
                         <button
                           type="button"
                           onClick={() => setPendingDeleteId(row.id)}

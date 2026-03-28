@@ -417,6 +417,7 @@ export default function NewAttendancePolicyPage() {
           createdBy: policy.createdBy || "Company Admin",
           createdOn: policy.createdAt ? formatDisplayDateTime(policy.createdAt) : "-",
           defaultPolicy: policy.defaultCompanyPolicy,
+          canDelete: policy.status !== "Active" && (assignedCounts[policy.policyId] || 0) === 0,
         }))}
       />
 
