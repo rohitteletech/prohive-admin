@@ -48,6 +48,12 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (policyType === "attendance") {
+    return NextResponse.json(
+      { error: "Attendance policy creation must use the attendance policy bridge." },
+      { status: 400 },
+    );
+  }
   if (policyType === "shift") {
     return NextResponse.json(
       { error: "Shift policy creation must use the shift policy bridge." },
