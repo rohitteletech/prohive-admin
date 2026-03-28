@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { todayISOInIndia } from "@/lib/dateTime";
 import {
   decorateAssignmentRows,
   ensureCompanyPolicyDefinitions,
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
     const policies = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
     const assignments = await listCompanyPolicyAssignments(context.admin, context.companyId);
     const targets = await listCompanyAssignmentTargets(context.admin, context.companyId);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISOInIndia();
     const workforceCounts = await listCompanyPolicyWorkforceCounts(
       context.admin,
       context.companyId,

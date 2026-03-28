@@ -45,6 +45,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       { status: 400 }
     );
   }
+  if (targetPolicy.policy_type === "shift") {
+    return NextResponse.json(
+      { error: "Shift policy updates must use the shift policy bridge." },
+      { status: 400 }
+    );
+  }
   if (targetPolicy.policy_type === "leave") {
     return NextResponse.json(
       { error: "Leave policy updates must use the leave policy bridge." },

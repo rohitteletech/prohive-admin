@@ -48,6 +48,12 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  if (policyType === "shift") {
+    return NextResponse.json(
+      { error: "Shift policy creation must use the shift policy bridge." },
+      { status: 400 },
+    );
+  }
 
   const { data, error } = await context.admin
     .from("company_policy_definitions")
