@@ -3,6 +3,7 @@ import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { DEFAULT_COMPANY_SHIFTS } from "@/lib/companyShiftDefaults";
 import { shiftFromDb } from "@/lib/companyShiftDefinitions";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
+import { addYearsToIsoDate, todayISOInIndia } from "@/lib/dateTime";
 import { normalizeLoginAccessRule, shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
 
 type ShiftBridgePayload = {
@@ -66,6 +67,30 @@ function createShiftPolicyCode() {
   return `SFT-${Date.now().toString().slice(-6)}`;
 }
 
+function isIsoDate(value: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function isTimeValue(value: string) {
+  if (!/^\d{2}:\d{2}$/.test(value)) return false;
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isInteger(hours) && Number.isInteger(minutes) && hours >= 0 && hours <= 23 && minutes >= 0 && minutes <= 59;
+}
+
+function parseWholeNumber(value: unknown, min: number, max: number, label: string) {
+  const normalized = String(value ?? "").trim();
+  if (!/^\d+$/.test(normalized)) {
+    throw new Error(`${label} must be a whole number.`);
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new Error(`${label} must be between ${min} and ${max}.`);
+  }
+
+  return parsed;
+}
+
 function fallbackShiftPolicyCode(policyId?: string) {
   const normalized = String(policyId || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
   if (normalized) return `SFT-${normalized.slice(0, 6)}`;
@@ -82,7 +107,7 @@ export async function GET(req: NextRequest) {
 
   try {
     const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayISOInIndia();
     const shiftPolicies = definitions.filter((policy) => policy.policyType === "shift");
     const effectiveShiftPolicies = shiftPolicies
       .filter((policy) => policy.status === "active")
@@ -184,41 +209,97 @@ export async function PUT(req: NextRequest) {
     ? definitions.find((definition) => definition.id === body.policyId && definition.policyType === "shift")
     : null;
 
-  const normalizedPunchAccessRule = body.punchAccessRule || body.loginAccessRule || "any_time";
-  const normalizedEarlyPunchAllowed = String(body.earlyPunchAllowed || body.earlyInAllowed || "15");
+  let policyCode = "";
+  let policyName = "";
+  let effectiveFrom = "";
+  let nextReviewDate = "";
+  let shiftName = "";
+  let shiftType = "";
+  let shiftStartTime = "";
+  let shiftEndTime = "";
+  let halfDayAvailable: "Yes" | "No" = "Yes";
+  let normalizedPunchAccessRule: "any_time" | "shift_time_only" = "any_time";
+  let earlyPunchAllowed = 0;
+  let gracePeriod = 10;
+  let minimumWorkBeforePunchOut = 60;
+  let shiftDuration: number | null = null;
 
-  const policyCode = String(body.policyCode || policy?.policyCode || "").trim() || createShiftPolicyCode();
+  try {
+    policyCode = String(body.policyCode || policy?.policyCode || "").trim() || createShiftPolicyCode();
+    policyName = String(body.policyName || policy?.policyName || "Standard Shift Policy").trim();
+    effectiveFrom = String(body.effectiveFrom || policy?.effectiveFrom || todayISOInIndia()).trim();
+    nextReviewDate = String(body.nextReviewDate || policy?.nextReviewDate || addYearsToIsoDate(effectiveFrom, 1)).trim();
+    shiftName = String(body.shiftName || "General Shift").trim();
+    shiftType = String(body.shiftType || "General").trim();
+    shiftStartTime = String(body.shiftStartTime || "09:00").trim();
+    shiftEndTime = String(body.shiftEndTime || "18:00").trim();
+    halfDayAvailable = body.halfDayAvailable === "No" ? "No" : "Yes";
+    normalizedPunchAccessRule = normalizeLoginAccessRule(body.punchAccessRule || body.loginAccessRule || "any_time");
+    earlyPunchAllowed = normalizedPunchAccessRule === "any_time"
+      ? 0
+      : parseWholeNumber(body.earlyPunchAllowed || body.earlyInAllowed || "15", 0, 240, "Early Punch Allowed");
+    gracePeriod = parseWholeNumber(body.gracePeriod || "10", 0, 120, "Grace Period");
+    minimumWorkBeforePunchOut = parseWholeNumber(body.minimumWorkBeforePunchOut || "60", 0, 1440, "Minimum Work Before Punch Out");
+    shiftDuration = shiftDurationMinutes(shiftStartTime, shiftEndTime);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Invalid shift policy input." }, { status: 400 });
+  }
+
+  if (!policyName) {
+    return NextResponse.json({ error: "Policy Name is required." }, { status: 400 });
+  }
+  if (!policyCode) {
+    return NextResponse.json({ error: "Policy Code is required." }, { status: 400 });
+  }
+  if (!isIsoDate(effectiveFrom)) {
+    return NextResponse.json({ error: "Effective From date is required in YYYY-MM-DD format." }, { status: 400 });
+  }
+  if (!isIsoDate(nextReviewDate)) {
+    return NextResponse.json({ error: "Next Review Date is required in YYYY-MM-DD format." }, { status: 400 });
+  }
+  if (nextReviewDate < effectiveFrom) {
+    return NextResponse.json({ error: "Next Review Date cannot be earlier than Effective From date." }, { status: 400 });
+  }
+  if (!shiftName) {
+    return NextResponse.json({ error: "Shift Name is required." }, { status: 400 });
+  }
+  if (!shiftType) {
+    return NextResponse.json({ error: "Shift Type is required." }, { status: 400 });
+  }
+  if (!isTimeValue(shiftStartTime)) {
+    return NextResponse.json({ error: "Shift Start Time must be a valid HH:MM value." }, { status: 400 });
+  }
+  if (!isTimeValue(shiftEndTime)) {
+    return NextResponse.json({ error: "Shift End Time must be a valid HH:MM value." }, { status: 400 });
+  }
+  if (shiftStartTime === shiftEndTime || !shiftDuration) {
+    return NextResponse.json({ error: "Shift Start Time and Shift End Time cannot be the same." }, { status: 400 });
+  }
 
   const configJson = {
-    policyName: body.policyName || policy?.policyName || "Standard Shift Policy",
+    policyName,
     policyCode,
-    effectiveFrom: body.effectiveFrom || policy?.effectiveFrom || new Date().toISOString().slice(0, 10),
-    nextReviewDate: body.nextReviewDate || policy?.nextReviewDate || new Date().toISOString().slice(0, 10),
+    effectiveFrom,
+    nextReviewDate,
     status: (body.status || "Draft").toLowerCase(),
     defaultCompanyPolicy: body.defaultCompanyPolicy || (policy?.isDefault ? "Yes" : "No"),
-    shiftName: body.shiftName || "General Shift",
-    shiftType: body.shiftType || "General",
+    shiftName,
+    shiftType,
     shiftStructure: "fixed",
-    shiftStartTime: body.shiftStartTime || "09:00",
-    shiftEndTime: body.shiftEndTime || "18:00",
-    halfDayAvailable: body.halfDayAvailable || "Yes",
-    halfDayHours: body.halfDayAvailable === "No" ? "00:00" : String(body.halfDayHours || "04:00"),
+    shiftStartTime,
+    shiftEndTime,
+    halfDayAvailable,
+    halfDayHours: halfDayAvailable === "No" ? "00:00" : minutesToClock(Math.max(0, Math.floor(shiftDuration / 2)), "04:00"),
     punchAccessRule: normalizedPunchAccessRule,
-    earlyPunchAllowed:
-      normalizedPunchAccessRule === "any_time"
-        ? "0"
-        : normalizedEarlyPunchAllowed,
+    earlyPunchAllowed: String(earlyPunchAllowed),
     loginAccessRule: normalizedPunchAccessRule,
-    earlyInAllowed:
-      normalizedPunchAccessRule === "any_time"
-        ? "0"
-        : normalizedEarlyPunchAllowed,
-    gracePeriod: String(body.gracePeriod || "10"),
-    minimumWorkBeforePunchOut: String(body.minimumWorkBeforePunchOut || "60"),
+    earlyInAllowed: String(earlyPunchAllowed),
+    gracePeriod: String(gracePeriod),
+    minimumWorkBeforePunchOut: String(minimumWorkBeforePunchOut),
     legacyShiftId: body.legacyShiftId || "",
   };
   const currentPolicyId = policy?.id || "";
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayISOInIndia();
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
 
   if (configJson.status === "active") {

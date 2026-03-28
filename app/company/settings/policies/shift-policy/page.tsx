@@ -12,7 +12,7 @@ import {
   Select,
   TextInput,
 } from "@/components/company/policy-ui";
-import { formatDisplayDateTime } from "@/lib/dateTime";
+import { addYearsToIsoDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ShiftPolicyState = {
@@ -39,49 +39,38 @@ type ShiftPolicyState = {
   legacyShiftId: string;
 };
 
-function formatDateInput(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
-function getDefaultPolicyDates() {
-  const effectiveFrom = new Date();
-  const nextReviewDate = new Date(effectiveFrom);
-  nextReviewDate.setFullYear(nextReviewDate.getFullYear() + 1);
-
-  return {
-    effectiveFrom: formatDateInput(effectiveFrom),
-    nextReviewDate: formatDateInput(nextReviewDate),
-  };
-}
-
 function createShiftPolicyCode() {
   return `SFT-${Date.now().toString().slice(-6)}`;
 }
 
-const initialState: ShiftPolicyState = {
-  policyId: "",
-  policyName: "Standard Shift Policy",
-  policyCode: createShiftPolicyCode(),
-  ...getDefaultPolicyDates(),
-  status: "Draft",
-  defaultCompanyPolicy: "Yes",
-  shiftName: "General Shift",
-  shiftType: "General",
-  shiftStructure: "fixed",
-  shiftStartTime: "09:00",
-  shiftEndTime: "18:00",
-  halfDayAvailable: "Yes",
-  halfDayHours: "04:00",
-  punchAccessRule: "any_time",
-  earlyPunchAllowed: "15",
-  gracePeriod: "10",
-  minimumWorkBeforePunchOut: "60",
-  legacyShiftId: "",
-};
+function createInitialShiftPolicyState(): ShiftPolicyState {
+  const effectiveFrom = todayISOInIndia();
+  return {
+    policyId: "",
+    policyName: "Standard Shift Policy",
+    policyCode: createShiftPolicyCode(),
+    effectiveFrom,
+    nextReviewDate: addYearsToIsoDate(effectiveFrom, 1),
+    status: "Draft",
+    defaultCompanyPolicy: "Yes",
+    shiftName: "General Shift",
+    shiftType: "General",
+    shiftStructure: "fixed",
+    shiftStartTime: "09:00",
+    shiftEndTime: "18:00",
+    halfDayAvailable: "Yes",
+    halfDayHours: "04:00",
+    punchAccessRule: "any_time",
+    earlyPunchAllowed: "15",
+    gracePeriod: "10",
+    minimumWorkBeforePunchOut: "60",
+    legacyShiftId: "",
+  };
+}
 
 function createNewPolicyDraft(): ShiftPolicyState {
   return {
-    ...initialState,
+    ...createInitialShiftPolicyState(),
     policyName: "",
     policyCode: createShiftPolicyCode(),
     defaultCompanyPolicy: "No",
@@ -115,9 +104,45 @@ function formatHalfDayHours(start: string, end: string) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
+function isWholeNumberInRange(value: string, min: number, max: number) {
+  const normalized = value.trim();
+  if (!/^\d+$/.test(normalized)) return false;
+  const parsed = Number(normalized);
+  return Number.isInteger(parsed) && parsed >= min && parsed <= max;
+}
+
+function validateShiftPolicyDraft(draft: ShiftPolicyState) {
+  const policyName = draft.policyName.trim();
+  const policyCode = draft.policyCode.trim();
+  const shiftName = draft.shiftName.trim();
+  const shiftType = draft.shiftType.trim();
+  const effectiveFrom = draft.effectiveFrom.trim();
+  const nextReviewDate = draft.nextReviewDate.trim();
+
+  if (!policyName) return "Policy Name is required.";
+  if (!policyCode) return "Policy Code is required.";
+  if (!effectiveFrom) return "Effective From date is required.";
+  if (!nextReviewDate) return "Next Review Date is required.";
+  if (nextReviewDate < effectiveFrom) return "Next Review Date cannot be earlier than Effective From date.";
+  if (!shiftName) return "Shift Name is required.";
+  if (!shiftType) return "Shift Type is required.";
+  if (!draft.shiftStartTime) return "Shift Start Time is required.";
+  if (!draft.shiftEndTime) return "Shift End Time is required.";
+  if (draft.shiftStartTime === draft.shiftEndTime) return "Shift Start Time and Shift End Time cannot be the same.";
+  if (!isWholeNumberInRange(draft.gracePeriod, 0, 120)) return "Grace Period must be between 0 and 120 minutes.";
+  if (!isWholeNumberInRange(draft.minimumWorkBeforePunchOut, 0, 1440)) {
+    return "Minimum Work Before Punch Out must be between 0 and 1440 minutes.";
+  }
+  if (draft.punchAccessRule === "shift_time_only" && !isWholeNumberInRange(draft.earlyPunchAllowed, 0, 240)) {
+    return "Early Punch Allowed must be between 0 and 240 minutes.";
+  }
+
+  return null;
+}
+
 export default function NewShiftPolicyPage() {
   const [toast, setToast] = useState<string | null>(null);
-  const [draft, setDraft] = useState(initialState);
+  const [draft, setDraft] = useState(() => createInitialShiftPolicyState());
   const [savedPolicies, setSavedPolicies] = useState<ShiftPolicyState[]>([]);
   const [assignedCounts, setAssignedCounts] = useState<Record<string, number>>({});
   const [showForm, setShowForm] = useState(false);
@@ -137,6 +162,20 @@ export default function NewShiftPolicyPage() {
 
   function update<K extends keyof ShiftPolicyState>(key: K, value: ShiftPolicyState[K]) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function clampNumericText(value: string, max: number) {
+    const digits = value.replace(/\D/g, "");
+    if (!digits) return "";
+    return String(Math.min(Number(digits), max));
+  }
+
+  function updateMinutesField(
+    key: "earlyPunchAllowed" | "gracePeriod" | "minimumWorkBeforePunchOut",
+    value: string,
+    max: number
+  ) {
+    update(key, clampNumericText(value, max) as ShiftPolicyState[typeof key]);
   }
 
   function notify(message: string) {
@@ -176,6 +215,7 @@ export default function NewShiftPolicyPage() {
       return;
     }
 
+    const initialState = createInitialShiftPolicyState();
     const nextPolicy = {
       ...initialState,
       ...result,
@@ -210,6 +250,7 @@ export default function NewShiftPolicyPage() {
     const loadedPolicies =
       Array.isArray(policiesResult.policies) && policiesResult.policies.length > 0
         ? policiesResult.policies.map((policy) => {
+            const initialState = createInitialShiftPolicyState();
             const config = (policy.configJson || {}) as Partial<ShiftPolicyState> & {
               loginAccessRule?: ShiftPolicyState["punchAccessRule"];
               earlyInAllowed?: string;
@@ -298,6 +339,9 @@ export default function NewShiftPolicyPage() {
     const token = await accessToken();
     if (!token) return notify("Company session not found. Please login again.");
 
+    const validationError = validateShiftPolicyDraft(draft);
+    if (validationError) return notify(validationError);
+
     const creating = !draft.policyId;
     setSaving(true);
     const response = await fetch("/api/company/policies/shift-bridge", {
@@ -308,9 +352,17 @@ export default function NewShiftPolicyPage() {
       },
       body: JSON.stringify({
         ...draft,
+        policyName: draft.policyName.trim(),
+        policyCode: draft.policyCode.trim(),
+        effectiveFrom: draft.effectiveFrom.trim(),
+        nextReviewDate: draft.nextReviewDate.trim(),
+        shiftName: draft.shiftName.trim(),
+        shiftType: draft.shiftType.trim(),
         status: targetStatus,
         halfDayHours: draft.halfDayAvailable === "No" ? "00:00" : halfDayHours,
         earlyPunchAllowed: draft.punchAccessRule === "any_time" ? "0" : draft.earlyPunchAllowed,
+        gracePeriod: draft.gracePeriod.trim(),
+        minimumWorkBeforePunchOut: draft.minimumWorkBeforePunchOut.trim(),
       }),
     });
     const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string; legacyShiftId?: string; policyId?: string };
@@ -535,15 +587,24 @@ export default function NewShiftPolicyPage() {
                 ) : (
                   <TextInput
                     value={draft.earlyPunchAllowed}
-                    onChange={(e) => update("earlyPunchAllowed", e.target.value)}
+                    onChange={(e) => updateMinutesField("earlyPunchAllowed", e.target.value, 240)}
+                    inputMode="numeric"
                   />
                 )}
               </Field>
               <Field label="Grace Period (mins)">
-                <TextInput value={draft.gracePeriod} onChange={(e) => update("gracePeriod", e.target.value)} />
+                <TextInput
+                  value={draft.gracePeriod}
+                  onChange={(e) => updateMinutesField("gracePeriod", e.target.value, 120)}
+                  inputMode="numeric"
+                />
               </Field>
               <Field label="Minimum Work Before Punch Out (mins)">
-                <TextInput value={draft.minimumWorkBeforePunchOut} onChange={(e) => update("minimumWorkBeforePunchOut", e.target.value)} />
+                <TextInput
+                  value={draft.minimumWorkBeforePunchOut}
+                  onChange={(e) => updateMinutesField("minimumWorkBeforePunchOut", e.target.value, 1440)}
+                  inputMode="numeric"
+                />
               </Field>
             </div>
 
