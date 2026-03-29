@@ -1,630 +1,50 @@
--- WARNING:
--- This file is a local schema snapshot and may lag behind live Supabase if it has not been regenerated.
--- Before using it as source of truth for cleanup or refactors, verify against live schema and policies.
--- Current policy migration truth lives in the docs/*-audit.md and docs/*-runtime-contract.md files.
+﻿--
+-- PostgreSQL database dump
+--
 
-create extension if not exists pgcrypto;
+\restrict ShJae796Ub1HtQoR2znPOCeo2eCb23TGNqqG4bbk3GRC9szIwOBcH04vZVFM2X2
 
-create table if not exists public.companies (
-  id uuid primary key default gen_random_uuid(),
-  name text not null,
-  code text unique,
-  plan_type text not null check (plan_type in ('trial', 'monthly', 'yearly')),
-  plan_start date not null,
-  plan_end date not null,
-  status text not null check (status in ('trial_active', 'paid_active', 'grace_paid', 'suspended')),
-  size_of_employees text,
-  authorized_name text,
-  mobile text,
-  address text,
-  city text,
-  state text,
-  country text,
-  pin_code text,
-  admin_email text,
-  admin_password text,
-  company_tagline text,
-  office_lat double precision,
-  office_lon double precision,
-  office_radius_m integer,
-  weekly_off_policy text not null default 'sunday_only'
-    check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday')),
-  allow_punch_on_holiday boolean not null default true,
-  allow_punch_on_weekly_off boolean not null default true,
-  extra_hours_policy text not null default 'yes'
-    check (extra_hours_policy in ('yes', 'no')),
-  half_day_min_work_mins integer not null default 240
-    check (half_day_min_work_mins >= 0 and half_day_min_work_mins <= 1440),
-  late_penalty_enabled boolean not null default false,
-  late_penalty_up_to_mins integer not null default 30
-    check (late_penalty_up_to_mins >= 0 and late_penalty_up_to_mins <= 180),
-  late_penalty_repeat_count integer not null default 3
-    check (late_penalty_repeat_count >= 1 and late_penalty_repeat_count <= 31),
-  late_penalty_repeat_days numeric(4,1) not null default 1.0
-    check (late_penalty_repeat_days >= 0 and late_penalty_repeat_days <= 31),
-  late_penalty_above_mins integer not null default 30
-    check (late_penalty_above_mins >= 0 and late_penalty_above_mins <= 180),
-  late_penalty_above_days numeric(4,1) not null default 0.5
-    check (late_penalty_above_days >= 0 and late_penalty_above_days <= 31),
-  gst text,
-  business_nature text,
-  created_at timestamptz not null default now()
-);
+-- Dumped from database version 17.6
+-- Dumped by pg_dump version 17.9
 
-alter table public.companies
-  alter column id set default gen_random_uuid();
+SET statement_timeout = 0;
+SET lock_timeout = 0;
+SET idle_in_transaction_session_timeout = 0;
+SET transaction_timeout = 0;
+SET client_encoding = 'UTF8';
+SET standard_conforming_strings = on;
+SELECT pg_catalog.set_config('search_path', '', false);
+SET check_function_bodies = false;
+SET xmloption = content;
+SET client_min_messages = warning;
+SET row_security = off;
 
-alter table public.companies
-  add column if not exists weekly_off_policy text not null default 'sunday_only'
-    check (weekly_off_policy in ('sunday_only', 'saturday_sunday', 'second_fourth_saturday_sunday'));
+--
+-- Name: public; Type: SCHEMA; Schema: -; Owner: -
+--
 
-alter table public.companies
-  add column if not exists allow_punch_on_holiday boolean not null default true,
-  add column if not exists allow_punch_on_weekly_off boolean not null default true;
+CREATE SCHEMA public;
 
-alter table public.companies
-  add column if not exists extra_hours_policy text not null default 'yes'
-    check (extra_hours_policy in ('yes', 'no'));
 
-alter table public.companies
-  add column if not exists half_day_min_work_mins integer not null default 240
-    check (half_day_min_work_mins >= 0 and half_day_min_work_mins <= 1440);
+--
+-- Name: SCHEMA public; Type: COMMENT; Schema: -; Owner: -
+--
 
-alter table public.companies
-  add column if not exists late_penalty_enabled boolean not null default false,
-  add column if not exists late_penalty_up_to_mins integer not null default 30
-    check (late_penalty_up_to_mins >= 0 and late_penalty_up_to_mins <= 180),
-  add column if not exists late_penalty_repeat_count integer not null default 3
-    check (late_penalty_repeat_count >= 1 and late_penalty_repeat_count <= 31),
-  add column if not exists late_penalty_repeat_days numeric(4,1) not null default 1.0
-    check (late_penalty_repeat_days >= 0 and late_penalty_repeat_days <= 31),
-  add column if not exists late_penalty_above_mins integer not null default 30
-    check (late_penalty_above_mins >= 0 and late_penalty_above_mins <= 180),
-  add column if not exists late_penalty_above_days numeric(4,1) not null default 0.5
-    check (late_penalty_above_days >= 0 and late_penalty_above_days <= 31);
+COMMENT ON SCHEMA public IS 'standard public schema';
 
-alter table public.companies
-  add column if not exists company_tagline text;
 
-alter table public.companies enable row level security;
+--
+-- Name: guard_attendance_policy_active_schedule(); Type: FUNCTION; Schema: public; Owner: -
+--
 
-drop policy if exists "companies_select_public" on public.companies;
-drop policy if exists "companies_insert_public" on public.companies;
-drop policy if exists "companies_select_authenticated" on public.companies;
-drop policy if exists "companies_insert_authenticated" on public.companies;
-
-create policy "companies_select_authenticated"
-on public.companies
-for select
-to authenticated
-using (true);
-
-create policy "companies_insert_authenticated"
-on public.companies
-for insert
-to authenticated
-with check (true);
-
-create table if not exists public.employees (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  full_name text not null,
-  gender text check (gender in ('male', 'female', 'other')),
-  email text,
-  employee_code text not null,
-  mobile text not null,
-  designation text not null,
-  department text,
-  shift_name text,
-  status text not null default 'active' check (status in ('active', 'inactive')),
-  joined_on date not null,
-  reporting_manager text,
-  perm_address text,
-  temp_address text,
-  pan text,
-  aadhaar_number text,
-  emergency_name text,
-  emergency_mobile text,
-  employment_type text check (employment_type in ('full_time', 'contract', 'intern')),
-  exit_date date,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (company_id, employee_code),
-  unique (company_id, mobile)
-);
-
-alter table public.employees
-  add column if not exists gender text check (gender in ('male', 'female', 'other'));
-
-alter table public.employees
-  add column if not exists mobile_app_status text not null default 'invited'
-    check (mobile_app_status in ('invited', 'active', 'blocked')),
-  add column if not exists mobile_verified_at timestamptz,
-  add column if not exists app_pin_hash text,
-  add column if not exists bound_device_id text,
-  add column if not exists bound_device_name text,
-  add column if not exists bound_app_version text,
-  add column if not exists bound_device_at timestamptz,
-  add column if not exists mobile_last_login_at timestamptz;
-
-alter table public.employees
-  add column if not exists attendance_mode text not null default 'field_staff'
-    check (attendance_mode in ('office_only', 'field_staff'));
-
-alter table public.employees enable row level security;
-
-drop policy if exists "employees_select_authenticated" on public.employees;
-drop policy if exists "employees_insert_authenticated" on public.employees;
-drop policy if exists "employees_update_authenticated" on public.employees;
-drop policy if exists "employees_delete_authenticated" on public.employees;
-
-create policy "employees_select_authenticated"
-on public.employees
-for select
-to authenticated
-using (true);
-
-create policy "employees_insert_authenticated"
-on public.employees
-for insert
-to authenticated
-with check (true);
-
-create policy "employees_update_authenticated"
-on public.employees
-for update
-to authenticated
-using (true)
-with check (true);
-
-create policy "employees_delete_authenticated"
-on public.employees
-for delete
-to authenticated
-using (true);
-
-create table if not exists public.employee_login_otps (
-  id uuid primary key default gen_random_uuid(),
-  employee_id uuid not null references public.employees(id) on delete cascade,
-  employee_code text not null,
-  mobile text not null,
-  purpose text not null check (purpose in ('first_login', 'reset_pin')),
-  otp_code text not null,
-  requested_device_id text not null,
-  requested_device_name text,
-  expires_at timestamptz not null,
-  consumed_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists employee_login_otps_employee_id_idx
-  on public.employee_login_otps(employee_id, created_at desc);
-
-alter table public.employee_login_otps enable row level security;
-
-create table if not exists public.attendance_punch_events (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  employee_id uuid not null references public.employees(id) on delete cascade,
-  company_name_snapshot text,
-  employee_name_snapshot text,
-  day_type text not null default 'working_day'
-    check (day_type in ('working_day', 'holiday', 'weekly_off')),
-  is_extra_work boolean not null default false,
-  device_id text,
-  event_id uuid not null unique,
-  source text not null default 'mobile' check (source in ('mobile')),
-  punch_type text not null check (punch_type in ('in', 'out')),
-  attendance_mode_snapshot text not null check (attendance_mode_snapshot in ('office_only', 'field_staff')),
-  office_lat_snapshot double precision,
-  office_lon_snapshot double precision,
-  office_radius_m_snapshot integer,
-  lat double precision not null,
-  lon double precision not null,
-  address_text text,
-  accuracy_m double precision not null,
-  distance_from_office_m double precision,
-  is_offline boolean not null default false,
-  device_time_ms bigint not null,
-  device_time_at timestamptz,
-  estimated_time_ms bigint,
-  estimated_time_at timestamptz,
-  trusted_anchor_time_ms bigint,
-  trusted_anchor_time_at timestamptz,
-  trusted_anchor_elapsed_ms bigint,
-  elapsed_ms bigint not null,
-  clock_drift_ms bigint,
-  server_received_at timestamptz not null default now(),
-  effective_punch_at timestamptz,
-  requires_approval boolean not null default false,
-  approval_status text not null default 'auto_approved'
-    check (approval_status in ('auto_approved', 'pending_approval', 'approved', 'rejected')),
-  approval_reason_codes text[] not null default '{}',
-  raw_payload jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-alter table public.attendance_punch_events
-  add column if not exists company_name_snapshot text,
-  add column if not exists employee_name_snapshot text,
-  add column if not exists day_type text not null default 'working_day'
-    check (day_type in ('working_day', 'holiday', 'weekly_off')),
-  add column if not exists is_extra_work boolean not null default false,
-  add column if not exists device_id text;
-
-create index if not exists attendance_punch_events_company_employee_idx
-  on public.attendance_punch_events(company_id, employee_id, server_received_at desc);
-
-create index if not exists attendance_punch_events_company_status_idx
-  on public.attendance_punch_events(company_id, approval_status, server_received_at desc);
-
-alter table public.attendance_punch_events enable row level security;
-
-drop policy if exists "attendance_punch_events_select_authenticated" on public.attendance_punch_events;
-drop policy if exists "attendance_punch_events_insert_authenticated" on public.attendance_punch_events;
-drop policy if exists "attendance_punch_events_update_authenticated" on public.attendance_punch_events;
-
-create policy "attendance_punch_events_select_authenticated"
-on public.attendance_punch_events
-for select
-to authenticated
-using (true);
-
-create policy "attendance_punch_events_insert_authenticated"
-on public.attendance_punch_events
-for insert
-to authenticated
-with check (true);
-
-create policy "attendance_punch_events_update_authenticated"
-on public.attendance_punch_events
-for update
-to authenticated
-using (true)
-with check (true);
-
-create or replace view public.attendance_punch_events_ordered
-with (security_invoker = true) as
-select
-  company_name_snapshot,
-  employee_name_snapshot,
-  company_id,
-  employee_id,
-  device_id,
-  event_id,
-  source,
-  punch_type,
-  attendance_mode_snapshot,
-  office_lat_snapshot,
-  office_lon_snapshot,
-  office_radius_m_snapshot,
-  lat,
-  lon,
-  address_text,
-  accuracy_m,
-  distance_from_office_m,
-  is_offline,
-  device_time_ms,
-  device_time_at,
-  estimated_time_ms,
-  estimated_time_at,
-  trusted_anchor_time_ms,
-  trusted_anchor_time_at,
-  trusted_anchor_elapsed_ms,
-  elapsed_ms,
-  clock_drift_ms,
-  server_received_at,
-  effective_punch_at,
-  requires_approval,
-  approval_status,
-  approval_reason_codes,
-  raw_payload,
-  created_at,
-  id,
-  day_type,
-  is_extra_work
-from public.attendance_punch_events;
-
-create table if not exists public.employee_leave_balance_overrides (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  employee_id uuid not null references public.employees(id) on delete cascade,
-  leave_policy_code text not null,
-  year integer not null check (year >= 2000 and year <= 9999),
-  extra_days numeric(6,2) not null default 0,
-  reason text not null,
-  updated_by text not null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (company_id, employee_id, leave_policy_code, year)
-);
-
-create index if not exists employee_leave_balance_overrides_company_year_idx
-  on public.employee_leave_balance_overrides(company_id, year desc, employee_id);
-
-alter table public.employee_leave_balance_overrides enable row level security;
-
-drop policy if exists "employee_leave_balance_overrides_select_authenticated" on public.employee_leave_balance_overrides;
-drop policy if exists "employee_leave_balance_overrides_insert_authenticated" on public.employee_leave_balance_overrides;
-drop policy if exists "employee_leave_balance_overrides_update_authenticated" on public.employee_leave_balance_overrides;
-drop policy if exists "employee_leave_balance_overrides_delete_authenticated" on public.employee_leave_balance_overrides;
-
-create policy "employee_leave_balance_overrides_select_authenticated"
-on public.employee_leave_balance_overrides
-for select
-to authenticated
-using (true);
-
-create policy "employee_leave_balance_overrides_insert_authenticated"
-on public.employee_leave_balance_overrides
-for insert
-to authenticated
-with check (true);
-
-create policy "employee_leave_balance_overrides_update_authenticated"
-on public.employee_leave_balance_overrides
-for update
-to authenticated
-using (true)
-with check (true);
-
-create policy "employee_leave_balance_overrides_delete_authenticated"
-on public.employee_leave_balance_overrides
-for delete
-to authenticated
-using (true);
-
-create table if not exists public.company_holidays (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  holiday_date date not null,
-  name text not null,
-  type text not null check (type in ('national', 'festival', 'company')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (company_id, holiday_date, name)
-);
-
-create index if not exists company_holidays_company_date_idx
-  on public.company_holidays(company_id, holiday_date asc);
-
-alter table public.company_holidays enable row level security;
-
-drop policy if exists "company_holidays_select_authenticated" on public.company_holidays;
-drop policy if exists "company_holidays_insert_authenticated" on public.company_holidays;
-drop policy if exists "company_holidays_update_authenticated" on public.company_holidays;
-drop policy if exists "company_holidays_delete_authenticated" on public.company_holidays;
-
-create policy "company_holidays_select_authenticated"
-on public.company_holidays
-for select
-to authenticated
-using (
-  exists (
-    select 1
-      from public.companies
-     where companies.id = company_holidays.company_id
-       and lower(coalesce(companies.admin_email, '')) = lower(coalesce(auth.email(), ''))
-  )
-);
-
-create policy "company_holidays_insert_authenticated"
-on public.company_holidays
-for insert
-to authenticated
-with check (
-  exists (
-    select 1
-      from public.companies
-     where companies.id = company_holidays.company_id
-       and lower(coalesce(companies.admin_email, '')) = lower(coalesce(auth.email(), ''))
-  )
-);
-
-create policy "company_holidays_update_authenticated"
-on public.company_holidays
-for update
-to authenticated
-using (
-  exists (
-    select 1
-      from public.companies
-     where companies.id = company_holidays.company_id
-       and lower(coalesce(companies.admin_email, '')) = lower(coalesce(auth.email(), ''))
-  )
-)
-with check (
-  exists (
-    select 1
-      from public.companies
-     where companies.id = company_holidays.company_id
-       and lower(coalesce(companies.admin_email, '')) = lower(coalesce(auth.email(), ''))
-  )
-);
-
-create policy "company_holidays_delete_authenticated"
-on public.company_holidays
-for delete
-to authenticated
-using (
-  exists (
-    select 1
-      from public.companies
-     where companies.id = company_holidays.company_id
-       and lower(coalesce(companies.admin_email, '')) = lower(coalesce(auth.email(), ''))
-  )
-);
-
-create table if not exists public.company_policy_definitions (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  policy_type text not null,
-  policy_name text not null,
-  policy_code text not null,
-  status text not null default 'draft',
-  is_default boolean not null default false,
-  effective_from date not null,
-  next_review_date date not null,
-  config_json jsonb not null default '{}'::jsonb,
-  created_by text not null,
-  created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now()),
-  constraint company_policy_definitions_type_check
-    check (policy_type in ('shift', 'attendance', 'leave', 'holiday_weekoff', 'correction')),
-  constraint company_policy_definitions_status_check
-    check (status in ('draft', 'active', 'archived')),
-  constraint company_policy_definitions_code_unique unique (company_id, policy_type, policy_code)
-);
-
-create index if not exists company_policy_definitions_company_idx
-  on public.company_policy_definitions(company_id, policy_type, status, is_default desc);
-
-create unique index if not exists company_policy_definitions_active_default_effective_idx
-  on public.company_policy_definitions(company_id, policy_type, effective_from)
-  where is_default = true and status = 'active';
-
-create table if not exists public.company_policy_assignments (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  policy_type text not null,
-  policy_id uuid not null references public.company_policy_definitions(id) on delete cascade,
-  assignment_level text not null,
-  target_id text not null,
-  effective_from date not null,
-  effective_to date,
-  is_active boolean not null default true,
-  created_by text not null,
-  created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now()),
-  constraint company_policy_assignments_type_check
-    check (policy_type in ('shift', 'attendance', 'leave', 'holiday_weekoff', 'correction')),
-  constraint company_policy_assignments_level_check
-    check (assignment_level in ('company', 'department', 'employee')),
-  constraint company_policy_assignments_date_check
-    check (effective_to is null or effective_to >= effective_from)
-);
-
-create index if not exists company_policy_assignments_company_idx
-  on public.company_policy_assignments(company_id, policy_type, assignment_level, target_id, is_active desc, effective_from desc);
-
-alter table public.company_policy_definitions enable row level security;
-alter table public.company_policy_assignments enable row level security;
-
-drop policy if exists "company_policy_definitions_select_authenticated" on public.company_policy_definitions;
-drop policy if exists "company_policy_definitions_insert_authenticated" on public.company_policy_definitions;
-drop policy if exists "company_policy_definitions_update_authenticated" on public.company_policy_definitions;
-drop policy if exists "company_policy_definitions_delete_authenticated" on public.company_policy_definitions;
-
-create policy "company_policy_definitions_select_authenticated"
-on public.company_policy_definitions
-for select
-to authenticated
-using (true);
-
-create policy "company_policy_definitions_insert_authenticated"
-on public.company_policy_definitions
-for insert
-to authenticated
-with check (true);
-
-create policy "company_policy_definitions_update_authenticated"
-on public.company_policy_definitions
-for update
-to authenticated
-using (true)
-with check (true);
-
-create policy "company_policy_definitions_delete_authenticated"
-on public.company_policy_definitions
-for delete
-to authenticated
-using (true);
-
-drop policy if exists "company_policy_assignments_select_authenticated" on public.company_policy_assignments;
-drop policy if exists "company_policy_assignments_insert_authenticated" on public.company_policy_assignments;
-drop policy if exists "company_policy_assignments_update_authenticated" on public.company_policy_assignments;
-drop policy if exists "company_policy_assignments_delete_authenticated" on public.company_policy_assignments;
-
-create policy "company_policy_assignments_select_authenticated"
-on public.company_policy_assignments
-for select
-to authenticated
-using (true);
-
-create policy "company_policy_assignments_insert_authenticated"
-on public.company_policy_assignments
-for insert
-to authenticated
-with check (true);
-
-create policy "company_policy_assignments_update_authenticated"
-on public.company_policy_assignments
-for update
-to authenticated
-using (true)
-with check (true);
-
-create policy "company_policy_assignments_delete_authenticated"
-on public.company_policy_assignments
-for delete
-to authenticated
-using (true);
-
-create or replace function public.policy_business_date_india()
-returns date
-language sql
-stable
-set search_path = public
-as $$
-  select (timezone('Asia/Kolkata', now()))::date;
-$$;
-
-create or replace function public.sync_company_policy_default_flags()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
+CREATE FUNCTION public.guard_attendance_policy_active_schedule() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
 declare
   v_business_date date := public.policy_business_date_india();
 begin
-  if new.is_default = true and new.status = 'active' then
-    update public.company_policy_definitions
-       set is_default = false,
-           updated_at = timezone('utc', now())
-     where company_id = new.company_id
-       and policy_type = new.policy_type
-       and id <> new.id
-       and is_default = true
-       and status = 'active'
-       and (
-         (new.effective_from > v_business_date and effective_from = new.effective_from)
-         or
-         (new.effective_from <= v_business_date and effective_from <= new.effective_from)
-       );
-  end if;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists sync_company_policy_default_flags on public.company_policy_definitions;
-
-create trigger sync_company_policy_default_flags
-after insert or update of is_default, status, effective_from
-on public.company_policy_definitions
-for each row
-when (new.is_default = true and new.status = 'active')
-execute function public.sync_company_policy_default_flags();
-
-create or replace function public.guard_leave_policy_active_schedule()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
-declare
-  v_business_date date := public.policy_business_date_india();
-begin
-  if new.policy_type <> 'leave' or new.status <> 'active' then
+  if new.policy_type <> 'attendance' or new.status <> 'active' then
     return new;
   end if;
 
@@ -632,12 +52,12 @@ begin
     select 1
       from public.company_policy_definitions
      where company_id = new.company_id
-       and policy_type = 'leave'
+       and policy_type = 'attendance'
        and status = 'active'
        and id <> new.id
        and effective_from = new.effective_from
   ) then
-    raise exception 'Another active leave policy is already scheduled for %.', new.effective_from;
+    raise exception 'Another active attendance policy is already scheduled for %.', new.effective_from;
   end if;
 
   if new.effective_from > v_business_date then
@@ -645,24 +65,24 @@ begin
       select 1
         from public.company_policy_definitions
        where company_id = new.company_id
-         and policy_type = 'leave'
+         and policy_type = 'attendance'
          and status = 'active'
          and id <> new.id
          and effective_from > v_business_date
     ) then
-      raise exception 'Another future active leave policy is already scheduled for this company.';
+      raise exception 'Another future active attendance policy is already scheduled for this company.';
     end if;
   else
     if exists (
       select 1
         from public.company_policy_definitions
        where company_id = new.company_id
-         and policy_type = 'leave'
+         and policy_type = 'attendance'
          and status = 'active'
          and id <> new.id
          and effective_from <= v_business_date
     ) then
-      raise exception 'Another current active leave policy already exists for this company.';
+      raise exception 'Another current active attendance policy already exists for this company.';
     end if;
   end if;
 
@@ -670,83 +90,15 @@ begin
 end;
 $$;
 
-drop trigger if exists guard_leave_policy_active_schedule on public.company_policy_definitions;
 
-create trigger guard_leave_policy_active_schedule
-before insert or update of policy_type, status, effective_from
-on public.company_policy_definitions
-for each row
-when (new.policy_type = 'leave' and new.status = 'active')
-execute function public.guard_leave_policy_active_schedule();
+--
+-- Name: guard_correction_policy_active_schedule(); Type: FUNCTION; Schema: public; Owner: -
+--
 
-create or replace function public.guard_holiday_policy_active_schedule()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
-declare
-  v_business_date date := public.policy_business_date_india();
-begin
-  if new.policy_type <> 'holiday_weekoff' or new.status <> 'active' then
-    return new;
-  end if;
-
-  if exists (
-    select 1
-      from public.company_policy_definitions
-     where company_id = new.company_id
-       and policy_type = 'holiday_weekoff'
-       and status = 'active'
-       and id <> new.id
-       and effective_from = new.effective_from
-  ) then
-    raise exception 'Another active holiday policy is already scheduled for %.', new.effective_from;
-  end if;
-
-  if new.effective_from > v_business_date then
-    if exists (
-      select 1
-        from public.company_policy_definitions
-       where company_id = new.company_id
-         and policy_type = 'holiday_weekoff'
-         and status = 'active'
-         and id <> new.id
-         and effective_from > v_business_date
-    ) then
-      raise exception 'Another future active holiday policy is already scheduled for this company.';
-    end if;
-  else
-    if exists (
-      select 1
-        from public.company_policy_definitions
-       where company_id = new.company_id
-         and policy_type = 'holiday_weekoff'
-         and status = 'active'
-         and id <> new.id
-         and effective_from <= v_business_date
-    ) then
-      raise exception 'Another current active holiday policy already exists for this company.';
-    end if;
-  end if;
-
-  return new;
-end;
-$$;
-
-drop trigger if exists guard_holiday_policy_active_schedule on public.company_policy_definitions;
-
-create trigger guard_holiday_policy_active_schedule
-before insert or update of policy_type, status, effective_from
-on public.company_policy_definitions
-for each row
-when (new.policy_type = 'holiday_weekoff' and new.status = 'active')
-execute function public.guard_holiday_policy_active_schedule();
-
-create or replace function public.guard_correction_policy_active_schedule()
-returns trigger
-language plpgsql
-set search_path = public
-as $$
+CREATE FUNCTION public.guard_correction_policy_active_schedule() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
 declare
   v_business_date date := public.policy_business_date_india();
 begin
@@ -796,31 +148,201 @@ begin
 end;
 $$;
 
-drop trigger if exists guard_correction_policy_active_schedule on public.company_policy_definitions;
 
-create trigger guard_correction_policy_active_schedule
-before insert or update of policy_type, status, effective_from
-on public.company_policy_definitions
-for each row
-when (new.policy_type = 'correction' and new.status = 'active')
-execute function public.guard_correction_policy_active_schedule();
+--
+-- Name: guard_holiday_policy_active_schedule(); Type: FUNCTION; Schema: public; Owner: -
+--
 
-create or replace function public.save_holiday_policy_definition(
-  p_company_id uuid,
-  p_admin_email text,
-  p_policy_id uuid,
-  p_policy_name text,
-  p_policy_code text,
-  p_status text,
-  p_effective_from date,
-  p_next_review_date date,
-  p_default_company_policy boolean,
-  p_config_json jsonb
-)
-returns uuid
-language plpgsql
-set search_path = public
-as $$
+CREATE FUNCTION public.guard_holiday_policy_active_schedule() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_business_date date := public.policy_business_date_india();
+begin
+  if new.policy_type <> 'holiday_weekoff' or new.status <> 'active' then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+      from public.company_policy_definitions
+     where company_id = new.company_id
+       and policy_type = 'holiday_weekoff'
+       and status = 'active'
+       and id <> new.id
+       and effective_from = new.effective_from
+  ) then
+    raise exception 'Another active holiday policy is already scheduled for %.', new.effective_from;
+  end if;
+
+  if new.effective_from > v_business_date then
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'holiday_weekoff'
+         and status = 'active'
+         and id <> new.id
+         and effective_from > v_business_date
+    ) then
+      raise exception 'Another future active holiday policy is already scheduled for this company.';
+    end if;
+  else
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'holiday_weekoff'
+         and status = 'active'
+         and id <> new.id
+         and effective_from <= v_business_date
+    ) then
+      raise exception 'Another current active holiday policy already exists for this company.';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+
+--
+-- Name: guard_leave_policy_active_schedule(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.guard_leave_policy_active_schedule() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_business_date date := public.policy_business_date_india();
+begin
+  if new.policy_type <> 'leave' or new.status <> 'active' then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+      from public.company_policy_definitions
+     where company_id = new.company_id
+       and policy_type = 'leave'
+       and status = 'active'
+       and id <> new.id
+       and effective_from = new.effective_from
+  ) then
+    raise exception 'Another active leave policy is already scheduled for %.', new.effective_from;
+  end if;
+
+  if new.effective_from > v_business_date then
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'leave'
+         and status = 'active'
+         and id <> new.id
+         and effective_from > v_business_date
+    ) then
+      raise exception 'Another future active leave policy is already scheduled for this company.';
+    end if;
+  else
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'leave'
+         and status = 'active'
+         and id <> new.id
+         and effective_from <= v_business_date
+    ) then
+      raise exception 'Another current active leave policy already exists for this company.';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+
+--
+-- Name: guard_shift_policy_active_schedule(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.guard_shift_policy_active_schedule() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_business_date date := public.policy_business_date_india();
+begin
+  if new.policy_type <> 'shift' or new.status <> 'active' then
+    return new;
+  end if;
+
+  if exists (
+    select 1
+      from public.company_policy_definitions
+     where company_id = new.company_id
+       and policy_type = 'shift'
+       and status = 'active'
+       and id <> new.id
+       and effective_from = new.effective_from
+  ) then
+    raise exception 'Another active shift policy is already scheduled for %.', new.effective_from;
+  end if;
+
+  if new.effective_from > v_business_date then
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'shift'
+         and status = 'active'
+         and id <> new.id
+         and effective_from > v_business_date
+    ) then
+      raise exception 'Another future active shift policy is already scheduled for this company.';
+    end if;
+  else
+    if exists (
+      select 1
+        from public.company_policy_definitions
+       where company_id = new.company_id
+         and policy_type = 'shift'
+         and status = 'active'
+         and id <> new.id
+         and effective_from <= v_business_date
+    ) then
+      raise exception 'Another current active shift policy already exists for this company.';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+
+--
+-- Name: policy_business_date_india(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.policy_business_date_india() RETURNS date
+    LANGUAGE sql STABLE
+    SET search_path TO 'public'
+    AS $$
+  select (timezone('Asia/Kolkata', now()))::date;
+$$;
+
+
+--
+-- Name: save_attendance_policy_definition(uuid, text, uuid, text, text, text, date, date, boolean, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.save_attendance_policy_definition(p_company_id uuid, p_admin_email text, p_policy_id uuid, p_policy_name text, p_policy_code text, p_status text, p_effective_from date, p_next_review_date date, p_default_company_policy boolean, p_config_json jsonb) RETURNS uuid
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
 declare
   v_existing_policy public.company_policy_definitions%rowtype;
   v_policy_id uuid;
@@ -834,11 +356,11 @@ begin
       from public.company_policy_definitions
      where company_id = p_company_id
        and id = p_policy_id
-       and policy_type = 'holiday_weekoff'
+       and policy_type = 'attendance'
      for update;
 
     if not found then
-      raise exception 'Holiday policy not found for this company.';
+      raise exception 'Attendance policy not found for this company.';
     end if;
   end if;
 
@@ -848,7 +370,7 @@ begin
            is_default = false,
            updated_at = timezone('utc', now())
      where company_id = p_company_id
-       and policy_type = 'holiday_weekoff'
+       and policy_type = 'attendance'
        and status = 'active'
        and (p_policy_id is null or id <> p_policy_id)
        and (
@@ -863,7 +385,7 @@ begin
        set is_default = false,
            updated_at = timezone('utc', now())
      where company_id = p_company_id
-       and policy_type = 'holiday_weekoff'
+       and policy_type = 'attendance'
        and is_default = true
        and status = 'active'
        and (p_policy_id is null or id <> p_policy_id)
@@ -902,7 +424,7 @@ begin
     )
     values (
       p_company_id,
-      'holiday_weekoff',
+      'attendance',
       p_policy_name,
       p_policy_code,
       p_status,
@@ -919,22 +441,15 @@ begin
 end;
 $$;
 
-create or replace function public.save_correction_policy_definition(
-  p_company_id uuid,
-  p_admin_email text,
-  p_policy_id uuid,
-  p_policy_name text,
-  p_policy_code text,
-  p_status text,
-  p_effective_from date,
-  p_next_review_date date,
-  p_default_company_policy boolean,
-  p_config_json jsonb
-)
-returns uuid
-language plpgsql
-set search_path = public
-as $$
+
+--
+-- Name: save_correction_policy_definition(uuid, text, uuid, text, text, text, date, date, boolean, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.save_correction_policy_definition(p_company_id uuid, p_admin_email text, p_policy_id uuid, p_policy_name text, p_policy_code text, p_status text, p_effective_from date, p_next_review_date date, p_default_company_policy boolean, p_config_json jsonb) RETURNS uuid
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
 declare
   v_existing_policy public.company_policy_definitions%rowtype;
   v_policy_id uuid;
@@ -1033,22 +548,122 @@ begin
 end;
 $$;
 
-create or replace function public.save_leave_policy_definition(
-  p_company_id uuid,
-  p_admin_email text,
-  p_policy_id uuid,
-  p_policy_name text,
-  p_policy_code text,
-  p_status text,
-  p_effective_from date,
-  p_next_review_date date,
-  p_default_company_policy boolean,
-  p_config_json jsonb
-)
-returns uuid
-language plpgsql
-set search_path = public
-as $$
+
+--
+-- Name: save_holiday_policy_definition(uuid, text, uuid, text, text, text, date, date, boolean, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.save_holiday_policy_definition(p_company_id uuid, p_admin_email text, p_policy_id uuid, p_policy_name text, p_policy_code text, p_status text, p_effective_from date, p_next_review_date date, p_default_company_policy boolean, p_config_json jsonb) RETURNS uuid
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_existing_policy public.company_policy_definitions%rowtype;
+  v_policy_id uuid;
+  v_business_date date := public.policy_business_date_india();
+  v_is_future_effective_active boolean := p_status = 'active' and p_effective_from > v_business_date;
+  v_should_set_default boolean := coalesce(p_default_company_policy, false) and p_status = 'active';
+begin
+  if p_policy_id is not null then
+    select *
+      into v_existing_policy
+      from public.company_policy_definitions
+     where company_id = p_company_id
+       and id = p_policy_id
+       and policy_type = 'holiday_weekoff'
+     for update;
+
+    if not found then
+      raise exception 'Holiday policy not found for this company.';
+    end if;
+  end if;
+
+  if p_status = 'active' then
+    update public.company_policy_definitions
+       set status = 'archived',
+           is_default = false,
+           updated_at = timezone('utc', now())
+     where company_id = p_company_id
+       and policy_type = 'holiday_weekoff'
+       and status = 'active'
+       and (p_policy_id is null or id <> p_policy_id)
+       and (
+         (v_is_future_effective_active and effective_from = p_effective_from)
+         or
+         (not v_is_future_effective_active and effective_from <= p_effective_from)
+       );
+  end if;
+
+  if v_should_set_default then
+    update public.company_policy_definitions
+       set is_default = false,
+           updated_at = timezone('utc', now())
+     where company_id = p_company_id
+       and policy_type = 'holiday_weekoff'
+       and is_default = true
+       and status = 'active'
+       and (p_policy_id is null or id <> p_policy_id)
+       and (
+         (v_is_future_effective_active and effective_from = p_effective_from)
+         or
+         (not v_is_future_effective_active and effective_from <= p_effective_from)
+       );
+  end if;
+
+  if p_policy_id is not null then
+    update public.company_policy_definitions
+       set policy_name = p_policy_name,
+           policy_code = p_policy_code,
+           status = p_status,
+           is_default = v_should_set_default,
+           effective_from = p_effective_from,
+           next_review_date = p_next_review_date,
+           config_json = p_config_json,
+           updated_at = timezone('utc', now())
+     where company_id = p_company_id
+       and id = p_policy_id
+     returning id into v_policy_id;
+  else
+    insert into public.company_policy_definitions (
+      company_id,
+      policy_type,
+      policy_name,
+      policy_code,
+      status,
+      is_default,
+      effective_from,
+      next_review_date,
+      config_json,
+      created_by
+    )
+    values (
+      p_company_id,
+      'holiday_weekoff',
+      p_policy_name,
+      p_policy_code,
+      p_status,
+      v_should_set_default,
+      p_effective_from,
+      p_next_review_date,
+      p_config_json,
+      p_admin_email
+    )
+    returning id into v_policy_id;
+  end if;
+
+  return v_policy_id;
+end;
+$$;
+
+
+--
+-- Name: save_leave_policy_definition(uuid, text, uuid, text, text, text, date, date, boolean, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.save_leave_policy_definition(p_company_id uuid, p_admin_email text, p_policy_id uuid, p_policy_name text, p_policy_code text, p_status text, p_effective_from date, p_next_review_date date, p_default_company_policy boolean, p_config_json jsonb) RETURNS uuid
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
 declare
   v_existing_policy public.company_policy_definitions%rowtype;
   v_policy_id uuid;
@@ -1147,140 +762,1822 @@ begin
 end;
 $$;
 
-create table if not exists public.employee_leave_requests (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  employee_id uuid not null references public.employees(id) on delete cascade,
-  leave_policy_code text not null,
-  leave_name_snapshot text not null,
-  from_date date not null,
-  to_date date not null,
-  days numeric(6,2) not null check (days > 0),
-  paid_days numeric(6,2) not null default 0 check (paid_days >= 0),
-  unpaid_days numeric(6,2) not null default 0 check (unpaid_days >= 0),
-  leave_mode text not null default 'paid' check (leave_mode in ('paid', 'unpaid', 'mixed')),
-  reason text not null,
-  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
-  admin_remark text,
-  submitted_at timestamptz not null default now(),
-  reviewed_at timestamptz,
-  reviewed_by text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
 
-alter table public.employee_leave_requests
-  add column if not exists paid_days numeric(6,2) not null default 0 check (paid_days >= 0),
-  add column if not exists unpaid_days numeric(6,2) not null default 0 check (unpaid_days >= 0),
-  add column if not exists leave_mode text not null default 'paid' check (leave_mode in ('paid', 'unpaid', 'mixed'));
+--
+-- Name: save_shift_policy_definition(uuid, text, uuid, text, text, text, date, date, boolean, jsonb); Type: FUNCTION; Schema: public; Owner: -
+--
 
-create index if not exists employee_leave_requests_company_status_idx
-  on public.employee_leave_requests(company_id, status, submitted_at desc);
+CREATE FUNCTION public.save_shift_policy_definition(p_company_id uuid, p_admin_email text, p_policy_id uuid, p_policy_name text, p_policy_code text, p_status text, p_effective_from date, p_next_review_date date, p_default_company_policy boolean, p_config_json jsonb) RETURNS uuid
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_existing_policy public.company_policy_definitions%rowtype;
+  v_policy_id uuid;
+  v_business_date date := public.policy_business_date_india();
+  v_is_future_effective_active boolean := p_status = 'active' and p_effective_from > v_business_date;
+  v_should_set_default boolean := coalesce(p_default_company_policy, false) and p_status = 'active';
+begin
+  if p_policy_id is not null then
+    select *
+      into v_existing_policy
+      from public.company_policy_definitions
+     where company_id = p_company_id
+       and id = p_policy_id
+       and policy_type = 'shift'
+     for update;
 
-create index if not exists employee_leave_requests_company_employee_idx
-  on public.employee_leave_requests(company_id, employee_id, submitted_at desc);
+    if not found then
+      raise exception 'Shift policy not found for this company.';
+    end if;
+  end if;
 
-alter table public.employee_leave_requests enable row level security;
+  if p_status = 'active' then
+    update public.company_policy_definitions
+       set status = 'archived',
+           is_default = false,
+           updated_at = timezone('utc', now())
+     where company_id = p_company_id
+       and policy_type = 'shift'
+       and status = 'active'
+       and (p_policy_id is null or id <> p_policy_id)
+       and (
+         (v_is_future_effective_active and effective_from = p_effective_from)
+         or
+         (not v_is_future_effective_active and effective_from <= p_effective_from)
+       );
+  end if;
 
-drop policy if exists "employee_leave_requests_select_authenticated" on public.employee_leave_requests;
-drop policy if exists "employee_leave_requests_insert_authenticated" on public.employee_leave_requests;
-drop policy if exists "employee_leave_requests_update_authenticated" on public.employee_leave_requests;
-drop policy if exists "employee_leave_requests_delete_authenticated" on public.employee_leave_requests;
+  if v_should_set_default then
+    update public.company_policy_definitions
+       set is_default = false,
+           updated_at = timezone('utc', now())
+     where company_id = p_company_id
+       and policy_type = 'shift'
+       and is_default = true
+       and status = 'active'
+       and (p_policy_id is null or id <> p_policy_id)
+       and (
+         (v_is_future_effective_active and effective_from = p_effective_from)
+         or
+         (not v_is_future_effective_active and effective_from <= p_effective_from)
+       );
+  end if;
 
-create policy "employee_leave_requests_select_authenticated"
-on public.employee_leave_requests
-for select
-to authenticated
-using (true);
-
-create policy "employee_leave_requests_insert_authenticated"
-on public.employee_leave_requests
-for insert
-to authenticated
-with check (true);
-
-create policy "employee_leave_requests_update_authenticated"
-on public.employee_leave_requests
-for update
-to authenticated
-using (true)
-with check (true);
-
-create policy "employee_leave_requests_delete_authenticated"
-on public.employee_leave_requests
-for delete
-to authenticated
-using (true);
-
-create table if not exists public.employee_claim_requests (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  employee_id uuid not null references public.employees(id) on delete cascade,
-  from_date date not null,
-  to_date date not null,
-  days integer not null,
-  claim_type text not null check (claim_type in ('travel', 'meal', 'misc', 'other')),
-  claim_type_other_text text null,
-  amount numeric(12,2) not null check (amount > 0),
-  reason text not null,
-  attachment_url text null,
-  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
-  admin_remark text null,
-  submitted_at timestamptz not null default now(),
-  reviewed_at timestamptz null,
-  reviewed_by text null,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint employee_claim_requests_period_check
-    check (to_date >= from_date and days = ((to_date - from_date) + 1)),
-  constraint employee_claim_requests_other_type_text_check
-    check (claim_type <> 'other' or nullif(btrim(claim_type_other_text), '') is not null),
-  constraint employee_claim_requests_not_future_check
-    check (
-      from_date <= ((now() at time zone 'Asia/Kolkata')::date)
-      and to_date <= ((now() at time zone 'Asia/Kolkata')::date)
+  if p_policy_id is not null then
+    update public.company_policy_definitions
+       set policy_name = p_policy_name,
+           policy_code = p_policy_code,
+           status = p_status,
+           is_default = v_should_set_default,
+           effective_from = p_effective_from,
+           next_review_date = p_next_review_date,
+           config_json = p_config_json,
+           updated_at = timezone('utc', now())
+     where company_id = p_company_id
+       and id = p_policy_id
+     returning id into v_policy_id;
+  else
+    insert into public.company_policy_definitions (
+      company_id,
+      policy_type,
+      policy_name,
+      policy_code,
+      status,
+      is_default,
+      effective_from,
+      next_review_date,
+      config_json,
+      created_by
     )
+    values (
+      p_company_id,
+      'shift',
+      p_policy_name,
+      p_policy_code,
+      p_status,
+      v_should_set_default,
+      p_effective_from,
+      p_next_review_date,
+      p_config_json,
+      p_admin_email
+    )
+    returning id into v_policy_id;
+  end if;
+
+  return v_policy_id;
+end;
+$$;
+
+
+--
+-- Name: sync_company_policy_default_flags(); Type: FUNCTION; Schema: public; Owner: -
+--
+
+CREATE FUNCTION public.sync_company_policy_default_flags() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'public'
+    AS $$
+declare
+  v_business_date date := public.policy_business_date_india();
+begin
+  if new.is_default = true and new.status = 'active' then
+    update public.company_policy_definitions
+       set is_default = false,
+           updated_at = timezone('utc', now())
+     where company_id = new.company_id
+       and policy_type = new.policy_type
+       and id <> new.id
+       and is_default = true
+       and status = 'active'
+       and (
+         (new.effective_from > v_business_date and effective_from = new.effective_from)
+         or
+         (new.effective_from <= v_business_date and effective_from <= new.effective_from)
+       );
+  end if;
+
+  return new;
+end;
+$$;
+
+
+SET default_tablespace = '';
+
+SET default_table_access_method = heap;
+
+--
+-- Name: attendance_manual_review_resolution_history; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.attendance_manual_review_resolution_history (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    work_date date NOT NULL,
+    previous_treatment text,
+    new_treatment text NOT NULL,
+    action_type text NOT NULL,
+    remark text,
+    resolved_by text,
+    resolved_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT attendance_manual_review_resolution_history_action_type_check CHECK ((action_type = ANY (ARRAY['approved'::text, 'rejected'::text]))),
+    CONSTRAINT attendance_manual_review_resolution_history_new_treatment_check CHECK ((new_treatment = ANY (ARRAY['Record Only'::text, 'OT Only'::text, 'Grant Comp Off'::text, 'Present + OT'::text])))
 );
 
-create index if not exists idx_employee_claim_requests_company_submitted
-  on public.employee_claim_requests(company_id, submitted_at desc);
 
-create index if not exists idx_employee_claim_requests_employee_submitted
-  on public.employee_claim_requests(employee_id, submitted_at desc);
+--
+-- Name: attendance_manual_review_resolutions; Type: TABLE; Schema: public; Owner: -
+--
 
-create index if not exists idx_employee_claim_requests_status
-  on public.employee_claim_requests(company_id, status);
-
-alter table public.employee_claim_requests enable row level security;
-
-create table if not exists public.government_holiday_template_sets (
-  id uuid primary key default gen_random_uuid(),
-  year integer not null check (year >= 2000 and year <= 9999),
-  state text not null,
-  source_name text not null default 'Super Admin',
-  source_url text,
-  status text not null default 'draft' check (status in ('draft', 'published')),
-  created_by text not null,
-  created_at timestamptz not null default timezone('utc', now()),
-  updated_at timestamptz not null default timezone('utc', now()),
-  unique (year, state)
+CREATE TABLE public.attendance_manual_review_resolutions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    work_date date NOT NULL,
+    resolution_treatment text NOT NULL,
+    remark text,
+    resolved_by text,
+    resolved_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT attendance_manual_review_resolutions_resolution_treatment_check CHECK ((resolution_treatment = ANY (ARRAY['Record Only'::text, 'OT Only'::text, 'Grant Comp Off'::text, 'Present + OT'::text])))
 );
 
-create table if not exists public.government_holiday_template_rows (
-  id uuid primary key default gen_random_uuid(),
-  template_set_id uuid not null references public.government_holiday_template_sets(id) on delete cascade,
-  holiday_date date not null,
-  name text not null,
-  scope text not null default 'state' check (scope in ('national', 'state')),
-  type text not null default 'national' check (type in ('national', 'festival', 'company')),
-  created_at timestamptz not null default timezone('utc', now())
+
+--
+-- Name: attendance_punch_events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.attendance_punch_events (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    event_id uuid NOT NULL,
+    source text DEFAULT 'mobile'::text NOT NULL,
+    punch_type text NOT NULL,
+    attendance_mode_snapshot text NOT NULL,
+    office_lat_snapshot double precision,
+    office_lon_snapshot double precision,
+    office_radius_m_snapshot integer,
+    lat double precision NOT NULL,
+    lon double precision NOT NULL,
+    address_text text,
+    accuracy_m double precision NOT NULL,
+    distance_from_office_m double precision,
+    is_offline boolean DEFAULT false NOT NULL,
+    device_time_ms bigint NOT NULL,
+    device_time_at timestamp with time zone,
+    estimated_time_ms bigint,
+    estimated_time_at timestamp with time zone,
+    trusted_anchor_time_ms bigint,
+    trusted_anchor_time_at timestamp with time zone,
+    trusted_anchor_elapsed_ms bigint,
+    elapsed_ms bigint NOT NULL,
+    clock_drift_ms bigint,
+    server_received_at timestamp with time zone DEFAULT now() NOT NULL,
+    effective_punch_at timestamp with time zone,
+    requires_approval boolean DEFAULT false NOT NULL,
+    approval_status text DEFAULT 'auto_approved'::text NOT NULL,
+    approval_reason_codes text[] DEFAULT '{}'::text[] NOT NULL,
+    raw_payload jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    device_id text,
+    company_name_snapshot text,
+    employee_name_snapshot text,
+    day_type text DEFAULT 'working_day'::text NOT NULL,
+    is_extra_work boolean DEFAULT false NOT NULL,
+    CONSTRAINT attendance_punch_events_approval_status_check CHECK ((approval_status = ANY (ARRAY['auto_approved'::text, 'pending_approval'::text, 'approved'::text, 'rejected'::text]))),
+    CONSTRAINT attendance_punch_events_attendance_mode_snapshot_check CHECK ((attendance_mode_snapshot = ANY (ARRAY['office_only'::text, 'field_staff'::text]))),
+    CONSTRAINT attendance_punch_events_day_type_check CHECK ((day_type = ANY (ARRAY['working_day'::text, 'holiday'::text, 'weekly_off'::text]))),
+    CONSTRAINT attendance_punch_events_punch_type_check CHECK ((punch_type = ANY (ARRAY['in'::text, 'out'::text]))),
+    CONSTRAINT attendance_punch_events_source_check CHECK ((source = 'mobile'::text))
 );
 
-create index if not exists govt_holiday_template_sets_year_state_idx
-  on public.government_holiday_template_sets(year asc, state asc);
 
-create index if not exists govt_holiday_template_rows_set_date_idx
-  on public.government_holiday_template_rows(template_set_id, holiday_date asc);
+--
+-- Name: attendance_punch_events_ordered; Type: VIEW; Schema: public; Owner: -
+--
 
-alter table public.government_holiday_template_sets enable row level security;
-alter table public.government_holiday_template_rows enable row level security;
+CREATE VIEW public.attendance_punch_events_ordered WITH (security_invoker='true') AS
+ SELECT company_name_snapshot,
+    employee_name_snapshot,
+    company_id,
+    employee_id,
+    device_id,
+    event_id,
+    source,
+    punch_type,
+    attendance_mode_snapshot,
+    office_lat_snapshot,
+    office_lon_snapshot,
+    office_radius_m_snapshot,
+    lat,
+    lon,
+    address_text,
+    accuracy_m,
+    distance_from_office_m,
+    is_offline,
+    device_time_ms,
+    device_time_at,
+    estimated_time_ms,
+    estimated_time_at,
+    trusted_anchor_time_ms,
+    trusted_anchor_time_at,
+    trusted_anchor_elapsed_ms,
+    elapsed_ms,
+    clock_drift_ms,
+    server_received_at,
+    effective_punch_at,
+    requires_approval,
+    approval_status,
+    approval_reason_codes,
+    raw_payload,
+    created_at,
+    id,
+    day_type,
+    is_extra_work
+   FROM public.attendance_punch_events;
+
+
+--
+-- Name: companies; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.companies (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    code text,
+    plan_type text,
+    plan_start date,
+    plan_end date,
+    status text,
+    size_of_employees text,
+    authorized_name text,
+    mobile text,
+    address text,
+    city text,
+    state text,
+    country text,
+    pin_code text,
+    admin_email text,
+    admin_password text,
+    gst text,
+    business_nature text,
+    office_lat double precision,
+    office_lon double precision,
+    office_radius_m integer,
+    company_tagline text,
+    CONSTRAINT companies_plan_type_check CHECK ((plan_type = ANY (ARRAY['trial'::text, 'monthly'::text, 'yearly'::text]))),
+    CONSTRAINT companies_status_check CHECK ((status = ANY (ARRAY['trial_active'::text, 'paid_active'::text, 'grace_paid'::text, 'suspended'::text])))
+);
+
+
+--
+-- Name: company_holidays; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.company_holidays (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    holiday_date date NOT NULL,
+    name text NOT NULL,
+    type text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT company_holidays_type_check CHECK ((type = ANY (ARRAY['national'::text, 'festival'::text, 'company'::text])))
+);
+
+
+--
+-- Name: company_policy_assignments; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.company_policy_assignments (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    policy_type text NOT NULL,
+    policy_id uuid NOT NULL,
+    assignment_level text NOT NULL,
+    target_id text NOT NULL,
+    effective_from date NOT NULL,
+    effective_to date,
+    is_active boolean DEFAULT true NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    CONSTRAINT company_policy_assignments_date_check CHECK (((effective_to IS NULL) OR (effective_to >= effective_from))),
+    CONSTRAINT company_policy_assignments_level_check CHECK ((assignment_level = ANY (ARRAY['company'::text, 'department'::text, 'employee'::text]))),
+    CONSTRAINT company_policy_assignments_type_check CHECK ((policy_type = ANY (ARRAY['shift'::text, 'attendance'::text, 'leave'::text, 'holiday_weekoff'::text, 'correction'::text])))
+);
+
+
+--
+-- Name: company_policy_definitions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.company_policy_definitions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    policy_type text NOT NULL,
+    policy_name text NOT NULL,
+    policy_code text NOT NULL,
+    status text DEFAULT 'draft'::text NOT NULL,
+    is_default boolean DEFAULT false NOT NULL,
+    effective_from date NOT NULL,
+    next_review_date date NOT NULL,
+    config_json jsonb DEFAULT '{}'::jsonb NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+    CONSTRAINT company_policy_definitions_status_check CHECK ((status = ANY (ARRAY['draft'::text, 'active'::text, 'archived'::text]))),
+    CONSTRAINT company_policy_definitions_type_check CHECK ((policy_type = ANY (ARRAY['shift'::text, 'attendance'::text, 'leave'::text, 'holiday_weekoff'::text, 'correction'::text])))
+);
+
+
+--
+-- Name: employee_attendance_correction_audit_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_attendance_correction_audit_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    correction_id uuid,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    action text NOT NULL,
+    old_status text,
+    new_status text,
+    old_requested_check_in time without time zone,
+    new_requested_check_in time without time zone,
+    old_requested_check_out time without time zone,
+    new_requested_check_out time without time zone,
+    reason_snapshot text,
+    performed_by text NOT NULL,
+    performed_role text NOT NULL,
+    remark text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT employee_attendance_correction_audit_logs_action_check CHECK ((action = ANY (ARRAY['submitted'::text, 'reviewed'::text, 'auto_rejected'::text, 'blocked_monthly_limit'::text]))),
+    CONSTRAINT employee_attendance_correction_audit_logs_performed_role_check CHECK ((performed_role = ANY (ARRAY['employee'::text, 'company_admin'::text, 'system'::text])))
+);
+
+
+--
+-- Name: employee_attendance_corrections; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_attendance_corrections (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    correction_date date NOT NULL,
+    requested_check_in time without time zone,
+    requested_check_out time without time zone,
+    reason text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    admin_remark text,
+    submitted_at timestamp with time zone DEFAULT now() NOT NULL,
+    reviewed_at timestamp with time zone,
+    reviewed_by text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT employee_attendance_corrections_reason_len_check CHECK (((char_length(btrim(reason)) >= 10) AND (char_length(btrim(reason)) <= 300))),
+    CONSTRAINT employee_attendance_corrections_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'pending_manager'::text, 'pending_hr'::text, 'approved'::text, 'rejected'::text]))),
+    CONSTRAINT employee_attendance_corrections_time_order_check CHECK (((requested_check_in IS NULL) OR (requested_check_out IS NULL) OR (requested_check_out > requested_check_in))),
+    CONSTRAINT employee_attendance_corrections_time_required_check CHECK (((requested_check_in IS NOT NULL) OR (requested_check_out IS NOT NULL)))
+);
+
+
+--
+-- Name: employee_claim_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_claim_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    claim_type text NOT NULL,
+    amount numeric(12,2) NOT NULL,
+    reason text NOT NULL,
+    attachment_url text,
+    status text DEFAULT 'pending'::text NOT NULL,
+    admin_remark text,
+    submitted_at timestamp with time zone DEFAULT now() NOT NULL,
+    reviewed_at timestamp with time zone,
+    reviewed_by text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    claim_type_other_text text,
+    from_date date NOT NULL,
+    to_date date NOT NULL,
+    days integer NOT NULL,
+    CONSTRAINT employee_claim_requests_amount_check CHECK ((amount > (0)::numeric)),
+    CONSTRAINT employee_claim_requests_claim_type_check CHECK ((claim_type = ANY (ARRAY['travel'::text, 'meal'::text, 'misc'::text, 'other'::text]))),
+    CONSTRAINT employee_claim_requests_not_future_check CHECK (((from_date <= ((now() AT TIME ZONE 'Asia/Kolkata'::text))::date) AND (to_date <= ((now() AT TIME ZONE 'Asia/Kolkata'::text))::date))),
+    CONSTRAINT employee_claim_requests_other_type_text_check CHECK (((claim_type <> 'other'::text) OR (NULLIF(btrim(claim_type_other_text), ''::text) IS NOT NULL))),
+    CONSTRAINT employee_claim_requests_period_check CHECK (((to_date >= from_date) AND (days = ((to_date - from_date) + 1)))),
+    CONSTRAINT employee_claim_requests_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])))
+);
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_leave_balance_override_audit_logs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    override_id uuid,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    leave_policy_code text NOT NULL,
+    year integer NOT NULL,
+    action text NOT NULL,
+    old_extra_days numeric(6,2),
+    new_extra_days numeric(6,2),
+    reason text,
+    changed_by text NOT NULL,
+    changed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT employee_leave_balance_override_audit_logs_action_check CHECK ((action = ANY (ARRAY['created'::text, 'updated'::text, 'deleted'::text])))
+);
+
+
+--
+-- Name: employee_leave_balance_overrides; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_leave_balance_overrides (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    leave_policy_code text NOT NULL,
+    year integer NOT NULL,
+    extra_days numeric(6,2) DEFAULT 0 NOT NULL,
+    reason text NOT NULL,
+    created_by text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT employee_leave_balance_overrides_year_check CHECK (((year >= 2000) AND (year <= 2100)))
+);
+
+
+--
+-- Name: employee_leave_requests; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_leave_requests (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    company_id uuid NOT NULL,
+    employee_id uuid NOT NULL,
+    leave_policy_code text NOT NULL,
+    leave_name_snapshot text NOT NULL,
+    from_date date NOT NULL,
+    to_date date NOT NULL,
+    days numeric(6,2) NOT NULL,
+    reason text NOT NULL,
+    status text DEFAULT 'pending'::text NOT NULL,
+    admin_remark text,
+    submitted_at timestamp with time zone DEFAULT now() NOT NULL,
+    reviewed_at timestamp with time zone,
+    reviewed_by text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    paid_days numeric(6,2) DEFAULT 0 NOT NULL,
+    unpaid_days numeric(6,2) DEFAULT 0 NOT NULL,
+    leave_mode text DEFAULT 'paid'::text NOT NULL,
+    approval_flow_snapshot text DEFAULT 'manager_hr'::text NOT NULL,
+    CONSTRAINT employee_leave_requests_approval_flow_snapshot_check CHECK ((approval_flow_snapshot = ANY (ARRAY['manager'::text, 'manager_hr'::text, 'hr'::text]))),
+    CONSTRAINT employee_leave_requests_days_check CHECK ((days > (0)::numeric)),
+    CONSTRAINT employee_leave_requests_leave_mode_check CHECK ((leave_mode = ANY (ARRAY['paid'::text, 'unpaid'::text, 'mixed'::text]))),
+    CONSTRAINT employee_leave_requests_paid_days_check CHECK ((paid_days >= (0)::numeric)),
+    CONSTRAINT employee_leave_requests_status_check CHECK ((status = ANY (ARRAY['pending'::text, 'pending_manager'::text, 'pending_hr'::text, 'approved'::text, 'rejected'::text]))),
+    CONSTRAINT employee_leave_requests_unpaid_days_check CHECK ((unpaid_days >= (0)::numeric))
+);
+
+
+--
+-- Name: employee_login_otps; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employee_login_otps (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    employee_id uuid NOT NULL,
+    employee_code text NOT NULL,
+    mobile text NOT NULL,
+    purpose text NOT NULL,
+    otp_code text NOT NULL,
+    requested_device_id text NOT NULL,
+    requested_device_name text,
+    expires_at timestamp with time zone NOT NULL,
+    consumed_at timestamp with time zone,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT employee_login_otps_purpose_check CHECK ((purpose = ANY (ARRAY['first_login'::text, 'reset_pin'::text])))
+);
+
+
+--
+-- Name: employees; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.employees (
+    id uuid DEFAULT extensions.uuid_generate_v4() NOT NULL,
+    company_id uuid,
+    employee_code text NOT NULL,
+    mobile text NOT NULL,
+    pin_hash text,
+    device_id text,
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    full_name text,
+    email text,
+    designation text,
+    shift_name text,
+    status text DEFAULT 'active'::text,
+    joined_on date,
+    reporting_manager text,
+    perm_address text,
+    temp_address text,
+    pan text,
+    aadhaar_number text,
+    emergency_name text,
+    emergency_mobile text,
+    employment_type text,
+    exit_date date,
+    updated_at timestamp with time zone DEFAULT now(),
+    department text,
+    mobile_app_status text DEFAULT 'invited'::text NOT NULL,
+    mobile_verified_at timestamp with time zone,
+    app_pin_hash text,
+    bound_device_id text,
+    bound_device_name text,
+    bound_device_at timestamp with time zone,
+    mobile_last_login_at timestamp with time zone,
+    bound_app_version text,
+    attendance_mode text DEFAULT 'field_staff'::text NOT NULL,
+    gender text,
+    CONSTRAINT employees_attendance_mode_check CHECK ((attendance_mode = ANY (ARRAY['office_only'::text, 'field_staff'::text]))),
+    CONSTRAINT employees_gender_check CHECK ((gender = ANY (ARRAY['male'::text, 'female'::text, 'other'::text]))),
+    CONSTRAINT employees_mobile_app_status_check CHECK ((mobile_app_status = ANY (ARRAY['invited'::text, 'active'::text, 'blocked'::text]))),
+    CONSTRAINT employees_status_check CHECK ((status = ANY (ARRAY['active'::text, 'inactive'::text])))
+);
+
+
+--
+-- Name: government_holiday_template_rows; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.government_holiday_template_rows (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    template_set_id uuid NOT NULL,
+    holiday_date date NOT NULL,
+    name text NOT NULL,
+    type text NOT NULL,
+    scope text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT government_holiday_template_rows_scope_check CHECK ((scope = ANY (ARRAY['national'::text, 'state'::text]))),
+    CONSTRAINT government_holiday_template_rows_type_check CHECK ((type = ANY (ARRAY['national'::text, 'festival'::text])))
+);
+
+
+--
+-- Name: government_holiday_template_sets; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.government_holiday_template_sets (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    year integer NOT NULL,
+    state text NOT NULL,
+    published boolean DEFAULT false NOT NULL,
+    last_published_at timestamp with time zone,
+    last_updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_by text,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT government_holiday_template_sets_state_check CHECK ((state = ANY (ARRAY['all_india'::text, 'maharashtra'::text, 'karnataka'::text, 'gujarat'::text, 'tamil_nadu'::text]))),
+    CONSTRAINT government_holiday_template_sets_year_check CHECK (((year >= 2000) AND (year <= 2100)))
+);
+
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_reso_company_id_employee_id_work_d_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolutions
+    ADD CONSTRAINT attendance_manual_review_reso_company_id_employee_id_work_d_key UNIQUE (company_id, employee_id, work_date);
+
+
+--
+-- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolution_history
+    ADD CONSTRAINT attendance_manual_review_resolution_history_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolutions
+    ADD CONSTRAINT attendance_manual_review_resolutions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: attendance_punch_events attendance_punch_events_event_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_punch_events
+    ADD CONSTRAINT attendance_punch_events_event_id_key UNIQUE (event_id);
+
+
+--
+-- Name: attendance_punch_events attendance_punch_events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_punch_events
+    ADD CONSTRAINT attendance_punch_events_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: companies companies_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.companies
+    ADD CONSTRAINT companies_code_key UNIQUE (code);
+
+
+--
+-- Name: companies companies_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.companies
+    ADD CONSTRAINT companies_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: company_holidays company_holidays_company_id_holiday_date_name_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_holidays
+    ADD CONSTRAINT company_holidays_company_id_holiday_date_name_key UNIQUE (company_id, holiday_date, name);
+
+
+--
+-- Name: company_holidays company_holidays_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_holidays
+    ADD CONSTRAINT company_holidays_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: company_policy_assignments company_policy_assignments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_policy_assignments
+    ADD CONSTRAINT company_policy_assignments_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: company_policy_definitions company_policy_definitions_code_unique; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_policy_definitions
+    ADD CONSTRAINT company_policy_definitions_code_unique UNIQUE (company_id, policy_type, policy_code);
+
+
+--
+-- Name: company_policy_definitions company_policy_definitions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_policy_definitions
+    ADD CONSTRAINT company_policy_definitions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_attendance_correction_audit_logs employee_attendance_correction_audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_correction_audit_logs
+    ADD CONSTRAINT employee_attendance_correction_audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_corrections
+    ADD CONSTRAINT employee_attendance_corrections_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_claim_requests employee_claim_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_claim_requests
+    ADD CONSTRAINT employee_claim_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overri_company_id_employee_id_leave__key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_overrides
+    ADD CONSTRAINT employee_leave_balance_overri_company_id_employee_id_leave__key UNIQUE (company_id, employee_id, leave_policy_code, year);
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs employee_leave_balance_override_audit_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_override_audit_logs
+    ADD CONSTRAINT employee_leave_balance_override_audit_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_overrides
+    ADD CONSTRAINT employee_leave_balance_overrides_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_leave_requests employee_leave_requests_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_requests
+    ADD CONSTRAINT employee_leave_requests_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employee_login_otps employee_login_otps_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_login_otps
+    ADD CONSTRAINT employee_login_otps_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: employees employees_company_id_emp_code_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_company_id_emp_code_key UNIQUE (company_id, employee_code);
+
+
+--
+-- Name: employees employees_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: government_holiday_template_rows government_holiday_template_r_template_set_id_holiday_date__key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.government_holiday_template_rows
+    ADD CONSTRAINT government_holiday_template_r_template_set_id_holiday_date__key UNIQUE (template_set_id, holiday_date, name);
+
+
+--
+-- Name: government_holiday_template_rows government_holiday_template_rows_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.government_holiday_template_rows
+    ADD CONSTRAINT government_holiday_template_rows_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: government_holiday_template_sets government_holiday_template_sets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.government_holiday_template_sets
+    ADD CONSTRAINT government_holiday_template_sets_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: government_holiday_template_sets government_holiday_template_sets_year_state_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.government_holiday_template_sets
+    ADD CONSTRAINT government_holiday_template_sets_year_state_key UNIQUE (year, state);
+
+
+--
+-- Name: attendance_manual_review_resolution_history_company_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_manual_review_resolution_history_company_date_idx ON public.attendance_manual_review_resolution_history USING btree (company_id, work_date DESC, created_at DESC);
+
+
+--
+-- Name: attendance_manual_review_resolution_history_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_manual_review_resolution_history_employee_id_idx ON public.attendance_manual_review_resolution_history USING btree (employee_id);
+
+
+--
+-- Name: attendance_manual_review_resolutions_company_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_manual_review_resolutions_company_date_idx ON public.attendance_manual_review_resolutions USING btree (company_id, work_date DESC, employee_id);
+
+
+--
+-- Name: attendance_manual_review_resolutions_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_manual_review_resolutions_employee_id_idx ON public.attendance_manual_review_resolutions USING btree (employee_id);
+
+
+--
+-- Name: attendance_punch_events_company_employee_device_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_punch_events_company_employee_device_idx ON public.attendance_punch_events USING btree (company_id, employee_id, device_id, server_received_at DESC);
+
+
+--
+-- Name: attendance_punch_events_company_employee_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_punch_events_company_employee_idx ON public.attendance_punch_events USING btree (company_id, employee_id, server_received_at DESC);
+
+
+--
+-- Name: attendance_punch_events_company_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_punch_events_company_status_idx ON public.attendance_punch_events USING btree (company_id, approval_status, server_received_at DESC);
+
+
+--
+-- Name: attendance_punch_events_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX attendance_punch_events_employee_id_idx ON public.attendance_punch_events USING btree (employee_id);
+
+
+--
+-- Name: companies_admin_email_norm_uniq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX companies_admin_email_norm_uniq ON public.companies USING btree (lower(TRIM(BOTH FROM admin_email))) WHERE (admin_email IS NOT NULL);
+
+
+--
+-- Name: company_holidays_company_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX company_holidays_company_date_idx ON public.company_holidays USING btree (company_id, holiday_date);
+
+
+--
+-- Name: company_policy_assignments_company_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX company_policy_assignments_company_idx ON public.company_policy_assignments USING btree (company_id, policy_type, assignment_level, target_id, is_active DESC, effective_from DESC);
+
+
+--
+-- Name: company_policy_assignments_policy_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX company_policy_assignments_policy_id_idx ON public.company_policy_assignments USING btree (policy_id);
+
+
+--
+-- Name: company_policy_definitions_active_default_effective_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX company_policy_definitions_active_default_effective_idx ON public.company_policy_definitions USING btree (company_id, policy_type, effective_from) WHERE ((is_default = true) AND (status = 'active'::text));
+
+
+--
+-- Name: company_policy_definitions_company_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX company_policy_definitions_company_idx ON public.company_policy_definitions USING btree (company_id, policy_type, status, is_default DESC);
+
+
+--
+-- Name: employee_attendance_correction_audit_logs_company_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_attendance_correction_audit_logs_company_idx ON public.employee_attendance_correction_audit_logs USING btree (company_id, created_at DESC);
+
+
+--
+-- Name: employee_attendance_correction_audit_logs_correction_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_attendance_correction_audit_logs_correction_idx ON public.employee_attendance_correction_audit_logs USING btree (correction_id, created_at DESC);
+
+
+--
+-- Name: employee_attendance_correction_audit_logs_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_attendance_correction_audit_logs_employee_id_idx ON public.employee_attendance_correction_audit_logs USING btree (employee_id);
+
+
+--
+-- Name: employee_attendance_corrections_company_employee_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_attendance_corrections_company_employee_idx ON public.employee_attendance_corrections USING btree (company_id, employee_id, submitted_at DESC);
+
+
+--
+-- Name: employee_attendance_corrections_company_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_attendance_corrections_company_status_idx ON public.employee_attendance_corrections USING btree (company_id, status, submitted_at DESC);
+
+
+--
+-- Name: employee_attendance_corrections_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_attendance_corrections_employee_id_idx ON public.employee_attendance_corrections USING btree (employee_id);
+
+
+--
+-- Name: employee_attendance_corrections_pending_unique_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX employee_attendance_corrections_pending_unique_idx ON public.employee_attendance_corrections USING btree (company_id, employee_id, correction_date) WHERE (status = ANY (ARRAY['pending'::text, 'pending_manager'::text, 'pending_hr'::text]));
+
+
+--
+-- Name: employee_leave_balance_override_audit_company_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_balance_override_audit_company_idx ON public.employee_leave_balance_override_audit_logs USING btree (company_id, changed_at DESC);
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_balance_override_audit_logs_employee_id_idx ON public.employee_leave_balance_override_audit_logs USING btree (employee_id);
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs_override_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_balance_override_audit_logs_override_id_idx ON public.employee_leave_balance_override_audit_logs USING btree (override_id);
+
+
+--
+-- Name: employee_leave_balance_overrides_company_year_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_balance_overrides_company_year_idx ON public.employee_leave_balance_overrides USING btree (company_id, year DESC, employee_id);
+
+
+--
+-- Name: employee_leave_balance_overrides_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_balance_overrides_employee_id_idx ON public.employee_leave_balance_overrides USING btree (employee_id);
+
+
+--
+-- Name: employee_leave_requests_company_employee_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_requests_company_employee_idx ON public.employee_leave_requests USING btree (company_id, employee_id, submitted_at DESC);
+
+
+--
+-- Name: employee_leave_requests_company_status_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_requests_company_status_idx ON public.employee_leave_requests USING btree (company_id, status, submitted_at DESC);
+
+
+--
+-- Name: employee_leave_requests_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_leave_requests_employee_id_idx ON public.employee_leave_requests USING btree (employee_id);
+
+
+--
+-- Name: employee_login_otps_employee_id_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX employee_login_otps_employee_id_idx ON public.employee_login_otps USING btree (employee_id, created_at DESC);
+
+
+--
+-- Name: employees_company_code_uniq; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX employees_company_code_uniq ON public.employees USING btree (company_id, employee_code);
+
+
+--
+-- Name: employees_company_id_mobile_key; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX employees_company_id_mobile_key ON public.employees USING btree (company_id, mobile);
+
+
+--
+-- Name: govt_holiday_template_rows_set_date_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX govt_holiday_template_rows_set_date_idx ON public.government_holiday_template_rows USING btree (template_set_id, holiday_date);
+
+
+--
+-- Name: govt_holiday_template_sets_year_state_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX govt_holiday_template_sets_year_state_idx ON public.government_holiday_template_sets USING btree (year, state);
+
+
+--
+-- Name: idx_employee_claim_requests_company_submitted; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_employee_claim_requests_company_submitted ON public.employee_claim_requests USING btree (company_id, submitted_at DESC);
+
+
+--
+-- Name: idx_employee_claim_requests_employee_submitted; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_employee_claim_requests_employee_submitted ON public.employee_claim_requests USING btree (employee_id, submitted_at DESC);
+
+
+--
+-- Name: idx_employee_claim_requests_status; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_employee_claim_requests_status ON public.employee_claim_requests USING btree (company_id, status);
+
+
+--
+-- Name: company_policy_definitions guard_attendance_policy_active_schedule; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER guard_attendance_policy_active_schedule BEFORE INSERT OR UPDATE OF policy_type, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.policy_type = 'attendance'::text) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.guard_attendance_policy_active_schedule();
+
+
+--
+-- Name: company_policy_definitions guard_correction_policy_active_schedule; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER guard_correction_policy_active_schedule BEFORE INSERT OR UPDATE OF policy_type, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.policy_type = 'correction'::text) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.guard_correction_policy_active_schedule();
+
+
+--
+-- Name: company_policy_definitions guard_holiday_policy_active_schedule; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER guard_holiday_policy_active_schedule BEFORE INSERT OR UPDATE OF policy_type, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.policy_type = 'holiday_weekoff'::text) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.guard_holiday_policy_active_schedule();
+
+
+--
+-- Name: company_policy_definitions guard_leave_policy_active_schedule; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER guard_leave_policy_active_schedule BEFORE INSERT OR UPDATE OF policy_type, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.policy_type = 'leave'::text) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.guard_leave_policy_active_schedule();
+
+
+--
+-- Name: company_policy_definitions guard_shift_policy_active_schedule; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER guard_shift_policy_active_schedule BEFORE INSERT OR UPDATE OF policy_type, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.policy_type = 'shift'::text) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.guard_shift_policy_active_schedule();
+
+
+--
+-- Name: company_policy_definitions sync_company_policy_default_flags; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER sync_company_policy_default_flags AFTER INSERT OR UPDATE OF is_default, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.is_default = true) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.sync_company_policy_default_flags();
+
+
+--
+-- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolution_history
+    ADD CONSTRAINT attendance_manual_review_resolution_history_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolution_history
+    ADD CONSTRAINT attendance_manual_review_resolution_history_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolutions
+    ADD CONSTRAINT attendance_manual_review_resolutions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_manual_review_resolutions
+    ADD CONSTRAINT attendance_manual_review_resolutions_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: attendance_punch_events attendance_punch_events_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_punch_events
+    ADD CONSTRAINT attendance_punch_events_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: attendance_punch_events attendance_punch_events_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.attendance_punch_events
+    ADD CONSTRAINT attendance_punch_events_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: company_holidays company_holidays_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_holidays
+    ADD CONSTRAINT company_holidays_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: company_policy_assignments company_policy_assignments_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_policy_assignments
+    ADD CONSTRAINT company_policy_assignments_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: company_policy_assignments company_policy_assignments_policy_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_policy_assignments
+    ADD CONSTRAINT company_policy_assignments_policy_id_fkey FOREIGN KEY (policy_id) REFERENCES public.company_policy_definitions(id) ON DELETE CASCADE;
+
+
+--
+-- Name: company_policy_definitions company_policy_definitions_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.company_policy_definitions
+    ADD CONSTRAINT company_policy_definitions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_attendance_correction_audit_logs employee_attendance_correction_audit_logs_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_correction_audit_logs
+    ADD CONSTRAINT employee_attendance_correction_audit_logs_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_attendance_correction_audit_logs employee_attendance_correction_audit_logs_correction_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_correction_audit_logs
+    ADD CONSTRAINT employee_attendance_correction_audit_logs_correction_id_fkey FOREIGN KEY (correction_id) REFERENCES public.employee_attendance_corrections(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_attendance_correction_audit_logs employee_attendance_correction_audit_logs_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_correction_audit_logs
+    ADD CONSTRAINT employee_attendance_correction_audit_logs_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_corrections
+    ADD CONSTRAINT employee_attendance_corrections_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_attendance_corrections
+    ADD CONSTRAINT employee_attendance_corrections_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_claim_requests employee_claim_requests_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_claim_requests
+    ADD CONSTRAINT employee_claim_requests_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_claim_requests employee_claim_requests_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_claim_requests
+    ADD CONSTRAINT employee_claim_requests_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs employee_leave_balance_override_audit_logs_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_override_audit_logs
+    ADD CONSTRAINT employee_leave_balance_override_audit_logs_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs employee_leave_balance_override_audit_logs_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_override_audit_logs
+    ADD CONSTRAINT employee_leave_balance_override_audit_logs_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs employee_leave_balance_override_audit_logs_override_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_override_audit_logs
+    ADD CONSTRAINT employee_leave_balance_override_audit_logs_override_id_fkey FOREIGN KEY (override_id) REFERENCES public.employee_leave_balance_overrides(id) ON DELETE SET NULL;
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_overrides
+    ADD CONSTRAINT employee_leave_balance_overrides_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_balance_overrides
+    ADD CONSTRAINT employee_leave_balance_overrides_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_leave_requests employee_leave_requests_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_requests
+    ADD CONSTRAINT employee_leave_requests_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_leave_requests employee_leave_requests_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_leave_requests
+    ADD CONSTRAINT employee_leave_requests_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employee_login_otps employee_login_otps_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employee_login_otps
+    ADD CONSTRAINT employee_login_otps_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
+
+
+--
+-- Name: employees employees_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.employees
+    ADD CONSTRAINT employees_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
+
+
+--
+-- Name: government_holiday_template_rows government_holiday_template_rows_template_set_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.government_holiday_template_rows
+    ADD CONSTRAINT government_holiday_template_rows_template_set_id_fkey FOREIGN KEY (template_set_id) REFERENCES public.government_holiday_template_sets(id) ON DELETE CASCADE;
+
+
+--
+-- Name: attendance_manual_review_resolution_history; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.attendance_manual_review_resolution_history ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_insert_authenticate; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_manual_review_resolution_history_insert_authenticate ON public.attendance_manual_review_resolution_history FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = attendance_manual_review_resolution_history.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_select_authenticate; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_manual_review_resolution_history_select_authenticate ON public.attendance_manual_review_resolution_history FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = attendance_manual_review_resolution_history.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: attendance_manual_review_resolutions; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.attendance_manual_review_resolutions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_manual_review_resolutions_insert_authenticated ON public.attendance_manual_review_resolutions FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_manual_review_resolutions_select_authenticated ON public.attendance_manual_review_resolutions FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_manual_review_resolutions_update_authenticated ON public.attendance_manual_review_resolutions FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: attendance_punch_events; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.attendance_punch_events ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: attendance_punch_events attendance_punch_events_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_punch_events_insert_authenticated ON public.attendance_punch_events FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: attendance_punch_events attendance_punch_events_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_punch_events_select_authenticated ON public.attendance_punch_events FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: attendance_punch_events attendance_punch_events_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY attendance_punch_events_update_authenticated ON public.attendance_punch_events FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+
+--
+-- Name: companies; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: companies companies_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY companies_insert_authenticated ON public.companies FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: companies companies_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY companies_select_authenticated ON public.companies FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: company_holidays; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.company_holidays ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: company_holidays company_holidays_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_holidays_delete_authenticated ON public.company_holidays FOR DELETE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_holidays.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_holidays company_holidays_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_holidays_insert_authenticated ON public.company_holidays FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_holidays.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_holidays company_holidays_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_holidays_select_authenticated ON public.company_holidays FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_holidays.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_holidays company_holidays_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_holidays_update_authenticated ON public.company_holidays FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_holidays.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_holidays.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_assignments; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.company_policy_assignments ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: company_policy_assignments company_policy_assignments_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_assignments_delete_authenticated ON public.company_policy_assignments FOR DELETE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_assignments.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_assignments company_policy_assignments_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_assignments_insert_authenticated ON public.company_policy_assignments FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_assignments.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_assignments company_policy_assignments_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_assignments_select_authenticated ON public.company_policy_assignments FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_assignments.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_assignments company_policy_assignments_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_assignments_update_authenticated ON public.company_policy_assignments FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_assignments.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_assignments.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_definitions; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.company_policy_definitions ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: company_policy_definitions company_policy_definitions_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_definitions_delete_authenticated ON public.company_policy_definitions FOR DELETE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_definitions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_definitions company_policy_definitions_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_definitions_insert_authenticated ON public.company_policy_definitions FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_definitions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_definitions company_policy_definitions_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_definitions_select_authenticated ON public.company_policy_definitions FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_definitions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: company_policy_definitions company_policy_definitions_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY company_policy_definitions_update_authenticated ON public.company_policy_definitions FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_definitions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = company_policy_definitions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_attendance_correction_audit_logs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_attendance_correction_audit_logs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employee_attendance_correction_audit_logs employee_attendance_correction_audit_logs_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_attendance_correction_audit_logs_insert_authenticated ON public.employee_attendance_correction_audit_logs FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_correction_audit_logs.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_attendance_correction_audit_logs employee_attendance_correction_audit_logs_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_attendance_correction_audit_logs_select_authenticated ON public.employee_attendance_correction_audit_logs FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_correction_audit_logs.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_attendance_corrections; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_attendance_corrections ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_attendance_corrections_delete_authenticated ON public.employee_attendance_corrections FOR DELETE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_corrections.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_attendance_corrections_insert_authenticated ON public.employee_attendance_corrections FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_corrections.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_attendance_corrections_select_authenticated ON public.employee_attendance_corrections FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_corrections.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_attendance_corrections employee_attendance_corrections_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_attendance_corrections_update_authenticated ON public.employee_attendance_corrections FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_corrections.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text))))))) WITH CHECK ((EXISTS ( SELECT 1
+   FROM public.companies
+  WHERE ((companies.id = employee_attendance_corrections.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
+
+
+--
+-- Name: employee_claim_requests; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_claim_requests ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employee_leave_balance_override_audit_logs; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_leave_balance_override_audit_logs ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employee_leave_balance_override_audit_logs employee_leave_balance_override_audit_logs_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_balance_override_audit_logs_insert_authenticated ON public.employee_leave_balance_override_audit_logs FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: employee_leave_balance_override_audit_logs employee_leave_balance_override_audit_logs_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_balance_override_audit_logs_select_authenticated ON public.employee_leave_balance_override_audit_logs FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: employee_leave_balance_overrides; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_leave_balance_overrides ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_balance_overrides_delete_authenticated ON public.employee_leave_balance_overrides FOR DELETE TO authenticated USING (true);
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_balance_overrides_insert_authenticated ON public.employee_leave_balance_overrides FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_balance_overrides_select_authenticated ON public.employee_leave_balance_overrides FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: employee_leave_balance_overrides employee_leave_balance_overrides_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_balance_overrides_update_authenticated ON public.employee_leave_balance_overrides FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+
+--
+-- Name: employee_leave_requests; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_leave_requests ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employee_leave_requests employee_leave_requests_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_requests_delete_authenticated ON public.employee_leave_requests FOR DELETE TO authenticated USING (true);
+
+
+--
+-- Name: employee_leave_requests employee_leave_requests_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_requests_insert_authenticated ON public.employee_leave_requests FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: employee_leave_requests employee_leave_requests_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_requests_select_authenticated ON public.employee_leave_requests FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: employee_leave_requests employee_leave_requests_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employee_leave_requests_update_authenticated ON public.employee_leave_requests FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+
+--
+-- Name: employee_login_otps; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employee_login_otps ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employees; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: employees employees_delete_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employees_delete_authenticated ON public.employees FOR DELETE TO authenticated USING (true);
+
+
+--
+-- Name: employees employees_insert_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employees_insert_authenticated ON public.employees FOR INSERT TO authenticated WITH CHECK (true);
+
+
+--
+-- Name: employees employees_select_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employees_select_authenticated ON public.employees FOR SELECT TO authenticated USING (true);
+
+
+--
+-- Name: employees employees_update_authenticated; Type: POLICY; Schema: public; Owner: -
+--
+
+CREATE POLICY employees_update_authenticated ON public.employees FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+
+--
+-- Name: government_holiday_template_rows; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.government_holiday_template_rows ENABLE ROW LEVEL SECURITY;
+
+--
+-- Name: government_holiday_template_sets; Type: ROW SECURITY; Schema: public; Owner: -
+--
+
+ALTER TABLE public.government_holiday_template_sets ENABLE ROW LEVEL SECURITY;
+
+--
+-- PostgreSQL database dump complete
+--
+
+\unrestrict ShJae796Ub1HtQoR2znPOCeo2eCb23TGNqqG4bbk3GRC9szIwOBcH04vZVFM2X2
+
