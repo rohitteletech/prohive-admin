@@ -35,20 +35,18 @@ function clockToMinutes(value: unknown, fallback: number) {
 
 function shiftPunchAccessRule(config: Record<string, unknown>, fallback?: {
   punchAccessRule?: string;
-  loginAccessRule?: string;
 }) {
   return normalizePunchAccessRule(
-    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule,
   );
 }
 
 function shiftEarlyPunchAllowed(config: Record<string, unknown>, fallback?: {
   earlyPunchAllowed?: number;
-  earlyInAllowed?: number;
 }) {
   return wholeNumber(
     config.earlyPunchAllowed || config.earlyInAllowed,
-    fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+    fallback?.earlyPunchAllowed ?? 15,
   );
 }
 
@@ -62,8 +60,6 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
   halfDayMinWorkMins?: number;
   punchAccessRule?: string;
   earlyPunchAllowed?: number;
-  loginAccessRule?: string;
-  earlyInAllowed?: number;
   gracePeriod?: number;
   minimumWorkBeforePunchOut?: number;
 }) {
@@ -88,9 +84,6 @@ export function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallb
     ),
     punchAccessRule: shiftPunchAccessRule(config, fallback),
     earlyPunchAllowed: shiftEarlyPunchAllowed(config, fallback),
-    // Deprecated aliases kept temporarily so older call sites remain safe during cleanup.
-    loginAccessRule: shiftPunchAccessRule(config, fallback),
-    earlyInAllowed: shiftEarlyPunchAllowed(config, fallback),
     gracePeriod: wholeNumber(config.gracePeriod, fallback?.gracePeriod ?? 10),
     minimumWorkBeforePunchOut: wholeNumber(
       config.minimumWorkBeforePunchOut,

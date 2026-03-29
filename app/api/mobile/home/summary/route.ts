@@ -20,7 +20,7 @@ import {
   applyExtraHoursPolicy,
   normalizeExtraHoursPolicy,
   normalizeHalfDayMinWorkMins,
-  normalizeLoginAccessRule,
+  normalizePunchAccessRule,
   shiftDurationMinutes,
   timeToMinutes,
 } from "@/lib/shiftWorkPolicy";
@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
   const resolvedCorrection = resolveCorrectionPolicyRuntime(policyContext.resolved.correction);
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
   const extraHoursPolicy = normalizeExtraHoursPolicy(resolvedAttendance.extraHoursPolicy);
-  const punchAccessRule = normalizeLoginAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule);
+  const punchAccessRule = normalizePunchAccessRule(resolvedShift.punchAccessRule);
   const actualWorkedMinutes = resolveWorkedMinutesForAttendance({
     checkInIso: checkInAt,
     checkOutIso: checkOutAt,

@@ -2,7 +2,7 @@ import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
-import { isPunchInAllowedByShiftWindow, normalizeLoginAccessRule } from "@/lib/shiftWorkPolicy";
+import { isPunchInAllowedByShiftWindow, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type JsonBody = {
@@ -489,7 +489,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     minWorkBeforeOutMins: resolvedShift.minimumWorkBeforePunchOut,
   };
 
-  if (payload.punch_type === "in" && normalizeLoginAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule) === "shift_time_only") {
+  if (payload.punch_type === "in" && normalizePunchAccessRule(resolvedShift.punchAccessRule) === "shift_time_only") {
 
     if (
       matchedShift &&

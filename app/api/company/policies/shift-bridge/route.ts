@@ -3,7 +3,7 @@ import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { createDefaultShiftPolicyConfig } from "@/lib/companyShiftDefaults";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 import { addYearsToIsoDate, todayISOInIndia } from "@/lib/dateTime";
-import { normalizeLoginAccessRule, shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
+import { normalizePunchAccessRule, shiftDurationMinutes } from "@/lib/shiftWorkPolicy";
 
 type ShiftBridgePayload = {
   policyId?: string;
@@ -27,7 +27,7 @@ type ShiftBridgePayload = {
 };
 
 function readPunchAccessRule(config: Record<string, unknown>) {
-  return normalizeLoginAccessRule(config.punchAccessRule);
+  return normalizePunchAccessRule(config.punchAccessRule);
 }
 
 function comparePolicyPriority(
@@ -191,7 +191,7 @@ export async function PUT(req: NextRequest) {
     shiftStartTime = String(body.shiftStartTime || "09:00").trim();
     shiftEndTime = String(body.shiftEndTime || "18:00").trim();
     halfDayAvailable = body.halfDayAvailable === "No" ? "No" : "Yes";
-    normalizedPunchAccessRule = normalizeLoginAccessRule(body.punchAccessRule || "any_time");
+    normalizedPunchAccessRule = normalizePunchAccessRule(body.punchAccessRule || "any_time");
     earlyPunchAllowed = normalizedPunchAccessRule === "any_time"
       ? 0
       : parseWholeNumber(body.earlyPunchAllowed || "15", 0, 240, "Early Punch Allowed");

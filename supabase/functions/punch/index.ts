@@ -116,20 +116,18 @@ function wholeNumber(value: unknown, fallback: number) {
 
 function shiftPunchAccessRule(config: Record<string, unknown>, fallback?: {
   punchAccessRule?: string;
-  loginAccessRule?: string;
 }) {
   return normalizePunchAccessRule(
-    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule || fallback?.loginAccessRule,
+    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule,
   );
 }
 
 function shiftEarlyPunchAllowed(config: Record<string, unknown>, fallback?: {
   earlyPunchAllowed?: number;
-  earlyInAllowed?: number;
 }) {
   return wholeNumber(
     config.earlyPunchAllowed || config.earlyInAllowed,
-    fallback?.earlyPunchAllowed ?? fallback?.earlyInAllowed ?? 15,
+    fallback?.earlyPunchAllowed ?? 15,
   );
 }
 
@@ -222,8 +220,6 @@ function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
   shiftEndTime?: string;
   punchAccessRule?: string;
   earlyPunchAllowed?: number;
-  loginAccessRule?: string;
-  earlyInAllowed?: number;
   minimumWorkBeforePunchOut?: number;
 }) {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
@@ -234,9 +230,6 @@ function resolveShiftPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
     shiftEndTime: text(config.shiftEndTime, fallback?.shiftEndTime || "18:00"),
     punchAccessRule: shiftPunchAccessRule(config, fallback),
     earlyPunchAllowed: shiftEarlyPunchAllowed(config, fallback),
-    // Deprecated aliases kept temporarily so older call sites remain safe during cleanup.
-    loginAccessRule: shiftPunchAccessRule(config, fallback),
-    earlyInAllowed: shiftEarlyPunchAllowed(config, fallback),
     minimumWorkBeforePunchOut: wholeNumber(config.minimumWorkBeforePunchOut, fallback?.minimumWorkBeforePunchOut ?? 60),
   };
 }
@@ -730,7 +723,7 @@ Deno.serve(async (req) => {
     );
   }
 
-  if (payload.punch_type === "in" && normalizePunchAccessRule(resolvedShift.punchAccessRule || resolvedShift.loginAccessRule) === "shift_time_only") {
+  if (payload.punch_type === "in" && normalizePunchAccessRule(resolvedShift.punchAccessRule) === "shift_time_only") {
     const matchedShift = {
       name: resolvedShift.shiftName,
       type: resolvedShift.shiftType,
@@ -915,4 +908,3 @@ Deno.serve(async (req) => {
   });
 });
 
-const normalizeLoginAccessRule = normalizePunchAccessRule;
