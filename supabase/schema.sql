@@ -1,3 +1,8 @@
+-- WARNING:
+-- This file is a local schema snapshot and may lag behind live Supabase if it has not been regenerated.
+-- Before using it as source of truth for cleanup or refactors, verify against live schema and policies.
+-- Current policy migration truth lives in the docs/*-audit.md and docs/*-runtime-contract.md files.
+
 create extension if not exists pgcrypto;
 
 create table if not exists public.companies (

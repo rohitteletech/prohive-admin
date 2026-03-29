@@ -118,7 +118,7 @@ function shiftPunchAccessRule(config: Record<string, unknown>, fallback?: {
   punchAccessRule?: string;
 }) {
   return normalizePunchAccessRule(
-    config.punchAccessRule || config.loginAccessRule || fallback?.punchAccessRule,
+    config.punchAccessRule || fallback?.punchAccessRule,
   );
 }
 
@@ -126,7 +126,7 @@ function shiftEarlyPunchAllowed(config: Record<string, unknown>, fallback?: {
   earlyPunchAllowed?: number;
 }) {
   return wholeNumber(
-    config.earlyPunchAllowed || config.earlyInAllowed,
+    config.earlyPunchAllowed,
     fallback?.earlyPunchAllowed ?? 15,
   );
 }

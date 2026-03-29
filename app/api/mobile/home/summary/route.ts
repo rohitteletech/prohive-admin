@@ -298,7 +298,6 @@ export async function POST(req: NextRequest) {
       extraHoursPolicy,
       halfDayMinWorkMins: normalizeHalfDayMinWorkMins(resolvedShift.halfDayMinWorkMins),
       punchAccessRule,
-      loginAccessRule: punchAccessRule,
       weeklyOffPolicy: resolvedHoliday.weeklyOffPolicy,
       allowPunchOnHoliday: resolvedHoliday.allowPunchOnHoliday,
       allowPunchOnWeeklyOff: resolvedHoliday.allowPunchOnWeeklyOff,
