@@ -1,0 +1,2 @@
+-- Placeholder migration to align local migration history with the remote database.
+-- The remote project already contains migration version 20260329080402.
