@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
-import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRowsRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import { getMobileSessionContext } from "@/lib/mobileSession";
 import {
@@ -55,13 +55,7 @@ export async function POST(req: NextRequest) {
   );
   const previousResolvedLeaveTypes = resolveLeaveTypesRuntime(previousPolicyContext.resolved.leave);
 
-  const [policyResult, requestResult, holidayResult] = await Promise.all([
-    session.admin
-      .from("company_leave_policies")
-      .select("id,name,code,annual_quota,carry_forward,accrual_mode,encashable,active")
-      .eq("company_id", session.employee.company_id)
-      .eq("active", true)
-      .order("name", { ascending: true }),
+  const [requestResult, holidayResult] = await Promise.all([
     session.admin
       .from("employee_leave_requests")
       .select("id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,leave_mode,reason,status,admin_remark,submitted_at")
@@ -79,9 +73,6 @@ export async function POST(req: NextRequest) {
       .order("holiday_date", { ascending: true }),
   ]);
 
-  if (policyResult.error) {
-    return NextResponse.json({ error: policyResult.error.message || "Unable to load leave policies." }, { status: 400 });
-  }
   if (requestResult.error) {
     return NextResponse.json({ error: requestResult.error.message || "Unable to load leave requests." }, { status: 400 });
   }
@@ -105,33 +96,7 @@ export async function POST(req: NextRequest) {
     submitted_at: string;
   }>;
 
-  const legacyPolicyRows = (policyResult.data || []) as Array<{
-    id: string;
-    name: string;
-    code: string;
-    halfDayAllowed?: boolean;
-    annual_quota: number;
-    carry_forward: number;
-    accrual_mode: "monthly" | "upfront" | null;
-    encashable: boolean;
-    active: boolean;
-  }>;
-  const policyRows = resolvedLeaveTypes.length > 0
-    ? resolvedLeaveTypes.map((leaveType) => ({
-        id: leaveType.id,
-        name: leaveType.name,
-        code: leaveType.code,
-        halfDayAllowed: leaveType.halfDayAllowed,
-        annual_quota: leaveType.annualQuota,
-        carry_forward:
-          leaveType.carryForwardAllowed
-            ? Math.max(0, Math.round(Number(leaveType.maximumCarryForwardDays || 0)))
-            : 0,
-        accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
-        encashable: false,
-        active: true,
-      }))
-    : legacyPolicyRows;
+  const policyRows = resolveLeavePolicyRowsRuntime(policyContext.resolved.leave);
 
   const usageEntries = await Promise.all(
     policyRows.map(async (row) => {

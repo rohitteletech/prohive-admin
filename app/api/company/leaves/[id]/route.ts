@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRowsRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import {
   computeLeaveEntitlement,
   fetchCompOffEarnedDays,
@@ -171,6 +171,9 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     }
 
     let accruedTotal = 0;
+    const resolvedLeaveType = resolvedLeaveTypes.find((row) => row.code === requestRow.leave_policy_code);
+    const resolvedLeaveRow = resolveLeavePolicyRowsRuntime(policyContext.resolved.leave)
+      .find((row) => row.code === requestRow.leave_policy_code);
 
     if (requestRow.leave_policy_code === VIRTUAL_COMP_OFF_CODE) {
       const compOffEntitlement = await fetchCompOffEarnedDays({
@@ -189,18 +192,10 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       }
       accruedTotal = roundLeaveDays(compOffEntitlement.earnedDays + overrideResult.overrideDays);
     } else {
-      const { data: policyRow, error: policyError } = await context.admin
-        .from("company_leave_policies")
-        .select("annual_quota,carry_forward,accrual_mode,active")
-        .eq("company_id", context.companyId)
-        .eq("code", requestRow.leave_policy_code)
-        .maybeSingle();
-
-      if (policyError || !policyRow?.active) {
-        return NextResponse.json({ error: policyError?.message || "Leave policy is inactive or missing." }, { status: 400 });
+      if (!resolvedLeaveType || !resolvedLeaveRow?.active) {
+        return NextResponse.json({ error: "Leave policy is inactive or missing from the assigned leave engine policy." }, { status: 400 });
       }
 
-      const resolvedLeaveType = resolvedLeaveTypes.find((row) => row.code === requestRow.leave_policy_code);
       const carryForwardResult = await fetchLeaveCarryForwardDays({
         admin: context.admin,
         companyId: context.companyId,
@@ -215,8 +210,8 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
           previousResolvedLeaveTypes.find((row) => row.code === requestRow.leave_policy_code)?.accrualRule === "Yearly Upfront"
             ? "upfront"
             : "monthly",
-        carryForwardAllowed: Number(policyRow.carry_forward || 0) > 0,
-        maximumCarryForwardDays: Number(policyRow.carry_forward || 0),
+        carryForwardAllowed: Number(resolvedLeaveRow.carry_forward || 0) > 0,
+        maximumCarryForwardDays: Number(resolvedLeaveRow.carry_forward || 0),
         carryForwardExpiryDays: resolvedLeaveType?.carryForwardExpiryDays || 0,
         asOfIsoDate: String(requestRow.from_date || todayISOInIndia()),
         leaveCycleType: resolvedLeave.leaveCycleType,
@@ -226,9 +221,9 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       }
 
       const entitlement = computeLeaveEntitlement({
-        annualQuota: Number(policyRow.annual_quota || 0),
+        annualQuota: Number(resolvedLeaveRow.annual_quota || 0),
         carryForward: carryForwardResult.effectiveDays,
-        accrualMode: normalizeAccrualMode(policyRow.accrual_mode),
+        accrualMode: normalizeAccrualMode(resolvedLeaveRow.accrual_mode),
         overrideDays: overrideResult.overrideDays,
         asOfIsoDate: todayISOInIndia(),
         leaveCycleType: resolvedLeave.leaveCycleType,

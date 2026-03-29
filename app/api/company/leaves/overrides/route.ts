@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 
 const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
 
@@ -30,7 +32,7 @@ export async function GET(req: NextRequest) {
   const yearParam = Number(req.nextUrl.searchParams.get("year") || new Date().getFullYear());
   const year = Number.isFinite(yearParam) && yearParam >= 2000 && yearParam <= 2100 ? yearParam : new Date().getFullYear();
 
-  const [overrideResult, employeeResult, policyResult] = await Promise.all([
+  const [overrideResult, employeeResult, definitions] = await Promise.all([
     context.admin
       .from("employee_leave_balance_overrides")
       .select("id,employee_id,leave_policy_code,year,extra_days,reason,created_by,created_at,updated_at,employees(full_name,employee_code)")
@@ -42,11 +44,7 @@ export async function GET(req: NextRequest) {
       .select("id,full_name,employee_code,status")
       .eq("company_id", context.companyId)
       .order("full_name", { ascending: true }),
-    context.admin
-      .from("company_leave_policies")
-      .select("code,name,active")
-      .eq("company_id", context.companyId)
-      .order("name", { ascending: true }),
+    ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail),
   ]);
 
   if (overrideResult.error) {
@@ -55,9 +53,20 @@ export async function GET(req: NextRequest) {
   if (employeeResult.error) {
     return NextResponse.json({ error: employeeResult.error.message || "Unable to load employees." }, { status: 400 });
   }
-  if (policyResult.error) {
-    return NextResponse.json({ error: policyResult.error.message || "Unable to load leave policies." }, { status: 400 });
-  }
+  const policiesByCode = new Map<string, { code: string; name: string; active: boolean }>();
+  definitions
+    .filter((definition) => definition.policyType === "leave")
+    .forEach((definition) => {
+      resolveLeaveTypesRuntime(definition).forEach((leaveType) => {
+        const existing = policiesByCode.get(leaveType.code);
+        policiesByCode.set(leaveType.code, {
+          code: leaveType.code,
+          name: existing?.name || leaveType.name,
+          active: Boolean(existing?.active) || definition.status === "active",
+        });
+      });
+    });
+  const policies = Array.from(policiesByCode.values()).sort((a, b) => a.name.localeCompare(b.name));
 
   return NextResponse.json({
     year,
@@ -80,11 +89,7 @@ export async function GET(req: NextRequest) {
       employeeCode: row.employee_code || "",
       status: row.status || "active",
     })),
-    policies: (policyResult.data || []).map((row) => ({
-      code: row.code || "",
-      name: row.name || "",
-      active: Boolean(row.active),
-    })),
+    policies,
   });
 }
 
@@ -123,14 +128,12 @@ export async function POST(req: NextRequest) {
   }
 
   if (leavePolicyCode !== VIRTUAL_COMP_OFF_CODE) {
-    const { data: policy, error: policyError } = await context.admin
-      .from("company_leave_policies")
-      .select("code")
-      .eq("company_id", context.companyId)
-      .eq("code", leavePolicyCode)
-      .maybeSingle();
-    if (policyError || !policy?.code) {
-      return NextResponse.json({ error: policyError?.message || "Leave policy not found." }, { status: 400 });
+    const definitions = await ensureCompanyPolicyDefinitions(context.admin, context.companyId, context.adminEmail);
+    const policyExists = definitions
+      .filter((definition) => definition.policyType === "leave")
+      .some((definition) => resolveLeaveTypesRuntime(definition).some((leaveType) => leaveType.code === leavePolicyCode));
+    if (!policyExists) {
+      return NextResponse.json({ error: "Leave policy not found." }, { status: 400 });
     }
   }
 

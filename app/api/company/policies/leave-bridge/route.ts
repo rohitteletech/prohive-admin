@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
 import { todayISOInIndia } from "@/lib/dateTime";
+import { normalizeLeavePolicyConfig, normalizePunchOnApprovedLeaveAction } from "@/lib/leavePolicyDefaults";
 
 type LeaveTypePayload = {
   id: string;
@@ -48,10 +49,6 @@ function normalizeAccrualRule(value: unknown): LeaveTypePayload["accrualRule"] {
   return "Yearly Upfront";
 }
 
-function toLegacyAccrualMode(value: LeaveTypePayload["accrualRule"]) {
-  return value === "Yearly Upfront" ? "upfront" : "monthly";
-}
-
 function toNumberString(value: unknown, fallback: string) {
   const text = String(value ?? "").trim();
   return text || fallback;
@@ -59,18 +56,6 @@ function toNumberString(value: unknown, fallback: string) {
 
 function isValidIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function normalizePunchOnApprovedLeaveAction(
-  value: unknown,
-): NonNullable<LeaveBridgePayload["ifEmployeePunchesOnApprovedLeave"]> {
-  const text = String(value || "").trim();
-  if (text === "Keep Leave" || text === "Block Punch" || text === "Allow Punch and Send for Approval") {
-    return text;
-  }
-  if (text === "Yes") return "Keep Leave";
-  if (text === "No") return "Allow Punch and Send for Approval";
-  return "Allow Punch and Send for Approval";
 }
 
 export async function GET(req: NextRequest) {
@@ -99,35 +84,31 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Leave policy definition not found." }, { status: 404 });
     }
 
-    const config = (leavePolicy.configJson || {}) as Record<string, unknown>;
-    const configLeaveTypes = Array.isArray(config.leaveTypes) ? (config.leaveTypes as LeaveTypePayload[]) : [];
+    const config = normalizeLeavePolicyConfig((leavePolicy.configJson || {}) as Record<string, unknown>, {
+      policyName: leavePolicy.policyName,
+      policyCode: leavePolicy.policyCode,
+      effectiveFrom: leavePolicy.effectiveFrom,
+      nextReviewDate: leavePolicy.nextReviewDate,
+      status: leavePolicy.status,
+      defaultCompanyPolicy: leavePolicy.isDefault ? "Yes" : "No",
+    });
 
     return NextResponse.json({
       policyId: leavePolicy.id,
-      policyName: String(config.policyName || leavePolicy.policyName || "Standard Leave Policy"),
-      policyCode: String(config.policyCode || leavePolicy.policyCode || "LEV-001"),
-      effectiveFrom: String(config.effectiveFrom || leavePolicy.effectiveFrom),
-      nextReviewDate: String(config.nextReviewDate || leavePolicy.nextReviewDate),
-      status:
-        String(config.status || leavePolicy.status || "draft").toLowerCase() === "active"
-          ? "Active"
-          : String(config.status || leavePolicy.status || "draft").toLowerCase() === "archived"
-            ? "Archived"
-            : "Draft",
-      defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || leavePolicy.isDefault === false) ? "No" : "Yes",
-      leaveCycleType: config.leaveCycleType === "Financial Year" ? "Financial Year" : "Calendar Year",
-      approvalFlow:
-        config.approvalFlow === "manager" || config.approvalFlow === "hr" || config.approvalFlow === "manager_hr"
-          ? config.approvalFlow
-          : "manager_hr",
-      noticePeriodDays: toNumberString(config.noticePeriodDays, "1"),
-      backdatedLeaveAllowed: config.backdatedLeaveAllowed === "Yes" ? "Yes" : "No",
-      maximumBackdatedLeaveDays: toNumberString(config.maximumBackdatedLeaveDays, "5"),
-      ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(
-        config.ifEmployeePunchesOnApprovedLeave ?? config.leaveOverridesAttendance,
-      ),
-      sandwichLeave: config.sandwichLeave === "Enabled" ? "Enabled" : "Disabled",
-      leaveTypes: configLeaveTypes,
+      policyName: config.policyName,
+      policyCode: config.policyCode,
+      effectiveFrom: config.effectiveFrom,
+      nextReviewDate: config.nextReviewDate,
+      status: config.status === "active" ? "Active" : config.status === "archived" ? "Archived" : "Draft",
+      defaultCompanyPolicy: config.defaultCompanyPolicy,
+      leaveCycleType: config.leaveCycleType,
+      approvalFlow: config.approvalFlow,
+      noticePeriodDays: config.noticePeriodDays,
+      backdatedLeaveAllowed: config.backdatedLeaveAllowed,
+      maximumBackdatedLeaveDays: config.maximumBackdatedLeaveDays,
+      ifEmployeePunchesOnApprovedLeave: config.ifEmployeePunchesOnApprovedLeave,
+      sandwichLeave: config.sandwichLeave,
+      leaveTypes: config.leaveTypes,
     } satisfies LeaveBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load leave policy bridge." }, { status: 400 });
@@ -215,7 +196,7 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const configJson = {
+  const configJson = normalizeLeavePolicyConfig({
     policyName,
     policyCode,
     effectiveFrom,
@@ -228,9 +209,7 @@ export async function PUT(req: NextRequest) {
     backdatedLeaveAllowed: body.backdatedLeaveAllowed || "No",
     maximumBackdatedLeaveDays:
       body.backdatedLeaveAllowed === "Yes" ? toNumberString(body.maximumBackdatedLeaveDays, "5") : "0",
-    ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(
-      body.ifEmployeePunchesOnApprovedLeave,
-    ),
+    ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(body.ifEmployeePunchesOnApprovedLeave),
     sandwichLeave: body.sandwichLeave || "Disabled",
     leaveTypes: trimmedLeaveTypes.map((leaveType) => ({
       ...leaveType,
@@ -242,7 +221,7 @@ export async function PUT(req: NextRequest) {
       carryForwardExpiryDays:
         leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.carryForwardExpiryDays, "0") : "0",
     })),
-  };
+  });
   const today = todayISOInIndia();
   const isFutureEffectiveActive = configJson.status === "active" && configJson.effectiveFrom > today;
 
@@ -262,19 +241,6 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const legacyRows = configJson.leaveTypes.map((leaveType) => ({
-    name: String(leaveType.name || "").trim() || "Leave Type",
-    code: String(leaveType.code || "").trim().toUpperCase() || "LV",
-    annual_quota: Math.max(0, Math.round(Number(leaveType.annualQuota || 0))),
-    carry_forward:
-      leaveType.carryForwardAllowed === "Yes"
-        ? Math.max(0, Math.round(Number(leaveType.maximumCarryForwardDays || 0)))
-        : 0,
-    accrual_mode: toLegacyAccrualMode(leaveType.accrualRule),
-    encashable: false,
-    active: true,
-  }));
-
   const { data: savedPolicyId, error: saveError } = await context.admin.rpc("save_leave_policy_definition", {
     p_company_id: context.companyId,
     p_admin_email: context.adminEmail,
@@ -286,7 +252,6 @@ export async function PUT(req: NextRequest) {
     p_next_review_date: configJson.nextReviewDate,
     p_default_company_policy: configJson.defaultCompanyPolicy === "Yes",
     p_config_json: configJson,
-    p_legacy_leave_rows: legacyRows,
   });
 
   if (saveError || !savedPolicyId) {

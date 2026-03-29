@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayISOInIndia } from "@/lib/dateTime";
-import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveHolidayPolicyRuntime, resolveLeavePolicyRowsRuntime, resolveLeavePolicyRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
@@ -188,50 +188,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: policyRows, error: policyError } = await session.admin
-    .from("company_leave_policies")
-    .select("id,name,code,annual_quota,carry_forward,accrual_mode,active")
-    .eq("company_id", session.employee.company_id)
-    .eq("active", true)
-    .order("name", { ascending: true });
-
-  if (policyError) {
-    return NextResponse.json({ error: policyError.message || "Unable to load leave policies." }, { status: 400 });
-  }
-  const policies: Array<{
-    id: string;
-    name: string;
-    code: string;
-    halfDayAllowed?: boolean;
-    annual_quota: number;
-    carry_forward: number;
-    accrual_mode: "upfront" | "monthly";
-    active: boolean;
-  }> = resolvedLeaveTypes.length > 0
-    ? resolvedLeaveTypes.map((leaveType) => ({
-        id: leaveType.id,
-        name: leaveType.name,
-        code: leaveType.code,
-        halfDayAllowed: leaveType.halfDayAllowed,
-        annual_quota: leaveType.annualQuota,
-        carry_forward:
-          leaveType.carryForwardAllowed
-            ? Math.max(0, Math.round(Number(leaveType.maximumCarryForwardDays || 0)))
-            : 0,
-        accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
-        active: true,
-      }))
-    : Array.isArray(policyRows)
-      ? policyRows.map((policy) => ({
-          id: String(policy.id || ""),
-          name: String(policy.name || ""),
-          code: String(policy.code || ""),
-          annual_quota: Number(policy.annual_quota || 0),
-          carry_forward: Number(policy.carry_forward || 0),
-          accrual_mode: policy.accrual_mode === "upfront" ? "upfront" : "monthly",
-          active: Boolean(policy.active),
-        }))
-      : [];
+  const policies = resolveLeavePolicyRowsRuntime(policyContext.resolved.leave);
   if (policies.length === 0) {
     return NextResponse.json({ error: "No active leave policy configured. Contact admin." }, { status: 400 });
   }
@@ -384,9 +341,11 @@ export async function POST(req: NextRequest) {
         id: "virtual-comp-off",
         name: "Comp Off",
         code: VIRTUAL_COMP_OFF_CODE,
+        halfDayAllowed: false,
         annual_quota: 0,
         carry_forward: 0,
         accrual_mode: "upfront" as const,
+        encashable: false,
         active: true,
       },
       availableNow,

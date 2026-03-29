@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { todayISOInIndia } from "@/lib/dateTime";
-import { resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
+import { resolveLeavePolicyRowsRuntime, resolveLeaveTypesRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import {
   computeLeaveEntitlement,
@@ -89,32 +89,20 @@ export async function getLeaveReportData(params: {
   const employeeQuery = String(params.input.employeeQuery || "").trim().toLowerCase();
   const departmentFilter = String(params.input.department || "all").trim().toLowerCase();
   const statusFilter = String(params.input.status || "all").trim().toLowerCase();
-  const [requestResult, policyResult] = await Promise.all([
-    params.admin
-      .from("employee_leave_requests")
-      .select(
-        "id,employee_id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,status,submitted_at"
-        + ",employees(full_name,employee_code,department)"
-      )
-      .eq("company_id", params.companyId)
-      .gte("submitted_at", `${scope.startDate}T00:00:00.000Z`)
-      .lt("submitted_at", `${scope.endDate}T23:59:59.999Z`)
-      .order("submitted_at", { ascending: false }),
-    params.admin
-      .from("company_leave_policies")
-      .select("id,name,code,annual_quota,carry_forward,accrual_mode,active")
-      .eq("company_id", params.companyId)
-      .eq("active", true),
-  ]);
+  const requestResult = await params.admin
+    .from("employee_leave_requests")
+    .select(
+      "id,employee_id,leave_policy_code,leave_name_snapshot,from_date,to_date,days,paid_days,unpaid_days,status,submitted_at"
+      + ",employees(full_name,employee_code,department)"
+    )
+    .eq("company_id", params.companyId)
+    .gte("submitted_at", `${scope.startDate}T00:00:00.000Z`)
+    .lt("submitted_at", `${scope.endDate}T23:59:59.999Z`)
+    .order("submitted_at", { ascending: false });
 
   if (requestResult.error) {
     return { ok: false as const, status: 400, error: requestResult.error.message || "Unable to load leave requests." };
   }
-  if (policyResult.error) {
-    return { ok: false as const, status: 400, error: policyResult.error.message || "Unable to load leave policies." };
-  }
-
-  const policies = Array.isArray(policyResult.data) ? policyResult.data : [];
   const requestRows = Array.isArray(requestResult.data)
     ? (requestResult.data as unknown as Array<Record<string, unknown>>)
     : [];
@@ -153,7 +141,9 @@ export async function getLeaveReportData(params: {
     previousCycleEndDate.setUTCDate(previousCycleEndDate.getUTCDate() - 1);
     const previousCycleEnd = previousCycleEndDate.toISOString().slice(0, 10);
 
-    const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null);
+    const resolvedLeavePolicy = resolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null;
+    const resolvedLeaveTypes = resolveLeaveTypesRuntime(resolvedLeavePolicy);
+    const resolvedLeaveRows = resolveLeavePolicyRowsRuntime(resolvedLeavePolicy);
     const previousResolvedPoliciesByEmployee = await resolvePoliciesForEmployees(
       params.admin,
       params.companyId,
@@ -165,17 +155,7 @@ export async function getLeaveReportData(params: {
       previousResolvedPoliciesByEmployee.get(employeeId)?.resolved?.leave || null,
     );
     const resolvedPolicy = resolvedLeaveTypes.find((row) => row.code === leavePolicyCode);
-    const policy =
-      resolvedPolicy
-        ? {
-            annual_quota: resolvedPolicy.annualQuota,
-            carry_forward:
-              resolvedPolicy.carryForwardAllowed
-                ? Math.max(0, Math.round(Number(resolvedPolicy.maximumCarryForwardDays || 0)))
-                : 0,
-            accrual_mode: resolvedPolicy.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
-          }
-        : policies.find((row: { code?: string | null }) => String(row.code || "") === leavePolicyCode);
+    const policy = resolvedLeaveRows.find((row) => row.code === leavePolicyCode);
     if (!policy) {
       balanceCache.set(cacheKey, 0);
       return 0;

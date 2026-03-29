@@ -320,60 +320,6 @@ select
   is_extra_work
 from public.attendance_punch_events;
 
-create table if not exists public.company_leave_policies (
-  id uuid primary key default gen_random_uuid(),
-  company_id uuid not null references public.companies(id) on delete cascade,
-  name text not null,
-  code text not null,
-  annual_quota integer not null default 0 check (annual_quota >= 0),
-  carry_forward integer not null default 0 check (carry_forward >= 0),
-  accrual_mode text not null default 'monthly' check (accrual_mode in ('monthly', 'upfront')),
-  encashable boolean not null default false,
-  active boolean not null default true,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  unique (company_id, code)
-);
-
-alter table public.company_leave_policies
-  add column if not exists accrual_mode text not null default 'monthly'
-    check (accrual_mode in ('monthly', 'upfront'));
-
-create index if not exists company_leave_policies_company_idx
-  on public.company_leave_policies(company_id, active desc, name asc);
-
-alter table public.company_leave_policies enable row level security;
-
-drop policy if exists "company_leave_policies_select_authenticated" on public.company_leave_policies;
-drop policy if exists "company_leave_policies_insert_authenticated" on public.company_leave_policies;
-drop policy if exists "company_leave_policies_update_authenticated" on public.company_leave_policies;
-drop policy if exists "company_leave_policies_delete_authenticated" on public.company_leave_policies;
-
-create policy "company_leave_policies_select_authenticated"
-on public.company_leave_policies
-for select
-to authenticated
-using (true);
-
-create policy "company_leave_policies_insert_authenticated"
-on public.company_leave_policies
-for insert
-to authenticated
-with check (true);
-
-create policy "company_leave_policies_update_authenticated"
-on public.company_leave_policies
-for update
-to authenticated
-using (true)
-with check (true);
-
-create policy "company_leave_policies_delete_authenticated"
-on public.company_leave_policies
-for delete
-to authenticated
-using (true);
-
 create table if not exists public.employee_leave_balance_overrides (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
@@ -1057,8 +1003,7 @@ create or replace function public.save_leave_policy_definition(
   p_effective_from date,
   p_next_review_date date,
   p_default_company_policy boolean,
-  p_config_json jsonb,
-  p_legacy_leave_rows jsonb
+  p_config_json jsonb
 )
 returns uuid
 language plpgsql
@@ -1071,10 +1016,6 @@ declare
   v_is_future_effective_active boolean := p_status = 'active' and p_effective_from > v_business_date;
   v_should_set_default boolean := coalesce(p_default_company_policy, false) and p_status = 'active';
 begin
-  if jsonb_typeof(coalesce(p_legacy_leave_rows, '[]'::jsonb)) <> 'array' or jsonb_array_length(coalesce(p_legacy_leave_rows, '[]'::jsonb)) = 0 then
-    raise exception 'At least one legacy leave row is required.';
-  end if;
-
   if p_policy_id is not null then
     select *
       into v_existing_policy
@@ -1161,38 +1102,6 @@ begin
     )
     returning id into v_policy_id;
   end if;
-
-  delete from public.company_leave_policies
-   where company_id = p_company_id;
-
-  insert into public.company_leave_policies (
-    company_id,
-    name,
-    code,
-    annual_quota,
-    carry_forward,
-    accrual_mode,
-    encashable,
-    active
-  )
-  select
-    p_company_id,
-    row_data.name,
-    row_data.code,
-    row_data.annual_quota,
-    row_data.carry_forward,
-    row_data.accrual_mode,
-    row_data.encashable,
-    row_data.active
-  from jsonb_to_recordset(p_legacy_leave_rows) as row_data(
-    name text,
-    code text,
-    annual_quota integer,
-    carry_forward integer,
-    accrual_mode text,
-    encashable boolean,
-    active boolean
-  );
 
   return v_policy_id;
 end;

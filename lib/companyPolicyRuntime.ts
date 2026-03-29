@@ -2,6 +2,7 @@ import { PolicyDefinition } from "@/lib/companyPolicies";
 import type { AttendanceStatusPenaltyRuntime } from "@/lib/attendancePolicy";
 import { DEFAULT_ATTENDANCE_POLICY_BEHAVIOR } from "@/lib/attendancePolicyDefaults";
 import { normalizeCorrectionPolicyConfig } from "@/lib/correctionPolicyDefaults";
+import { normalizeLeavePolicyConfig, type LeaveTypeStoredConfig } from "@/lib/leavePolicyDefaults";
 import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
 import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
@@ -210,12 +211,36 @@ export type ResolvedLeaveTypeRuntime = {
   carryForwardExpiryDays: number;
 };
 
+export type ResolvedLeavePolicyRowRuntime = {
+  id: string;
+  name: string;
+  code: string;
+  halfDayAllowed: boolean;
+  annual_quota: number;
+  carry_forward: number;
+  accrual_mode: "upfront" | "monthly";
+  encashable: boolean;
+  active: boolean;
+};
+
 export function resolveLeaveTypesRuntime(policy: PolicyDefinition | null) {
-  const config = (policy?.configJson || {}) as Record<string, unknown>;
+  const config = normalizeLeavePolicyConfig((policy?.configJson || {}) as Record<string, unknown>, {
+    policyName: String(policy?.policyName || ""),
+    policyCode: String(policy?.policyCode || ""),
+    effectiveFrom: String(policy?.effectiveFrom || ""),
+    nextReviewDate: String(policy?.nextReviewDate || ""),
+    status:
+      policy?.status === "active"
+        ? "active"
+        : policy?.status === "archived"
+          ? "archived"
+          : "draft",
+    defaultCompanyPolicy: policy?.isDefault === false ? "No" : "Yes",
+  });
   const rows = Array.isArray(config.leaveTypes) ? config.leaveTypes : [];
   return rows
     .map((row, index) => {
-      const source = (row || {}) as Record<string, unknown>;
+      const source = (row || {}) as LeaveTypeStoredConfig;
       const code = text(source.code).toUpperCase();
       if (!code) return null;
       return {
@@ -237,27 +262,42 @@ export function resolveLeaveTypesRuntime(policy: PolicyDefinition | null) {
     .filter((row): row is ResolvedLeaveTypeRuntime => Boolean(row));
 }
 
+export function resolveLeavePolicyRowsRuntime(policy: PolicyDefinition | null): ResolvedLeavePolicyRowRuntime[] {
+  return resolveLeaveTypesRuntime(policy).map((leaveType) => ({
+    id: leaveType.id,
+    name: leaveType.name,
+    code: leaveType.code,
+    halfDayAllowed: leaveType.halfDayAllowed,
+    annual_quota: leaveType.annualQuota,
+    carry_forward: leaveType.carryForwardAllowed ? Math.max(0, Math.round(Number(leaveType.maximumCarryForwardDays || 0))) : 0,
+    accrual_mode: leaveType.accrualRule === "Yearly Upfront" ? "upfront" : "monthly",
+    encashable: false,
+    active: true,
+  }));
+}
+
 export function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
-  const config = (policy?.configJson || {}) as Record<string, unknown>;
-  const action = text(
-    config.ifEmployeePunchesOnApprovedLeave,
-    text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Approval",
-  );
+  const config = normalizeLeavePolicyConfig((policy?.configJson || {}) as Record<string, unknown>, {
+    policyName: String(policy?.policyName || ""),
+    policyCode: String(policy?.policyCode || ""),
+    effectiveFrom: String(policy?.effectiveFrom || ""),
+    nextReviewDate: String(policy?.nextReviewDate || ""),
+    status:
+      policy?.status === "active"
+        ? "active"
+        : policy?.status === "archived"
+          ? "archived"
+          : "draft",
+    defaultCompanyPolicy: policy?.isDefault === false ? "No" : "Yes",
+  });
   return {
-    leaveCycleType: text(config.leaveCycleType, "Calendar Year") === "Financial Year" ? "Financial Year" : "Calendar Year",
-    approvalFlow:
-      text(config.approvalFlow) === "manager"
-        ? "manager"
-        : text(config.approvalFlow) === "hr"
-          ? "hr"
-          : "manager_hr",
+    leaveCycleType: config.leaveCycleType,
+    approvalFlow: config.approvalFlow,
     noticePeriodDays: wholeNumber(config.noticePeriodDays, 1),
-    backdatedLeaveAllowed: yesNo(config.backdatedLeaveAllowed, "No") === "Yes",
-    maximumBackdatedLeaveDays: wholeNumber(config.maximumBackdatedLeaveDays, 5),
+    backdatedLeaveAllowed: config.backdatedLeaveAllowed === "Yes",
+    maximumBackdatedLeaveDays: wholeNumber(config.maximumBackdatedLeaveDays, 0),
     ifEmployeePunchesOnApprovedLeave:
-      action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Approval"
-        ? action
-        : "Allow Punch and Send for Approval",
+      config.ifEmployeePunchesOnApprovedLeave,
   } as const;
 }
 

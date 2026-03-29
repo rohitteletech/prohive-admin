@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@supabase/supabase-js";
 import { todayISOInIndia } from "@/lib/dateTime";
+import { defaultPolicyDefinitions } from "@/lib/companyPolicies";
 
 type PlanType = "trial" | "monthly" | "yearly";
 
@@ -124,10 +125,22 @@ export async function POST(req: NextRequest) {
     business_nature: (body.businessNature || "").trim() || null,
   };
 
-  const { error } = await admin.from("companies").insert(payload);
-  if (error) {
+  const { data: createdCompany, error } = await admin
+    .from("companies")
+    .insert(payload)
+    .select("id")
+    .single();
+  if (error || !createdCompany?.id) {
     await admin.auth.admin.deleteUser(createdAuth.user.id).catch(() => {});
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: error?.message || "Unable to create company." }, { status: 400 });
+  }
+
+  const seededPolicies = defaultPolicyDefinitions(createdCompany.id, adminEmail);
+  const { error: policySeedError } = await admin.from("company_policy_definitions").insert(seededPolicies);
+  if (policySeedError) {
+    await admin.from("companies").delete().eq("id", createdCompany.id);
+    await admin.auth.admin.deleteUser(createdAuth.user.id).catch(() => {});
+    return NextResponse.json({ error: policySeedError.message || "Unable to seed default company policies." }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true });
