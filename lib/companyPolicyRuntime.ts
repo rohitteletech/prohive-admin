@@ -2,9 +2,9 @@ import { PolicyDefinition } from "@/lib/companyPolicies";
 import type { AttendanceStatusPenaltyRuntime } from "@/lib/attendancePolicy";
 import { DEFAULT_ATTENDANCE_POLICY_BEHAVIOR } from "@/lib/attendancePolicyDefaults";
 import { normalizeCorrectionPolicyConfig } from "@/lib/correctionPolicyDefaults";
+import { normalizeHolidayPolicyConfig, weeklyOffRuntimePolicyFromPattern } from "@/lib/holidayPolicyDefaults";
 import { normalizeLeavePolicyConfig, type LeaveTypeStoredConfig } from "@/lib/leavePolicyDefaults";
 import { normalizeExtraHoursPolicy, normalizeHalfDayMinWorkMins, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
-import { normalizeWeeklyOffPolicy } from "@/lib/weeklyOff";
 
 function text(value: unknown, fallback = "") {
   const normalized = String(value ?? "").trim();
@@ -152,48 +152,27 @@ export function resolveAttendancePolicyRuntime(policy: PolicyDefinition | null, 
   };
 }
 
-export function resolveHolidayPolicyRuntime(policy: PolicyDefinition | null, fallback?: {
-  weeklyOffPolicy?: unknown;
-  allowPunchOnHoliday?: boolean;
-  allowPunchOnWeeklyOff?: boolean;
-}) {
-  const config = (policy?.configJson || {}) as Record<string, unknown>;
-  const weeklyOffPattern = text(config.weeklyOffPattern);
-  const weeklyOffPolicy =
-    weeklyOffPattern === "Saturday + Sunday"
-      ? "saturday_sunday"
-      : weeklyOffPattern === "2nd and 4th Saturday + Sunday" || weeklyOffPattern === "Alternate Saturday + Sunday"
-        ? "second_fourth_saturday_sunday"
-        : weeklyOffPattern === "Custom"
-          ? normalizeWeeklyOffPolicy(text(config.customWeeklyOffPattern))
-          : normalizeWeeklyOffPolicy(fallback?.weeklyOffPolicy);
+export function resolveHolidayPolicyRuntime(policy: PolicyDefinition | null) {
+  const config = normalizeHolidayPolicyConfig((policy?.configJson || {}) as Record<string, unknown>, {
+    policyName: String(policy?.policyName || ""),
+    policyCode: String(policy?.policyCode || ""),
+    effectiveFrom: String(policy?.effectiveFrom || ""),
+    nextReviewDate: String(policy?.nextReviewDate || ""),
+    status:
+      policy?.status === "active"
+        ? "active"
+        : policy?.status === "archived"
+          ? "archived"
+          : "draft",
+    defaultCompanyPolicy: policy?.isDefault === false ? "No" : "Yes",
+  });
 
   return {
-    weeklyOffPolicy,
-    allowPunchOnHoliday:
-      yesNo(config.holidayPunchAllowed, fallback?.allowPunchOnHoliday === false ? "No" : "Yes") === "Yes",
-    allowPunchOnWeeklyOff:
-      yesNo(config.weeklyOffPunchAllowed, fallback?.allowPunchOnWeeklyOff === false ? "No" : "Yes") === "Yes",
-    holidayWorkedStatus:
-      text(config.holidayWorkedStatus) === "Record Only" ||
-      text(config.holidayWorkedStatus) === "OT Only" ||
-      text(config.holidayWorkedStatus) === "Grant Comp Off" ||
-      text(config.holidayWorkedStatus) === "Present + OT" ||
-      text(config.holidayWorkedStatus) === "Manual Review"
-        ? text(config.holidayWorkedStatus)
-        : text(config.holidayWorkedStatus) === "Present"
-          ? "Present + OT"
-          : "Grant Comp Off",
-    weeklyOffWorkedStatus:
-      text(config.weeklyOffWorkedStatus) === "Record Only" ||
-      text(config.weeklyOffWorkedStatus) === "OT Only" ||
-      text(config.weeklyOffWorkedStatus) === "Grant Comp Off" ||
-      text(config.weeklyOffWorkedStatus) === "Present + OT" ||
-      text(config.weeklyOffWorkedStatus) === "Manual Review"
-        ? text(config.weeklyOffWorkedStatus)
-        : text(config.weeklyOffWorkedStatus) === "Present"
-          ? "Present + OT"
-          : "Grant Comp Off",
+    weeklyOffPolicy: weeklyOffRuntimePolicyFromPattern(config.weeklyOffPattern),
+    allowPunchOnHoliday: config.holidayPunchAllowed === "Yes",
+    allowPunchOnWeeklyOff: config.weeklyOffPunchAllowed === "Yes",
+    holidayWorkedStatus: config.holidayWorkedStatus,
+    weeklyOffWorkedStatus: config.weeklyOffWorkedStatus,
     compOffValidityDays: wholeNumber(config.compOffValidityDays, 0),
   };
 }

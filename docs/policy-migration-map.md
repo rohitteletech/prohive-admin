@@ -237,11 +237,12 @@ When loading the new leave policy:
 
 ### Current operational sources
 
-- `public.companies.weekly_off_policy`
 - holiday settings APIs under:
   - `app/api/company/settings/holidays`
   - `app/api/company/settings/holidays/government`
 - company holiday data tables used by the existing holidays page
+- `public.company_holidays`
+- holiday policy behavior in `public.company_policy_definitions`
 
 ### Current new policy page
 
@@ -251,10 +252,10 @@ When loading the new leave policy:
 
 | Old source | Old field | New policy field | Notes |
 |---|---|---|---|
-| `companies` | `weekly_off_policy` | `weeklyOffPattern` | Map old enum to new labels |
 | holiday settings tables | holiday source selection | `holidaySource` | Must be inferred from old holiday import/setup behavior |
-| `companies` | `allow_punch_on_holiday` | `holidayPunchAllowed` | Legacy field currently stored on company |
-| `companies` | `allow_punch_on_weekly_off` | `weeklyOffPunchAllowed` | Legacy field currently stored on company |
+| historical company settings | `weekly_off_policy` | `weeklyOffPattern` | No longer stored on `companies`; now engine-owned |
+| historical company settings | `allow_punch_on_holiday` | `holidayPunchAllowed` | No longer stored on `companies`; now engine-owned |
+| historical company settings | `allow_punch_on_weekly_off` | `weeklyOffPunchAllowed` | No longer stored on `companies`; now engine-owned |
 | none | none | `holidayWorkedStatus` | New explicit field, default needed for bridge |
 | none | none | `weeklyOffWorkedStatus` | New explicit field, default needed for bridge |
 | none | none | `compOffEnabled` | New explicit field, may need bridge default |
@@ -269,41 +270,35 @@ When loading the new leave policy:
 
 ### Mapping notes
 
-- Legacy weekly off policy currently lives at company level, not as a dedicated policy object.
+- Holiday / weekly off behavior is now a dedicated policy object in `company_policy_definitions`.
 - Holiday source may be derived from whether company uses:
   - only custom holidays
   - only government holiday suggestions
   - mixed import/manual model
 - `holidayWorkedStatus`, `weeklyOffWorkedStatus`, and `compOffValidityDays` appear to be new model-only fields and need defaults until legacy behavior is fully externalized.
 
-### Bridge save strategy
+### Current save strategy
 
 When new holiday / weekly off policy is saved:
 
 1. Save full policy metadata to `company_policy_definitions`
-2. Mirror supported legacy fields into:
-   - `companies.weekly_off_policy`
-   - existing holiday settings storage
-   - `companies.allow_punch_on_holiday`
-   - `companies.allow_punch_on_weekly_off`
-3. Keep new-only fields in `config_json`
+2. Keep policy behavior in `config_json`
+3. Do not mirror policy behavior back into `companies`
+4. Maintain holiday date rows separately in `company_holidays`
 
-### Bridge read strategy
+### Current read strategy
 
 When loading the new holiday policy:
 
-1. Read policy from `company_policy_definitions` if present
-2. If no saved policy config exists:
-   - read `companies.weekly_off_policy`
-   - read holiday settings source / imported state
-   - read punch permission fields from `companies`
-   - hydrate other fields using bridge defaults
+1. Read policy behavior from `company_policy_definitions`
+2. Read holiday date rows from `company_holidays`
+3. Do not read policy behavior from `companies`
 
-### Gaps before cutover
+### Remaining gaps
 
 - holiday source detection depends on current holiday import/storage behavior
-- comp-off validity has no obvious legacy source
-- worked-on-holiday status handling may still be code-driven rather than settings-driven
+- `company_holidays` is still an operational table with broad authenticated RLS policies
+- historical docs and schema snapshots may still mention old company-level holiday fields
 
 ## 5. Correction / Regularization Policy
 

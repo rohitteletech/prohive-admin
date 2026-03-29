@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { ensureCompanyPolicyDefinitions } from "@/lib/companyPoliciesServer";
+import {
+  holidayPolicyBridgeStatusFromStoredStatus,
+  normalizeHolidayPolicyConfig,
+  type HolidayPolicyBridgeStatus,
+  type HolidayPolicyStoredConfig,
+} from "@/lib/holidayPolicyDefaults";
 import { todayISOInIndia } from "@/lib/dateTime";
 
 type HolidayBridgePayload = {
@@ -19,28 +25,6 @@ type HolidayBridgePayload = {
   compOffValidityDays?: string;
 };
 
-function comparePolicyPriority(
-  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
-  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
-) {
-  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
-  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
-  return b.createdAt.localeCompare(a.createdAt);
-}
-
-function normalizeWorkedDayTreatment(
-  value: unknown,
-  fallback: "Record Only" | "OT Only" | "Grant Comp Off" | "Present + OT" | "Manual Review",
-) {
-  const text = String(value || "").trim();
-  if (text === "Record Only" || text === "OT Only" || text === "Grant Comp Off" || text === "Present + OT" || text === "Manual Review") {
-    return text;
-  }
-  if (text === "Holiday Worked" || text === "Weekly Off Worked") return "Grant Comp Off";
-  if (text === "Present") return "Present + OT";
-  return fallback;
-}
-
 function isValidIsoDate(value: string) {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -54,6 +38,15 @@ const DEFAULT_POLICY_VALUES = ["Yes", "No"] as const;
 const PUNCH_ALLOWED_VALUES = ["Yes", "No"] as const;
 const WEEKLY_OFF_PATTERN_VALUES = ["Sunday Only", "Saturday + Sunday", "2nd and 4th Saturday + Sunday"] as const;
 const WORKED_DAY_VALUES = ["Record Only", "OT Only", "Grant Comp Off", "Present + OT", "Manual Review"] as const;
+
+function comparePolicyPriority(
+  a: { effectiveFrom: string; updatedAt: string; createdAt: string },
+  b: { effectiveFrom: string; updatedAt: string; createdAt: string }
+) {
+  if (a.effectiveFrom !== b.effectiveFrom) return b.effectiveFrom.localeCompare(a.effectiveFrom);
+  if (a.updatedAt !== b.updatedAt) return b.updatedAt.localeCompare(a.updatedAt);
+  return b.createdAt.localeCompare(a.createdAt);
+}
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
@@ -81,33 +74,29 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Holiday policy definition not found." }, { status: 404 });
     }
 
-    const config = (holidayPolicy.configJson || {}) as Record<string, unknown>;
+    const config = normalizeHolidayPolicyConfig((holidayPolicy.configJson || {}) as Record<string, unknown>, {
+      policyName: holidayPolicy.policyName,
+      policyCode: holidayPolicy.policyCode,
+      effectiveFrom: holidayPolicy.effectiveFrom,
+      nextReviewDate: holidayPolicy.nextReviewDate,
+      status: holidayPolicy.status,
+      defaultCompanyPolicy: holidayPolicy.isDefault ? "Yes" : "No",
+    });
 
     return NextResponse.json({
       policyId: holidayPolicy.id,
-      policyName: String(config.policyName || holidayPolicy.policyName || "Standard Holiday Policy"),
-      policyCode: String(config.policyCode || holidayPolicy.policyCode || "HOL-001"),
-      effectiveFrom: String(config.effectiveFrom || holidayPolicy.effectiveFrom),
-      nextReviewDate: String(config.nextReviewDate || holidayPolicy.nextReviewDate),
-      status:
-        String(config.status || holidayPolicy.status || "draft").toLowerCase() === "active"
-          ? "Active"
-          : String(config.status || holidayPolicy.status || "draft").toLowerCase() === "archived"
-            ? "Archived"
-            : "Draft",
-      defaultCompanyPolicy: (config.defaultCompanyPolicy === "No" || holidayPolicy.isDefault === false) ? "No" : "Yes",
-      weeklyOffPattern:
-        config.weeklyOffPattern === "Saturday + Sunday" ||
-        config.weeklyOffPattern === "2nd and 4th Saturday + Sunday"
-          ? config.weeklyOffPattern
-          : config.weeklyOffPattern === "Alternate Saturday + Sunday"
-            ? "2nd and 4th Saturday + Sunday"
-          : "Sunday Only",
-      holidayPunchAllowed: config.holidayPunchAllowed === "No" ? "No" : "Yes",
-      weeklyOffPunchAllowed: config.weeklyOffPunchAllowed === "No" ? "No" : "Yes",
-      holidayWorkedStatus: normalizeWorkedDayTreatment(config.holidayWorkedStatus, "Grant Comp Off"),
-      weeklyOffWorkedStatus: normalizeWorkedDayTreatment(config.weeklyOffWorkedStatus, "Grant Comp Off"),
-      compOffValidityDays: String(config.compOffValidityDays || "60"),
+      policyName: config.policyName,
+      policyCode: config.policyCode,
+      effectiveFrom: config.effectiveFrom,
+      nextReviewDate: config.nextReviewDate,
+      status: holidayPolicyBridgeStatusFromStoredStatus(config.status),
+      defaultCompanyPolicy: config.defaultCompanyPolicy,
+      weeklyOffPattern: config.weeklyOffPattern,
+      holidayPunchAllowed: config.holidayPunchAllowed,
+      weeklyOffPunchAllowed: config.weeklyOffPunchAllowed,
+      holidayWorkedStatus: config.holidayWorkedStatus,
+      weeklyOffWorkedStatus: config.weeklyOffWorkedStatus,
+      compOffValidityDays: config.compOffValidityDays === "0" ? "60" : String(config.compOffValidityDays),
     } satisfies HolidayBridgePayload);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Unable to load holiday policy bridge." }, { status: 400 });
@@ -176,7 +165,7 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: "If Punched On Weekly Off value is invalid." }, { status: 400 });
   }
 
-  const configJson = {
+  const rawConfigJson: Partial<HolidayPolicyStoredConfig> = {
     holidayPunchAllowed,
     weeklyOffPunchAllowed,
     policyName,
@@ -198,10 +187,10 @@ export async function PUT(req: NextRequest) {
     compOffValidityDays: "0",
   };
 
-  const compOffApplies =
-    (configJson.holidayPunchAllowed === "Yes" && configJson.holidayWorkedStatus === "Grant Comp Off") ||
-    (configJson.weeklyOffPunchAllowed === "Yes" && configJson.weeklyOffWorkedStatus === "Grant Comp Off");
   const compOffValidityText = String(body.compOffValidityDays || "").trim();
+  const compOffApplies =
+    (rawConfigJson.holidayPunchAllowed === "Yes" && rawConfigJson.holidayWorkedStatus === "Grant Comp Off") ||
+    (rawConfigJson.weeklyOffPunchAllowed === "Yes" && rawConfigJson.weeklyOffWorkedStatus === "Grant Comp Off");
   if (compOffApplies) {
     if (!/^\d+$/.test(compOffValidityText || "60")) {
       return NextResponse.json({ error: "Comp Off Validity (Days) must be a whole number." }, { status: 400 });
@@ -210,17 +199,19 @@ export async function PUT(req: NextRequest) {
     if (!Number.isFinite(compOffValidityDays) || compOffValidityDays < 1 || compOffValidityDays > 365) {
       return NextResponse.json({ error: "Comp Off Validity (Days) must be between 1 and 365." }, { status: 400 });
     }
-    configJson.compOffValidityDays = String(compOffValidityDays);
+    rawConfigJson.compOffValidityDays = String(compOffValidityDays);
   } else {
-    configJson.compOffValidityDays = "0";
+    rawConfigJson.compOffValidityDays = "0";
   }
+
+  const configJson = normalizeHolidayPolicyConfig(rawConfigJson as Record<string, unknown>);
   const { data: savedPolicyId, error: saveError } = await context.admin.rpc("save_holiday_policy_definition", {
     p_company_id: context.companyId,
     p_admin_email: context.adminEmail,
     p_policy_id: policy?.id || null,
     p_policy_name: configJson.policyName,
     p_policy_code: configJson.policyCode,
-    p_status: configJson.status,
+    p_status: configJson.status as Lowercase<HolidayPolicyBridgeStatus>,
     p_effective_from: configJson.effectiveFrom,
     p_next_review_date: configJson.nextReviewDate,
     p_default_company_policy: configJson.defaultCompanyPolicy === "Yes",
