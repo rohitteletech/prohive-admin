@@ -282,6 +282,16 @@ export async function POST(req: NextRequest) {
       date: today,
       status: currentStatus,
       attendanceStatus: attendanceDecision.status,
+      requiresManualReview: attendanceDecision.status === "manual_review",
+      nextStep:
+        attendanceDecision.status === "manual_review"
+          ? todayDayType === "holiday"
+            ? "holiday_worked_review"
+            : todayDayType === "weekly_off"
+              ? "weekly_off_worked_review"
+              : "manual_review"
+          : null,
+      dayType: todayDayType,
       punchInAt: checkInAt,
       punchOutAt: checkOutAt,
       workingMinutes,

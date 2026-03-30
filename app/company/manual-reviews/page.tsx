@@ -21,6 +21,9 @@ type ManualReviewRow = {
   approvalStatus: string;
   reasonCodes: string[];
   suggestedTreatment: string;
+  workHours: string;
+  dayTypeLabel: string;
+  workflowHint: string;
   createdAt: string;
 };
 
@@ -29,6 +32,8 @@ type ManualReviewSummary = {
   pending: number;
   offlinePunchReview: number;
   approvedLeavePunchReview: number;
+  holidayWorkedReview: number;
+  weeklyOffWorkedReview: number;
 };
 
 function readStoredCompanyId() {
@@ -59,6 +64,8 @@ export default function ManualReviewsPage() {
     pending: 0,
     offlinePunchReview: 0,
     approvedLeavePunchReview: 0,
+    holidayWorkedReview: 0,
+    weeklyOffWorkedReview: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +73,7 @@ export default function ManualReviewsPage() {
   const [noteById, setNoteById] = useState<Record<string, string>>({});
   const [treatmentById, setTreatmentById] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let ignore = false;
@@ -81,7 +89,7 @@ export default function ManualReviewsPage() {
       if (!accessToken) {
         if (!ignore) {
           setRows([]);
-          setSummary({ total: 0, pending: 0, offlinePunchReview: 0, approvedLeavePunchReview: 0 });
+          setSummary({ total: 0, pending: 0, offlinePunchReview: 0, approvedLeavePunchReview: 0, holidayWorkedReview: 0, weeklyOffWorkedReview: 0 });
           setError("Company session not found. Please login again.");
           setLoading(false);
         }
@@ -109,13 +117,15 @@ export default function ManualReviewsPage() {
               pending: 0,
               offlinePunchReview: 0,
               approvedLeavePunchReview: 0,
+              holidayWorkedReview: 0,
+              weeklyOffWorkedReview: 0,
             }
           );
         }
       } catch (err) {
         if (!ignore) {
           setRows([]);
-          setSummary({ total: 0, pending: 0, offlinePunchReview: 0, approvedLeavePunchReview: 0 });
+          setSummary({ total: 0, pending: 0, offlinePunchReview: 0, approvedLeavePunchReview: 0, holidayWorkedReview: 0, weeklyOffWorkedReview: 0 });
           setError(err instanceof Error ? err.message : "Unable to load manual review queue.");
         }
       } finally {
@@ -127,7 +137,7 @@ export default function ManualReviewsPage() {
     return () => {
       ignore = true;
     };
-  }, [monthKey]);
+  }, [monthKey, reloadKey]);
 
   function showToast(message: string) {
     setToast(message);
@@ -163,19 +173,12 @@ export default function ManualReviewsPage() {
       });
       const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || !json.ok) throw new Error(json.error || "Unable to resolve manual review case.");
-      setRows((prev) => prev.filter((item) => item.id !== row.id));
-      setSummary((prev) => ({
-        ...prev,
-        total: Math.max(prev.total - 1, 0),
-        pending: Math.max(prev.pending - 1, 0),
-        offlinePunchReview:
-          row.caseType === "offline_punch_review" ? Math.max(prev.offlinePunchReview - 1, 0) : prev.offlinePunchReview,
-        approvedLeavePunchReview:
-          row.caseType === "punch_on_approved_leave"
-            ? Math.max(prev.approvedLeavePunchReview - 1, 0)
-            : prev.approvedLeavePunchReview,
-      }));
-      showToast(action === "approve" ? "Punch approved and moved out of manual review." : "Punch rejected from manual review.");
+      setReloadKey((prev) => prev + 1);
+      showToast(
+        action === "approve"
+          ? "Punch review saved. Follow-up treatment case appears automatically if the date is holiday or weekly off."
+          : "Punch rejected from manual review."
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Unable to resolve manual review case.");
     } finally {
@@ -214,8 +217,7 @@ export default function ManualReviewsPage() {
       });
       const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || !json.ok) throw new Error(json.error || "Unable to resolve manual review case.");
-      setRows((prev) => prev.filter((item) => item.id !== row.id));
-      setSummary((prev) => ({ ...prev, total: Math.max(prev.total - 1, 0), pending: Math.max(prev.pending - 1, 0) }));
+      setReloadKey((prev) => prev + 1);
       showToast("Manual review treatment saved.");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Unable to resolve manual review case.");
@@ -245,7 +247,7 @@ export default function ManualReviewsPage() {
 
       {toast ? <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-[11px] font-semibold tracking-wide text-slate-600">Pending Cases</p>
           <p className="mt-1 text-[28px] font-semibold tracking-tight text-violet-700">{summary.pending}</p>
@@ -259,8 +261,14 @@ export default function ManualReviewsPage() {
           <p className="mt-1 text-[28px] font-semibold tracking-tight text-amber-700">{summary.approvedLeavePunchReview}</p>
         </article>
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold tracking-wide text-slate-600">Holiday / Weekly Off</p>
+          <p className="mt-1 text-[28px] font-semibold tracking-tight text-emerald-700">
+            {summary.holidayWorkedReview + summary.weeklyOffWorkedReview}
+          </p>
+        </article>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-[11px] font-semibold tracking-wide text-slate-600">How To Use</p>
-          <p className="mt-1 text-sm text-slate-700">Punch cases use approve or reject. Holiday and weekly-off cases require a final treatment selection.</p>
+          <p className="mt-1 text-sm text-slate-700">Step 1 reviews punch validity. Step 2 selects holiday or weekly-off treatment when needed.</p>
         </article>
       </section>
 
@@ -288,7 +296,7 @@ export default function ManualReviewsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1500px] w-full table-fixed border-separate border-spacing-0 text-left">
+          <table className="min-w-[1620px] w-full table-fixed border-separate border-spacing-0 text-left">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Case</th>
@@ -297,6 +305,7 @@ export default function ManualReviewsPage() {
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Punch Type</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Punch At / Work Date</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Network</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Flow</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Reasons</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Address</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Treatment</th>
@@ -307,14 +316,14 @@ export default function ManualReviewsPage() {
             <tbody>
               {!loading && error ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-10 text-center text-[13px] text-rose-600">
+                  <td colSpan={12} className="px-5 py-10 text-center text-[13px] text-rose-600">
                     {error}
                   </td>
                 </tr>
               ) : null}
               {loading ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-10 text-center text-[13px] text-slate-500">
+                  <td colSpan={12} className="px-5 py-10 text-center text-[13px] text-slate-500">
                     Loading manual review queue...
                   </td>
                 </tr>
@@ -325,13 +334,19 @@ export default function ManualReviewsPage() {
                       <td className="border-r border-slate-200 px-3 py-2">
                         <div className="font-semibold text-slate-900">{row.caseTypeLabel}</div>
                         <div className="text-[11px] text-slate-500">{row.title}</div>
+                        {row.dayTypeLabel ? <div className="text-[11px] text-slate-500">{row.dayTypeLabel}</div> : null}
                       </td>
                       <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
                       <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
                       <td className="border-r border-slate-200 px-3 py-2 uppercase">{row.punchType || "-"}</td>
                       <td className="border-r border-slate-200 px-3 py-2">
                         {row.caseType === "holiday_worked_review" || row.caseType === "weekly_off_worked_review"
-                          ? row.workDate || "-"
+                          ? (
+                            <div className="space-y-1">
+                              <div>{row.workDate || "-"}</div>
+                              <div className="text-[11px] text-slate-500">Worked: {row.workHours || "-"}</div>
+                            </div>
+                          )
                           : row.punchAt
                             ? new Date(row.punchAt).toLocaleString("en-GB")
                             : "-"}
@@ -344,6 +359,9 @@ export default function ManualReviewsPage() {
                           : row.isOffline
                             ? "Offline"
                             : "Online"}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        <span className="text-[11px] text-slate-600">{row.workflowHint || "-"}</span>
                       </td>
                       <td className="border-r border-slate-200 px-3 py-2">{row.reasonCodes.length > 0 ? row.reasonCodes.join(", ") : "-"}</td>
                       <td className="border-r border-slate-200 px-3 py-2">{row.addressText || "-"}</td>
@@ -407,7 +425,7 @@ export default function ManualReviewsPage() {
                 : null}
               {!loading && !error && filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="px-5 py-10 text-center text-[13px] text-slate-500">
+                  <td colSpan={12} className="px-5 py-10 text-center text-[13px] text-slate-500">
                     No pending manual review cases found for the selected month.
                   </td>
                 </tr>

@@ -220,6 +220,8 @@ export async function POST(req: NextRequest) {
       | "manual_review";
     punchInAt: string | null;
     punchOutAt: string | null;
+    requiresManualReview: boolean;
+    nextStep: string | null;
   }> = [];
   let lateCycleCount = 0;
   let earlyGoCycleCount = 0;
@@ -325,6 +327,15 @@ export async function POST(req: NextRequest) {
         status,
         punchInAt,
         punchOutAt,
+        requiresManualReview: status === "manual_review",
+        nextStep:
+          status === "manual_review"
+            ? holidayDates.has(iso)
+              ? "holiday_worked_review"
+              : weeklyOffDates.has(iso)
+                ? "weekly_off_worked_review"
+                : "manual_review"
+            : null,
       });
     }
     monthDate.setUTCDate(monthDate.getUTCDate() + 1);
@@ -369,6 +380,8 @@ export async function POST(req: NextRequest) {
         | null;
       dots: Array<"green" | "yellow" | "red">;
       chipText: string;
+      requiresManualReview: boolean;
+      nextStep: string | null;
     }>
   > = [];
   const cursor = new Date(firstCell.toISOString());
@@ -390,6 +403,8 @@ export async function POST(req: NextRequest) {
           | null;
         dots: Array<"green" | "yellow" | "red">;
         chipText: string;
+        requiresManualReview: boolean;
+        nextStep: string | null;
       }> = [];
     for (let i = 0; i < 7; i += 1) {
       const iso = cursor.toISOString().slice(0, 10);
@@ -407,6 +422,15 @@ export async function POST(req: NextRequest) {
         status,
         dots,
         chipText: treatment && treatment !== "Present + OT" ? treatment : holidayNamesByDate.get(iso) || "",
+        requiresManualReview: status === "manual_review",
+        nextStep:
+          status === "manual_review"
+            ? holidayDates.has(iso)
+              ? "holiday_worked_review"
+              : weeklyOffDates.has(iso)
+                ? "weekly_off_worked_review"
+                : "manual_review"
+            : null,
       });
       cursor.setUTCDate(cursor.getUTCDate() + 1);
     }

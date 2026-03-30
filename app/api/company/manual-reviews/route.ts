@@ -34,6 +34,12 @@ function caseTypeLabel(caseType: ManualReviewCaseType) {
   }
 }
 
+function triggerCaseTypeLabel(caseType: string) {
+  if (caseType === "offline_punch_review") return "Offline Punch Review";
+  if (caseType === "punch_on_approved_leave") return "Approved Leave Punch Review";
+  return "Approved Punch Review";
+}
+
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -163,6 +169,14 @@ export async function GET(req: NextRequest) {
       approvalStatus: String(punch?.approval_status || "").trim() || "pending_approval",
       reasonCodes: Array.isArray(row.reason_codes) ? row.reason_codes.map((value) => String(value)) : [],
       suggestedTreatment: String(payload.suggestedTreatment || "").trim() || "",
+      workHours: String(payload.workHours || "").trim() || "-",
+      dayTypeLabel: String(payload.dayType || "").trim() || "",
+      workflowHint:
+        String(payload.triggerSourceCaseType || "").trim()
+          ? `Step 2 after ${triggerCaseTypeLabel(String(payload.triggerSourceCaseType || "").trim())}`
+          : row.case_type === "holiday_worked_review" || row.case_type === "weekly_off_worked_review"
+            ? "Final non-working-day treatment required"
+            : "Punch validity review required",
       createdAt: String(row.created_at || "").trim(),
     };
   });
@@ -174,6 +188,8 @@ export async function GET(req: NextRequest) {
       pending: rows.length,
       offlinePunchReview: rows.filter((row) => row.caseType === "offline_punch_review").length,
       approvedLeavePunchReview: rows.filter((row) => row.caseType === "punch_on_approved_leave").length,
+      holidayWorkedReview: rows.filter((row) => row.caseType === "holiday_worked_review").length,
+      weeklyOffWorkedReview: rows.filter((row) => row.caseType === "weekly_off_worked_review").length,
     },
   });
 }
@@ -253,6 +269,7 @@ export async function POST(req: NextRequest) {
     admin: context.admin,
     companyId: context.companyId,
     caseId: reviewCase.id,
+    caseType: reviewCase.case_type,
     sourceId: String(reviewCase.source_id),
     action: action === "approve" ? "approve" : "reject",
     reviewNote,

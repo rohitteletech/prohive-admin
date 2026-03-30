@@ -7,6 +7,7 @@ import {
   rollbackPunchEventFromCorrection,
   upsertPunchEventFromCorrection,
 } from "@/lib/attendanceCorrections";
+import { ensureNonWorkingDayReviewCaseForApprovedDate } from "@/lib/manualReviewCases";
 import { resolvePolicyForEmployee } from "@/lib/companyPolicies";
 
 type Body = {
@@ -131,6 +132,30 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
       return NextResponse.json({ error: outApplyResult.error }, { status: 400 });
     }
     if (outApplyResult.rollbackAction) rollbackActions.push(outApplyResult.rollbackAction);
+
+    const followUpReviewResult = await ensureNonWorkingDayReviewCaseForApprovedDate({
+      admin: context.admin,
+      companyId: context.companyId,
+      employeeId: row.employee_id,
+      workDate: row.correction_date,
+      triggerSourceId:
+        outApplyResult.rollbackAction?.eventId ||
+        inApplyResult.rollbackAction?.eventId ||
+        row.id,
+      triggerSourceCaseId: row.id,
+      triggerSourceCaseType: null,
+    });
+    if (!followUpReviewResult.ok) {
+      for (const rollbackAction of rollbackActions.reverse()) {
+        await rollbackPunchEventFromCorrection({
+          admin: context.admin,
+          companyId: context.companyId,
+          employeeId: row.employee_id,
+          rollbackAction,
+        });
+      }
+      return NextResponse.json({ error: followUpReviewResult.error }, { status: 400 });
+    }
   }
 
   const reviewedAt = new Date().toISOString();

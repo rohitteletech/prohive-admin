@@ -195,6 +195,13 @@ export async function POST(req: NextRequest) {
     preview: {
       status: previewStatus,
       autoApproved: !correctionPolicy.approvalRequired,
+      requiresManualReview: false,
+      nextStep:
+        !correctionPolicy.approvalRequired
+          ? "attendance_correction_auto_approval"
+          : previewStatus === "pending_hr"
+            ? "correction_hr_review"
+            : "correction_manager_review",
     },
   });
 }

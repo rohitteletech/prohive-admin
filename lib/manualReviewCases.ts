@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
+import { isoDateInIndia } from "@/lib/dateTime";
+import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
+import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
+import { rawWorkedMinutes } from "@/lib/attendancePolicy";
 
 type AdminClientLike = SupabaseClient;
 
@@ -59,6 +63,14 @@ function buildReviewTitle(caseType: ManualReviewCaseType) {
     default:
       return "Manual Review";
   }
+}
+
+function workedHoursLabelFromMinutes(workedMinutes: number) {
+  if (!Number.isFinite(workedMinutes) || workedMinutes <= 0) return "-";
+  const safeMinutes = Math.max(Math.floor(workedMinutes), 0);
+  const hours = Math.floor(safeMinutes / 60);
+  const minutes = safeMinutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
 export async function upsertPendingManualReviewCase(params: {
@@ -184,6 +196,134 @@ export async function upsertPendingNonWorkingDayReviewCase(params: {
   return { ok: true as const, id: String(data.id), action: "created" as const };
 }
 
+export async function ensureNonWorkingDayReviewCaseForApprovedDate(params: {
+  admin: AdminClientLike;
+  companyId: string;
+  employeeId: string;
+  workDate: string;
+  triggerSourceId: string;
+  triggerSourceCaseId?: string | null;
+  triggerSourceCaseType?: ManualReviewCaseType | null;
+}) {
+  const { data: employee, error: employeeError } = await params.admin
+    .from("employees")
+    .select("id,full_name,department,shift_name")
+    .eq("company_id", params.companyId)
+    .eq("id", params.employeeId)
+    .maybeSingle();
+
+  if (employeeError || !employee?.id) {
+    return { ok: false as const, error: employeeError?.message || "Unable to load employee for non-working day review." };
+  }
+
+  const policyContext = await resolvePoliciesForEmployee(
+    params.admin,
+    params.companyId,
+    params.employeeId,
+    params.workDate,
+    ["holiday_weekoff"],
+  );
+  const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
+  const caseType =
+    resolvedHoliday.holidayWorkedStatus === "Manual Review"
+      ? "holiday_worked_review"
+      : resolvedHoliday.weeklyOffWorkedStatus === "Manual Review"
+        ? "weekly_off_worked_review"
+        : null;
+
+  const { data: dayPunches, error: dayPunchesError } = await params.admin
+    .from("attendance_punch_events")
+    .select("id,event_id,punch_type,address_text,is_offline,day_type,effective_punch_at,server_received_at")
+    .eq("company_id", params.companyId)
+    .eq("employee_id", params.employeeId)
+    .in("approval_status", ["auto_approved", "approved"])
+    .gte("effective_punch_at", `${params.workDate}T00:00:00.000Z`)
+    .lt("effective_punch_at", `${params.workDate}T23:59:59.999Z`)
+    .order("server_received_at", { ascending: true });
+
+  if (dayPunchesError) {
+    return { ok: false as const, error: dayPunchesError.message || "Unable to load day punches for non-working day review." };
+  }
+
+  const approvedDayPunches = ((dayPunches || []) as Array<{
+    id?: string | null;
+    event_id?: string | null;
+    punch_type?: "in" | "out" | null;
+    address_text?: string | null;
+    is_offline?: boolean | null;
+    day_type?: string | null;
+    effective_punch_at?: string | null;
+    server_received_at?: string | null;
+  }>).filter((row) => {
+    const punchAt = String(row.effective_punch_at || row.server_received_at || "").trim();
+    return Boolean(punchAt) && isoDateInIndia(punchAt) === params.workDate;
+  });
+
+  if (approvedDayPunches.length === 0) {
+    return { ok: true as const, action: "skipped" as const };
+  }
+
+  const dayType = String(approvedDayPunches[0]?.day_type || "").trim();
+  if (dayType !== "holiday" && dayType !== "weekly_off") {
+    return { ok: true as const, action: "skipped" as const };
+  }
+
+  const requiredCaseType =
+    dayType === "holiday"
+      ? resolvedHoliday.holidayWorkedStatus === "Manual Review"
+        ? "holiday_worked_review"
+        : null
+      : resolvedHoliday.weeklyOffWorkedStatus === "Manual Review"
+        ? "weekly_off_worked_review"
+        : null;
+
+  if (!requiredCaseType || caseType !== requiredCaseType) {
+    return { ok: true as const, action: "skipped" as const };
+  }
+
+  const firstIn = approvedDayPunches.find((row) => row.punch_type === "in") || null;
+  const lastOut = [...approvedDayPunches].reverse().find((row) => row.punch_type === "out") || null;
+  const firstPunchAt = String(firstIn?.effective_punch_at || firstIn?.server_received_at || "").trim();
+  const lastPunchAt = String(lastOut?.effective_punch_at || lastOut?.server_received_at || "").trim();
+  const workedMinutes = rawWorkedMinutes(firstPunchAt || null, lastPunchAt || null);
+  const suggestedTreatment = dayType === "holiday" ? resolvedHoliday.holidayWorkedStatus : resolvedHoliday.weeklyOffWorkedStatus;
+
+  return upsertPendingNonWorkingDayReviewCase({
+    admin: params.admin,
+    companyId: params.companyId,
+    employeeId: params.employeeId,
+    caseType: requiredCaseType,
+    sourceId: params.triggerSourceId,
+    workDate: params.workDate,
+    reasonCodes: [
+      requiredCaseType.toUpperCase(),
+      "NON_WORKING_DAY_TREATMENT_REVIEW",
+      params.triggerSourceCaseType ? `TRIGGERED_BY_${params.triggerSourceCaseType.toUpperCase()}` : "TRIGGERED_BY_APPROVED_PUNCH",
+    ],
+    payloadJson: {
+      workDate: params.workDate,
+      employeeId: params.employeeId,
+      employee: String(employee.full_name || "").trim() || "Unknown Employee",
+      department: String(employee.department || "").trim() || "-",
+      shift: String(employee.shift_name || "").trim() || "General",
+      dayType: dayType === "holiday" ? "Holiday" : "Weekly Off",
+      checkIn: firstPunchAt || null,
+      checkOut: lastPunchAt || null,
+      workedMinutes,
+      workHours: workedHoursLabelFromMinutes(workedMinutes),
+      suggestedTreatment,
+      triggerSourceId: params.triggerSourceId,
+      triggerSourceCaseId: params.triggerSourceCaseId || null,
+      triggerSourceCaseType: params.triggerSourceCaseType || null,
+      offlinePunchPresent: approvedDayPunches.some((row) => Boolean(row.is_offline)),
+      addressText:
+        String(firstIn?.address_text || "").trim() ||
+        String(lastOut?.address_text || "").trim() ||
+        null,
+    },
+  });
+}
+
 export async function fetchResolvedNonWorkingDayTreatmentMap(params: {
   admin: AdminClientLike;
   companyId: string;
@@ -227,6 +367,7 @@ export async function resolvePunchManualReviewCase(params: {
   admin: AdminClientLike;
   companyId: string;
   caseId: string;
+  caseType: "offline_punch_review" | "punch_on_approved_leave";
   sourceId: string;
   action: "approve" | "reject";
   reviewNote: string;
@@ -238,7 +379,7 @@ export async function resolvePunchManualReviewCase(params: {
 
   const { data: punchEvent, error: punchLoadError } = await params.admin
     .from("attendance_punch_events")
-    .select("id,is_offline,estimated_time_at,device_time_at,server_received_at,effective_punch_at")
+    .select("id,employee_id,is_offline,estimated_time_at,device_time_at,server_received_at,effective_punch_at,requires_approval,approval_status")
     .eq("company_id", params.companyId)
     .eq("id", params.sourceId)
     .maybeSingle();
@@ -267,6 +408,31 @@ export async function resolvePunchManualReviewCase(params: {
 
   if (punchError) {
     return { ok: false as const, error: punchError.message || "Unable to update punch approval status." };
+  }
+
+  if (params.action === "approve") {
+    const workDate = isoDateInIndia(String(effectivePunchAt || punchEvent.server_received_at || "").trim());
+    const followUpResult = await ensureNonWorkingDayReviewCaseForApprovedDate({
+      admin: params.admin,
+      companyId: params.companyId,
+      employeeId: String(punchEvent.employee_id || "").trim(),
+      workDate,
+      triggerSourceId: params.sourceId,
+      triggerSourceCaseId: params.caseId,
+      triggerSourceCaseType: params.caseType,
+    });
+    if (!followUpResult.ok) {
+      await params.admin
+        .from("attendance_punch_events")
+        .update({
+          approval_status: punchEvent.approval_status,
+          requires_approval: punchEvent.requires_approval,
+          effective_punch_at: punchEvent.effective_punch_at,
+        })
+        .eq("company_id", params.companyId)
+        .eq("id", params.sourceId);
+      return { ok: false as const, error: followUpResult.error };
+    }
   }
 
   const { error: caseError } = await params.admin

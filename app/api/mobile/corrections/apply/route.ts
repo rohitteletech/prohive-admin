@@ -362,6 +362,13 @@ export async function POST(req: NextRequest) {
       status: autoApproved ? "approved" : data.status,
       adminRemark: autoApproved ? autoRemark : data.admin_remark,
       submittedAt: data.submitted_at,
+      requiresManualReview: false,
+      nextStep:
+        autoApproved
+          ? "attendance_correction_applied"
+          : nextStatus === "pending_hr"
+            ? "correction_hr_review"
+            : "correction_manager_review",
     },
   });
 }

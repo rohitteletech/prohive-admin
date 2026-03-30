@@ -44,6 +44,9 @@ type PunchResponse =
       effectivePunchAt: string | null;
       serverReceivedAt: string;
       notice?: string | null;
+      requiresManualReview?: boolean;
+      nextStep?: string | null;
+      dayType?: string;
     };
     };
 
@@ -695,6 +698,13 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     }
   }
 
+  const requiresManualReview = inserted.approval_status === "pending_approval";
+  const nextStep = requiresManualReview
+    ? approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")
+      ? "punch_on_approved_leave_review"
+      : "offline_punch_review"
+    : null;
+
   return {
     status: 200,
     body: {
@@ -704,6 +714,9 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
       effectivePunchAt: inserted.effective_punch_at,
       serverReceivedAt: inserted.server_received_at,
       notice: noticeMessage,
+      requiresManualReview,
+      nextStep,
+      dayType,
     },
   };
 }
