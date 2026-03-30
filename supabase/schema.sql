@@ -906,44 +906,6 @@ SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
---
--- Name: attendance_manual_review_resolution_history; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.attendance_manual_review_resolution_history (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    company_id uuid NOT NULL,
-    employee_id uuid NOT NULL,
-    work_date date NOT NULL,
-    previous_treatment text,
-    new_treatment text NOT NULL,
-    action_type text NOT NULL,
-    remark text,
-    resolved_by text,
-    resolved_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT attendance_manual_review_resolution_history_action_type_check CHECK ((action_type = ANY (ARRAY['approved'::text, 'rejected'::text]))),
-    CONSTRAINT attendance_manual_review_resolution_history_new_treatment_check CHECK ((new_treatment = ANY (ARRAY['Record Only'::text, 'OT Only'::text, 'Grant Comp Off'::text, 'Present + OT'::text])))
-);
-
-
---
--- Name: attendance_manual_review_resolutions; Type: TABLE; Schema: public; Owner: -
---
-
-CREATE TABLE public.attendance_manual_review_resolutions (
-    id uuid DEFAULT gen_random_uuid() NOT NULL,
-    company_id uuid NOT NULL,
-    employee_id uuid NOT NULL,
-    work_date date NOT NULL,
-    resolution_treatment text NOT NULL,
-    remark text,
-    resolved_by text,
-    resolved_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    updated_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT attendance_manual_review_resolutions_resolution_treatment_check CHECK ((resolution_treatment = ANY (ARRAY['Record Only'::text, 'OT Only'::text, 'Grant Comp Off'::text, 'Present + OT'::text])))
-);
 
 
 --
@@ -1398,28 +1360,6 @@ CREATE TABLE public.government_holiday_template_sets (
 );
 
 
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_reso_company_id_employee_id_work_d_key; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolutions
-    ADD CONSTRAINT attendance_manual_review_reso_company_id_employee_id_work_d_key UNIQUE (company_id, employee_id, work_date);
-
-
---
--- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolution_history
-    ADD CONSTRAINT attendance_manual_review_resolution_history_pkey PRIMARY KEY (id);
-
-
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolutions
-    ADD CONSTRAINT attendance_manual_review_resolutions_pkey PRIMARY KEY (id);
 
 
 --
@@ -1606,32 +1546,6 @@ ALTER TABLE ONLY public.government_holiday_template_sets
     ADD CONSTRAINT government_holiday_template_sets_year_state_key UNIQUE (year, state);
 
 
---
--- Name: attendance_manual_review_resolution_history_company_date_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendance_manual_review_resolution_history_company_date_idx ON public.attendance_manual_review_resolution_history USING btree (company_id, work_date DESC, created_at DESC);
-
-
---
--- Name: attendance_manual_review_resolution_history_employee_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendance_manual_review_resolution_history_employee_id_idx ON public.attendance_manual_review_resolution_history USING btree (employee_id);
-
-
---
--- Name: attendance_manual_review_resolutions_company_date_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendance_manual_review_resolutions_company_date_idx ON public.attendance_manual_review_resolutions USING btree (company_id, work_date DESC, employee_id);
-
-
---
--- Name: attendance_manual_review_resolutions_employee_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX attendance_manual_review_resolutions_employee_id_idx ON public.attendance_manual_review_resolutions USING btree (employee_id);
 
 
 --
@@ -1907,36 +1821,6 @@ CREATE TRIGGER guard_shift_policy_active_schedule BEFORE INSERT OR UPDATE OF pol
 CREATE TRIGGER sync_company_policy_default_flags AFTER INSERT OR UPDATE OF is_default, status, effective_from ON public.company_policy_definitions FOR EACH ROW WHEN (((new.is_default = true) AND (new.status = 'active'::text))) EXECUTE FUNCTION public.sync_company_policy_default_flags();
 
 
---
--- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolution_history
-    ADD CONSTRAINT attendance_manual_review_resolution_history_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
-
-
---
--- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolution_history
-    ADD CONSTRAINT attendance_manual_review_resolution_history_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
-
-
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_company_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolutions
-    ADD CONSTRAINT attendance_manual_review_resolutions_company_id_fkey FOREIGN KEY (company_id) REFERENCES public.companies(id) ON DELETE CASCADE;
-
-
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_employee_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.attendance_manual_review_resolutions
-    ADD CONSTRAINT attendance_manual_review_resolutions_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.employees(id) ON DELETE CASCADE;
 
 
 --
@@ -2123,63 +2007,6 @@ ALTER TABLE ONLY public.government_holiday_template_rows
     ADD CONSTRAINT government_holiday_template_rows_template_set_id_fkey FOREIGN KEY (template_set_id) REFERENCES public.government_holiday_template_sets(id) ON DELETE CASCADE;
 
 
---
--- Name: attendance_manual_review_resolution_history; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.attendance_manual_review_resolution_history ENABLE ROW LEVEL SECURITY;
-
---
--- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_insert_authenticate; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY attendance_manual_review_resolution_history_insert_authenticate ON public.attendance_manual_review_resolution_history FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
-   FROM public.companies
-  WHERE ((companies.id = attendance_manual_review_resolution_history.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
-
-
---
--- Name: attendance_manual_review_resolution_history attendance_manual_review_resolution_history_select_authenticate; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY attendance_manual_review_resolution_history_select_authenticate ON public.attendance_manual_review_resolution_history FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
-   FROM public.companies
-  WHERE ((companies.id = attendance_manual_review_resolution_history.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
-
-
---
--- Name: attendance_manual_review_resolutions; Type: ROW SECURITY; Schema: public; Owner: -
---
-
-ALTER TABLE public.attendance_manual_review_resolutions ENABLE ROW LEVEL SECURITY;
-
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_insert_authenticated; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY attendance_manual_review_resolutions_insert_authenticated ON public.attendance_manual_review_resolutions FOR INSERT TO authenticated WITH CHECK ((EXISTS ( SELECT 1
-   FROM public.companies
-  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
-
-
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_select_authenticated; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY attendance_manual_review_resolutions_select_authenticated ON public.attendance_manual_review_resolutions FOR SELECT TO authenticated USING ((EXISTS ( SELECT 1
-   FROM public.companies
-  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
-
-
---
--- Name: attendance_manual_review_resolutions attendance_manual_review_resolutions_update_authenticated; Type: POLICY; Schema: public; Owner: -
---
-
-CREATE POLICY attendance_manual_review_resolutions_update_authenticated ON public.attendance_manual_review_resolutions FOR UPDATE TO authenticated USING ((EXISTS ( SELECT 1
-   FROM public.companies
-  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text))))))) WITH CHECK ((EXISTS ( SELECT 1
-   FROM public.companies
-  WHERE ((companies.id = attendance_manual_review_resolutions.company_id) AND (lower(COALESCE(companies.admin_email, ''::text)) = lower(COALESCE(auth.email(), ''::text)))))));
 
 
 --

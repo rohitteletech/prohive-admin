@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
-import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
+import { upsertPendingNonWorkingDayReviewCase } from "@/lib/manualReviewCases";
+import { fetchResolvedManualReviewCaseMap } from "@/lib/resolvedManualReviewCases";
 import {
   applyExtraHoursPolicy,
   shiftDurationMinutes,
@@ -63,6 +64,7 @@ export type AttendanceReportRow = {
 };
 
 type AttendanceReportRowWithLate = AttendanceReportRow & {
+  sourceEventId: string;
   lateMinutes: number;
   latePenaltyPolicy: {
     enabled: boolean;
@@ -253,7 +255,7 @@ function aggregateRows(params: {
   timeZone: string;
   resolvedPoliciesByEmployee: ResolvedPoliciesByEmployee;
   holidayDates: Set<string>;
-  manualReviewResolutionsByEmployeeDate: Map<string, NonWorkingDayTreatment>;
+  resolvedManualReviewCasesByEmployeeDate: Map<string, NonWorkingDayTreatment>;
 }) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -322,6 +324,7 @@ function aggregateRows(params: {
 
       return {
         id: key,
+        sourceEventId: String(ordered[0]?.id || ""),
         employeeId: employee?.id || "",
         localDate,
         employee: employee?.full_name?.trim() || employee?.employee_code?.trim() || "Unknown Employee",
@@ -395,13 +398,14 @@ function aggregateRows(params: {
       const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
         decision: baseDecision,
         dayType: row.dayType,
-        treatment: params.manualReviewResolutionsByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
+        treatment: params.resolvedManualReviewCasesByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
       });
       if (baseDecision.resetLateCycle) lateCycleCount = 0;
       if (baseDecision.resetEarlyGoCycle) earlyCycleCount = 0;
 
       rows.push({
         id: row.id,
+        sourceEventId: row.sourceEventId,
         employeeId: row.employeeId,
         localDate: row.localDate,
         employee: row.employee,
@@ -523,15 +527,15 @@ export async function getAttendanceReportData(params: {
   if (holidayError) {
     return { ok: false as const, status: 400, error: holidayError.message || "Unable to load holiday markers." };
   }
-  const manualResolutionResult = await fetchManualReviewResolutionMap({
+  const resolvedReviewCaseResult = await fetchResolvedManualReviewCaseMap({
     admin: params.admin,
     companyId: params.companyId,
     employeeIds,
     startDate: scope.startDate,
     endDate: scope.endDate,
   });
-  if (manualResolutionResult.error) {
-    return { ok: false as const, status: 400, error: manualResolutionResult.error };
+  if (resolvedReviewCaseResult.error) {
+    return { ok: false as const, status: 400, error: resolvedReviewCaseResult.error };
   }
 
   const aggregation = aggregateRows({
@@ -540,8 +544,44 @@ export async function getAttendanceReportData(params: {
     timeZone,
     resolvedPoliciesByEmployee,
     holidayDates: new Set(((holidayRows || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
-    manualReviewResolutionsByEmployeeDate: manualResolutionResult.byEmployeeDate,
+    resolvedManualReviewCasesByEmployeeDate: resolvedReviewCaseResult.byEmployeeDate,
   });
+  const pendingNonWorkingRows = aggregation.rows.filter(
+    (row) =>
+      row.status === "manual_review" &&
+      (row.dayType === "Holiday" || row.dayType === "Weekly Off") &&
+      row.sourceEventId
+  );
+
+  for (const row of pendingNonWorkingRows) {
+    const caseType = row.dayType === "Holiday" ? "holiday_worked_review" : "weekly_off_worked_review";
+    const reviewCase = await upsertPendingNonWorkingDayReviewCase({
+      admin: params.admin,
+      companyId: params.companyId,
+      employeeId: row.employeeId,
+      caseType,
+      sourceId: row.sourceEventId,
+      workDate: row.localDate,
+      reasonCodes: [caseType.toUpperCase(), "POLICY_MANUAL_REVIEW"],
+      payloadJson: {
+        workDate: row.localDate,
+        employeeId: row.employeeId,
+        employee: row.employee,
+        department: row.department,
+        shift: row.shift,
+        date: row.date,
+        checkIn: row.checkIn,
+        checkOut: row.checkOut,
+        workHours: row.workHours,
+        dayType: row.dayType,
+        suggestedTreatment: "Manual Review",
+      },
+    });
+    if (!reviewCase.ok) {
+      return { ok: false as const, status: 400, error: reviewCase.error };
+    }
+  }
+
   const filteredRows = aggregation.rows.filter((row) => {
     const matchesEmployee = employeeQuery
       ? `${row.employee} ${row.department} ${row.shift}`.toLowerCase().includes(employeeQuery)

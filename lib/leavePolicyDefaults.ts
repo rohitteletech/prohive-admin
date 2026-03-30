@@ -5,7 +5,7 @@ export type LeavePolicyStoredStatus = "draft" | "active" | "archived";
 export type LeavePolicyBridgeStatus = "Draft" | "Active" | "Archived";
 export type LeaveCycleType = "Calendar Year" | "Financial Year";
 export type LeavePolicyApprovalFlow = "manager" | "manager_hr" | "hr";
-export type LeavePunchOnApprovedLeaveAction = "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
+export type LeavePunchOnApprovedLeaveAction = "Allow Punch and Send for Manual Review" | "Keep Leave" | "Block Punch";
 export type LeavePaymentMode = "Paid" | "Unpaid";
 export type LeaveAccrualRule = "Yearly Upfront" | "Monthly Accrual";
 
@@ -77,18 +77,19 @@ function normalizeApprovalFlow(value: unknown, fallback: LeavePolicyApprovalFlow
 
 export function normalizePunchOnApprovedLeaveAction(
   value: unknown,
-  fallback: LeavePunchOnApprovedLeaveAction = "Allow Punch and Send for Approval",
+  fallback: LeavePunchOnApprovedLeaveAction = "Allow Punch and Send for Manual Review",
 ): LeavePunchOnApprovedLeaveAction {
   const textValue = String(value ?? "").trim();
   if (
-    textValue === "Allow Punch and Send for Approval" ||
+    textValue === "Allow Punch and Send for Manual Review" ||
     textValue === "Keep Leave" ||
     textValue === "Block Punch"
   ) {
     return textValue;
   }
+  if (textValue === "Allow Punch and Send for Approval") return "Allow Punch and Send for Manual Review";
   if (textValue === "Yes") return "Keep Leave";
-  if (textValue === "No") return "Allow Punch and Send for Approval";
+  if (textValue === "No") return "Allow Punch and Send for Manual Review";
   return fallback;
 }
 
@@ -141,7 +142,7 @@ export function createDefaultLeavePolicyConfig(params?: {
     noticePeriodDays: "1",
     backdatedLeaveAllowed: "No",
     maximumBackdatedLeaveDays: "0",
-    ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval",
+    ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Manual Review",
     sandwichLeave: "Disabled",
     leaveTypes: [createDefaultLeaveTypeConfig(1)],
   };

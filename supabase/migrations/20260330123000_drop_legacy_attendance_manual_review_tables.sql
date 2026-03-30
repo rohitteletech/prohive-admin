@@ -1,0 +1,2 @@
+drop table if exists public.attendance_manual_review_resolution_history;
+drop table if exists public.attendance_manual_review_resolutions;

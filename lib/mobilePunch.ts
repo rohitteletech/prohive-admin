@@ -1,6 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
+import { upsertPendingManualReviewCase } from "@/lib/manualReviewCases";
 import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
 import { isPunchInAllowedByShiftWindow, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
@@ -175,6 +176,10 @@ function chooseEffectivePunchAt(params: {
   if (params.approvalStatus === "pending_approval") return null;
   if (!params.isOffline) return params.serverNowIso;
   return params.estimatedTimeIso || params.deviceTimeIso || params.serverNowIso;
+}
+
+function buildPunchReviewCaseType(reasonCodes: string[]) {
+  return reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE") ? "punch_on_approved_leave" : "offline_punch_review";
 }
 
 function buildApproval(params: {
@@ -591,12 +596,12 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   let approvalStatus = approval.approvalStatus;
   const approvalReasonCodes = [...approval.approvalReasonCodes];
   let noticeMessage: string | null = null;
-  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Approval") {
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Manual Review") {
     if (!approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) {
       approvalReasonCodes.push("PUNCH_ON_APPROVED_LEAVE");
     }
     approvalStatus = "pending_approval";
-    noticeMessage = "You have an approved leave today. This punch has been sent for approval review.";
+    noticeMessage = "You have an approved leave today. This punch has been sent for manual review.";
   }
 
   const serverNowIso = new Date().toISOString();
@@ -606,7 +611,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   const effectivePunchAt = chooseEffectivePunchAt({
     serverNowIso,
     isOffline: payload.is_offline,
-    approvalStatus: approval.approvalStatus,
+    approvalStatus,
     estimatedTimeIso,
     deviceTimeIso,
   });
@@ -650,7 +655,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
       approval_reason_codes: approvalReasonCodes,
       raw_payload: rawBody,
     })
-    .select("event_id,approval_status,effective_punch_at,server_received_at")
+    .select("id,event_id,approval_status,effective_punch_at,server_received_at")
     .single();
 
   if (insertError) {
@@ -658,6 +663,36 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
       return { status: 409, body: { code: "DUPLICATE_EVENT", error: "Duplicate event already processed." } };
     }
     return { status: 500, body: { error: insertError.message || "Unable to save punch event." } };
+  }
+
+  if (inserted.approval_status === "pending_approval") {
+    const caseType = buildPunchReviewCaseType(approvalReasonCodes);
+    const reviewCase = await upsertPendingManualReviewCase({
+      admin,
+      companyId: payload.company_id,
+      employeeId: payload.employee_id,
+      caseType,
+      sourceTable: "attendance_punch_events",
+      sourceId: inserted.id,
+      reasonCodes: approvalReasonCodes,
+      payloadJson: {
+        eventId: inserted.event_id,
+        punchType: payload.punch_type,
+        dayType,
+        isOffline: payload.is_offline,
+        punchOnApprovedLeave,
+        deviceTimeAt: deviceTimeIso,
+        estimatedTimeAt: estimatedTimeIso,
+        serverReceivedAt: inserted.server_received_at,
+        effectivePunchAt: inserted.effective_punch_at,
+        employeeName: String(employee.full_name || "").trim() || null,
+        companyName: String(company.name || "").trim() || null,
+        addressText: payload.address || null,
+      },
+    });
+    if (!reviewCase.ok) {
+      return { status: 500, body: { error: reviewCase.error } };
+    }
   }
 
   return {

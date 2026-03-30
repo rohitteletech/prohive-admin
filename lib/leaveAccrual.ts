@@ -2,7 +2,7 @@ import { isoDateInIndia } from "@/lib/dateTime";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isWeeklyOffDate, type WeeklyOffPolicy } from "@/lib/weeklyOff";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
-import { fetchManualReviewResolutionMapForEmployee } from "@/lib/manualReviewResolutions";
+import { fetchResolvedManualReviewCaseMapForEmployee } from "@/lib/resolvedManualReviewCases";
 
 export type LeaveAccrualMode = "monthly" | "upfront";
 export type LeaveCycleType = "Calendar Year" | "Financial Year";
@@ -237,15 +237,15 @@ export async function fetchCompOffEarnedDays(params: {
   if (holidayResult.error) {
     return { earnedDates: new Set<string>(), earnedDays: 0, error: holidayResult.error.message || "Unable to load holiday markers." };
   }
-  const resolutionResult = await fetchManualReviewResolutionMapForEmployee({
+  const resolvedReviewCaseResult = await fetchResolvedManualReviewCaseMapForEmployee({
     admin: params.admin,
     companyId: params.companyId,
     employeeId: params.employeeId,
     startDate: rangeStart,
     endDate: params.asOfIsoDate,
   });
-  if (resolutionResult.error) {
-    return { earnedDates: new Set<string>(), earnedDays: 0, error: resolutionResult.error };
+  if (resolvedReviewCaseResult.error) {
+    return { earnedDates: new Set<string>(), earnedDays: 0, error: resolvedReviewCaseResult.error };
   }
 
   const holidayDates = new Set(
@@ -260,7 +260,7 @@ export async function fetchCompOffEarnedDays(params: {
 
   const earnedDates = new Set<string>();
   attendanceDates.forEach((isoDate) => {
-    const resolvedTreatment = resolutionResult.byDate.get(isoDate) || null;
+    const resolvedTreatment = resolvedReviewCaseResult.byDate.get(isoDate) || null;
     if (holidayDates.has(isoDate)) {
       if ((resolvedTreatment || params.holidayWorkedStatus) === "Grant Comp Off") earnedDates.add(isoDate);
       return;
@@ -279,12 +279,12 @@ export function deriveCompOffEarnedDates(params: {
   weeklyOffPolicy: WeeklyOffPolicy;
   holidayWorkedStatus: NonWorkingDayTreatment;
   weeklyOffWorkedStatus: NonWorkingDayTreatment;
-  manualReviewResolutionsByDate?: Map<string, NonWorkingDayTreatment>;
+  resolvedManualReviewCasesByDate?: Map<string, NonWorkingDayTreatment>;
 }) {
   const earnedDates = new Set<string>();
 
   for (const isoDate of params.attendanceDates) {
-    const resolvedTreatment = params.manualReviewResolutionsByDate?.get(isoDate) || null;
+    const resolvedTreatment = params.resolvedManualReviewCasesByDate?.get(isoDate) || null;
     if (params.holidayDates.has(isoDate)) {
       if ((resolvedTreatment || params.holidayWorkedStatus) === "Grant Comp Off") earnedDates.add(isoDate);
       continue;

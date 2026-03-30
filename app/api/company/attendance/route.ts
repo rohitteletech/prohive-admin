@@ -4,7 +4,7 @@ import { resolveAttendancePolicyRuntime, resolveHolidayPolicyRuntime, resolveShi
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { INDIA_TIME_ZONE, normalizeTimeZoneToIndia } from "@/lib/dateTime";
 import { applyExtraHoursPolicy, shiftDurationMinutes, workHoursLabel } from "@/lib/shiftWorkPolicy";
-import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
+import { fetchResolvedManualReviewCaseMap } from "@/lib/resolvedManualReviewCases";
 import {
   applyNonWorkingDayTreatment,
   buildAttendanceMetrics,
@@ -136,7 +136,7 @@ function aggregateRows(
   timeZone: string,
   resolvedPoliciesByEmployee: ResolvedPoliciesByEmployee,
   holidayDates: Set<string>,
-  manualReviewResolutionsByEmployeeDate: Map<string, NonWorkingDayTreatment>
+  resolvedManualReviewCasesByEmployeeDate: Map<string, NonWorkingDayTreatment>
 ) {
   const grouped = new Map<string, EventRow[]>();
 
@@ -283,7 +283,7 @@ function aggregateRows(
       const { decision, treatmentLabel } = applyNonWorkingDayTreatment({
         decision: baseDecision,
         dayType: row.dayType,
-        treatment: manualReviewResolutionsByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
+        treatment: resolvedManualReviewCasesByEmployeeDate.get(`${row.employeeId}:${row.localDate}`) || row.nonWorkingDayTreatment,
       });
 
       if (baseDecision.resetLateCycle) lateCycleCount = 0;
@@ -400,15 +400,15 @@ export async function GET(req: NextRequest) {
       ["shift", "attendance", "holiday_weekoff"],
     );
 
-    const manualResolutionResult = await fetchManualReviewResolutionMap({
+    const resolvedReviewCaseResult = await fetchResolvedManualReviewCaseMap({
       admin: context.admin,
       companyId: context.companyId,
       employeeIds,
       startDate: date,
       endDate: date,
     });
-    if (manualResolutionResult.error) {
-      return NextResponse.json({ error: manualResolutionResult.error }, { status: 400 });
+    if (resolvedReviewCaseResult.error) {
+      return NextResponse.json({ error: resolvedReviewCaseResult.error }, { status: 400 });
     }
 
     const rows = aggregateRows(
@@ -418,7 +418,7 @@ export async function GET(req: NextRequest) {
       timeZone,
       resolvedPoliciesByEmployee,
       new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date)),
-      manualResolutionResult.byEmployeeDate,
+      resolvedReviewCaseResult.byEmployeeDate,
     );
     const attendanceEmployeeIdsForSelectedDate = new Set(rows.map((row) => row.id.split(":")[0]).filter(Boolean));
     const onLeaveEmployeeIds = new Set(

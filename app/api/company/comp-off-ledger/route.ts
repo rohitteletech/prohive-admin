@@ -4,7 +4,7 @@ import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 import { resolvePoliciesForEmployees } from "@/lib/companyPoliciesServer";
 import { resolveHolidayPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { deriveCompOffEarnedDates, roundLeaveDays } from "@/lib/leaveAccrual";
-import { fetchManualReviewResolutionMap } from "@/lib/manualReviewResolutions";
+import { fetchResolvedManualReviewCaseMap } from "@/lib/resolvedManualReviewCases";
 import type { NonWorkingDayTreatment } from "@/lib/attendancePolicy";
 
 const VIRTUAL_COMP_OFF_CODE = "COMP-OFF";
@@ -113,15 +113,15 @@ export async function GET(req: NextRequest) {
   if (overrideResult.error) {
     return NextResponse.json({ error: overrideResult.error.message || "Unable to load comp off adjustments." }, { status: 400 });
   }
-  const manualResolutionResult = await fetchManualReviewResolutionMap({
+  const resolvedReviewCaseResult = await fetchResolvedManualReviewCaseMap({
     admin: context.admin,
     companyId: context.companyId,
     employeeIds: employeeRows.map((row) => String(row.id || "")),
     startDate: rangeStart,
     endDate: asOfDate,
   });
-  if (manualResolutionResult.error) {
-    return NextResponse.json({ error: manualResolutionResult.error }, { status: 400 });
+  if (resolvedReviewCaseResult.error) {
+    return NextResponse.json({ error: resolvedReviewCaseResult.error }, { status: 400 });
   }
 
   const holidayDates = new Set(
@@ -253,8 +253,8 @@ export async function GET(req: NextRequest) {
       weeklyOffPolicy: resolvedHoliday?.weeklyOffPolicy || "sunday_only",
       holidayWorkedStatus: (resolvedHoliday?.holidayWorkedStatus || "Grant Comp Off") as NonWorkingDayTreatment,
       weeklyOffWorkedStatus: (resolvedHoliday?.weeklyOffWorkedStatus || "Grant Comp Off") as NonWorkingDayTreatment,
-      manualReviewResolutionsByDate: new Map(
-        Array.from(manualResolutionResult.byEmployeeDate.entries())
+      resolvedManualReviewCasesByDate: new Map(
+        Array.from(resolvedReviewCaseResult.byEmployeeDate.entries())
           .filter(([key]) => key.startsWith(`${employeeId}:`))
           .map(([key, value]) => [key.split(":")[1] || "", value]),
       ),

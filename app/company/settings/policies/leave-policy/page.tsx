@@ -43,7 +43,7 @@ type LeavePolicyState = {
   noticePeriodDays: string;
   backdatedLeaveAllowed: "Yes" | "No";
   maximumBackdatedLeaveDays: string;
-  ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
+  ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Manual Review" | "Keep Leave" | "Block Punch";
   sandwichLeave: "Enabled" | "Disabled";
 };
 
@@ -62,7 +62,7 @@ function createInitialPolicyState(): LeavePolicyState {
     noticePeriodDays: "1",
     backdatedLeaveAllowed: "No",
     maximumBackdatedLeaveDays: "5",
-    ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Approval",
+    ifEmployeePunchesOnApprovedLeave: "Allow Punch and Send for Manual Review",
     sandwichLeave: "Disabled",
   };
 }
@@ -599,7 +599,7 @@ export default function LeavePolicyPage() {
                     )
                   }
                 >
-                  <option value="Allow Punch and Send for Approval">Allow Punch and Send for Approval</option>
+                  <option value="Allow Punch and Send for Manual Review">Allow Punch and Send for Manual Review</option>
                   <option value="Keep Leave">Keep Leave</option>
                   <option value="Block Punch">Block Punch</option>
                 </Select>

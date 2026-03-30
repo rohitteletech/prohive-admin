@@ -30,7 +30,7 @@ type LeaveBridgePayload = {
   noticePeriodDays?: string;
   backdatedLeaveAllowed?: "Yes" | "No";
   maximumBackdatedLeaveDays?: string;
-  ifEmployeePunchesOnApprovedLeave?: "Allow Punch and Send for Approval" | "Keep Leave" | "Block Punch";
+  ifEmployeePunchesOnApprovedLeave?: "Allow Punch and Send for Manual Review" | "Keep Leave" | "Block Punch";
   sandwichLeave?: "Enabled" | "Disabled";
   leaveTypes?: LeaveTypePayload[];
 };

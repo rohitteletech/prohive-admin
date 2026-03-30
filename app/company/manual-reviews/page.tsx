@@ -5,36 +5,30 @@ import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type ManualReviewRow = {
   id: string;
+  caseType: string;
+  caseTypeLabel: string;
+  title: string;
   employeeId: string;
-  localDate: string;
   employee: string;
   department: string;
-  shift: string;
-  date: string;
-  checkIn: string;
-  checkOut: string;
-  workHours: string;
-  status: "manual_review";
-  nonWorkingDayTreatment?: string;
+  sourceId: string;
+  sourceTable: string;
+  punchType: string;
+  punchAt: string;
+  workDate: string;
+  addressText: string;
+  isOffline: boolean;
+  approvalStatus: string;
+  reasonCodes: string[];
+  suggestedTreatment: string;
+  createdAt: string;
 };
 
 type ManualReviewSummary = {
   total: number;
-  manualReview: number;
-};
-
-type ManualReviewHistoryRow = {
-  id: string;
-  employeeId: string;
-  employee: string;
-  department: string;
-  workDate: string;
-  previousTreatment: string;
-  newTreatment: string;
-  actionType: string;
-  remark: string;
-  resolvedBy: string;
-  resolvedAt: string;
+  pending: number;
+  offlinePunchReview: number;
+  approvedLeavePunchReview: number;
 };
 
 function readStoredCompanyId() {
@@ -60,13 +54,17 @@ export default function ManualReviewsPage() {
   const [monthKey, setMonthKey] = useState(currentMonthKey());
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<ManualReviewRow[]>([]);
-  const [summary, setSummary] = useState<ManualReviewSummary>({ total: 0, manualReview: 0 });
-  const [history, setHistory] = useState<ManualReviewHistoryRow[]>([]);
+  const [summary, setSummary] = useState<ManualReviewSummary>({
+    total: 0,
+    pending: 0,
+    offlinePunchReview: 0,
+    approvedLeavePunchReview: 0,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [decisionById, setDecisionById] = useState<Record<string, string>>({});
-  const [remarkById, setRemarkById] = useState<Record<string, string>>({});
+  const [noteById, setNoteById] = useState<Record<string, string>>({});
+  const [treatmentById, setTreatmentById] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -83,7 +81,7 @@ export default function ManualReviewsPage() {
       if (!accessToken) {
         if (!ignore) {
           setRows([]);
-          setSummary({ total: 0, manualReview: 0 });
+          setSummary({ total: 0, pending: 0, offlinePunchReview: 0, approvedLeavePunchReview: 0 });
           setError("Company session not found. Please login again.");
           setLoading(false);
         }
@@ -100,30 +98,24 @@ export default function ManualReviewsPage() {
         const json = (await response.json().catch(() => ({}))) as {
           rows?: ManualReviewRow[];
           summary?: ManualReviewSummary;
-          history?: ManualReviewHistoryRow[];
           error?: string;
         };
-        if (!response.ok) {
-          throw new Error(json.error || "Unable to load manual review queue.");
-        }
+        if (!response.ok) throw new Error(json.error || "Unable to load manual review queue.");
         if (!ignore) {
-          const nextRows = Array.isArray(json.rows) ? json.rows : [];
-          setRows(nextRows);
-          setSummary(json.summary || { total: 0, manualReview: 0 });
-          setHistory(Array.isArray(json.history) ? json.history : []);
-          setDecisionById((prev) => {
-            const next = { ...prev };
-            nextRows.forEach((row) => {
-              if (!next[row.id]) next[row.id] = "Present + OT";
-            });
-            return next;
-          });
+          setRows(Array.isArray(json.rows) ? json.rows : []);
+          setSummary(
+            json.summary || {
+              total: 0,
+              pending: 0,
+              offlinePunchReview: 0,
+              approvedLeavePunchReview: 0,
+            }
+          );
         }
       } catch (err) {
         if (!ignore) {
           setRows([]);
-          setSummary({ total: 0, manualReview: 0 });
-          setHistory([]);
+          setSummary({ total: 0, pending: 0, offlinePunchReview: 0, approvedLeavePunchReview: 0 });
           setError(err instanceof Error ? err.message : "Unable to load manual review queue.");
         }
       } finally {
@@ -131,7 +123,7 @@ export default function ManualReviewsPage() {
       }
     }
 
-    loadQueue();
+    void loadQueue();
     return () => {
       ignore = true;
     };
@@ -142,17 +134,17 @@ export default function ManualReviewsPage() {
     window.setTimeout(() => setToast(null), 1800);
   }
 
-  async function resolveRow(row: ManualReviewRow, mode: "approve" | "reject") {
+  async function resolveRow(row: ManualReviewRow, action: "approve" | "reject") {
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
     const accessToken = sessionResult?.data.session?.access_token || "";
     const companyId = readStoredCompanyId();
     if (!accessToken) return showToast("Company session not found. Please login again.");
 
-    const resolutionTreatment = mode === "reject" ? "Record Only" : decisionById[row.id] || "Present + OT";
-    const remark = (remarkById[row.id] || "").trim();
-    if (mode === "approve" && !resolutionTreatment) return showToast("Select a treatment before approving.");
-    if (remark && (remark.length < 5 || remark.length > 300)) return showToast("Remark must be 5 to 300 characters.");
+    const reviewNote = (noteById[row.id] || "").trim();
+    if (reviewNote.length < 5 || reviewNote.length > 300) {
+      return showToast("Review note must be 5 to 300 characters.");
+    }
 
     setSavingId(row.id);
     try {
@@ -164,36 +156,69 @@ export default function ManualReviewsPage() {
           ...(companyId ? { "x-company-id": companyId } : {}),
         },
         body: JSON.stringify({
-          employeeId: row.employeeId,
-          workDate: row.localDate,
-          resolutionTreatment,
-          remark,
-          actionType: mode,
+          caseId: row.id,
+          action,
+          reviewNote,
         }),
       });
       const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (!response.ok || !json.ok) throw new Error(json.error || "Unable to resolve manual review item.");
+      if (!response.ok || !json.ok) throw new Error(json.error || "Unable to resolve manual review case.");
       setRows((prev) => prev.filter((item) => item.id !== row.id));
-      setSummary((prev) => ({ ...prev, manualReview: Math.max(prev.manualReview - 1, 0), total: Math.max(prev.total - 1, 0) }));
-      setHistory((prev) => [
-        {
-          id: `${row.id}:${Date.now()}`,
-          employeeId: row.employeeId,
-          employee: row.employee,
-          department: row.department,
-          workDate: row.date,
-          previousTreatment: "Manual Review",
-          newTreatment: resolutionTreatment,
-          actionType: mode === "reject" ? "Rejected" : "Approved",
-          remark,
-          resolvedBy: "Current Admin",
-          resolvedAt: new Date().toISOString(),
-        },
+      setSummary((prev) => ({
         ...prev,
-      ].slice(0, 100));
-      showToast(mode === "reject" ? "Manual review rejected to Record Only." : "Manual review approved.");
+        total: Math.max(prev.total - 1, 0),
+        pending: Math.max(prev.pending - 1, 0),
+        offlinePunchReview:
+          row.caseType === "offline_punch_review" ? Math.max(prev.offlinePunchReview - 1, 0) : prev.offlinePunchReview,
+        approvedLeavePunchReview:
+          row.caseType === "punch_on_approved_leave"
+            ? Math.max(prev.approvedLeavePunchReview - 1, 0)
+            : prev.approvedLeavePunchReview,
+      }));
+      showToast(action === "approve" ? "Punch approved and moved out of manual review." : "Punch rejected from manual review.");
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Unable to resolve manual review item.");
+      showToast(err instanceof Error ? err.message : "Unable to resolve manual review case.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function resolveTreatmentRow(row: ManualReviewRow) {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token || "";
+    const companyId = readStoredCompanyId();
+    if (!accessToken) return showToast("Company session not found. Please login again.");
+
+    const reviewNote = (noteById[row.id] || "").trim();
+    const resolutionTreatment = treatmentById[row.id] || row.suggestedTreatment || "Record Only";
+    if (reviewNote.length < 5 || reviewNote.length > 300) {
+      return showToast("Review note must be 5 to 300 characters.");
+    }
+
+    setSavingId(row.id);
+    try {
+      const response = await fetch("/api/company/manual-reviews", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          authorization: `Bearer ${accessToken}`,
+          ...(companyId ? { "x-company-id": companyId } : {}),
+        },
+        body: JSON.stringify({
+          caseId: row.id,
+          action: "resolve",
+          reviewNote,
+          resolutionTreatment,
+        }),
+      });
+      const json = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || !json.ok) throw new Error(json.error || "Unable to resolve manual review case.");
+      setRows((prev) => prev.filter((item) => item.id !== row.id));
+      setSummary((prev) => ({ ...prev, total: Math.max(prev.total - 1, 0), pending: Math.max(prev.pending - 1, 0) }));
+      showToast("Manual review treatment saved.");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Unable to resolve manual review case.");
     } finally {
       setSavingId(null);
     }
@@ -203,7 +228,7 @@ export default function ManualReviewsPage() {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return rows;
     return rows.filter((row) =>
-      `${row.employee} ${row.department} ${row.shift} ${row.date} ${row.nonWorkingDayTreatment || ""}`
+      `${row.employee} ${row.department} ${row.caseTypeLabel} ${row.punchType} ${row.reasonCodes.join(" ")} ${row.workDate}`
         .toLowerCase()
         .includes(normalized)
     );
@@ -214,27 +239,28 @@ export default function ManualReviewsPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold tracking-tight text-zinc-900">Manual Reviews</h1>
         <p className="mt-2 text-sm text-zinc-600">
-          Review holiday and weekly-off worked cases that are marked for manual decision under the current policy.
+          Review pending offline punch, approved-leave punch, and holiday or weekly-off worked cases in one queue.
         </p>
       </div>
 
-      {toast && (
-        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">
-          {toast}
-        </div>
-      )}
+      {toast ? <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900">{toast}</div> : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-[11px] font-semibold tracking-wide text-slate-600">Queue Items</p>
-          <p className="mt-1 text-[28px] font-semibold tracking-tight text-violet-700">{summary.manualReview}</p>
+          <p className="text-[11px] font-semibold tracking-wide text-slate-600">Pending Cases</p>
+          <p className="mt-1 text-[28px] font-semibold tracking-tight text-violet-700">{summary.pending}</p>
         </article>
-        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:col-span-2">
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold tracking-wide text-slate-600">Offline Punch</p>
+          <p className="mt-1 text-[28px] font-semibold tracking-tight text-sky-700">{summary.offlinePunchReview}</p>
+        </article>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-[11px] font-semibold tracking-wide text-slate-600">Approved Leave Punch</p>
+          <p className="mt-1 text-[28px] font-semibold tracking-tight text-amber-700">{summary.approvedLeavePunchReview}</p>
+        </article>
+        <article className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-[11px] font-semibold tracking-wide text-slate-600">How To Use</p>
-          <p className="mt-1 text-sm text-slate-700">
-            Use this queue to approve the selected treatment or reject the case back to Record Only. Saved decisions immediately
-            affect attendance reports, payroll treatment, and comp off logic.
-          </p>
+          <p className="mt-1 text-sm text-slate-700">Punch cases use approve or reject. Holiday and weekly-off cases require a final treatment selection.</p>
         </article>
       </section>
 
@@ -243,7 +269,7 @@ export default function ManualReviewsPage() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search employee / department / treatment"
+            placeholder="Search employee / department / reason"
             className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-[13px] text-slate-900 outline-none"
           />
           <input
@@ -253,9 +279,6 @@ export default function ManualReviewsPage() {
             className="rounded-xl border border-slate-300 bg-slate-50 px-4 py-2.5 text-[13px] text-slate-900 outline-none"
           />
         </div>
-        <p className="mt-2 text-[11px] text-slate-500">
-          Queue shows only unresolved `Manual Review` cases produced by Holiday / Weekly Off policy treatment.
-        </p>
       </section>
 
       <section className="mt-4 w-full rounded-xl border border-slate-300 bg-white shadow-sm">
@@ -265,145 +288,130 @@ export default function ManualReviewsPage() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="min-w-[1320px] w-full table-fixed border-separate border-spacing-0 text-left">
+          <table className="min-w-[1500px] w-full table-fixed border-separate border-spacing-0 text-left">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Case</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Employee</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Department</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Shift</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Date</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check In</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Check Out</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Work Hours</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Punch Type</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Punch At / Work Date</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Network</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Reasons</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Address</th>
                 <th className="border-r border-slate-200 px-3 py-2 font-semibold">Treatment</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Remark</th>
+                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Review Note</th>
                 <th className="px-3 py-2 font-semibold">Action</th>
               </tr>
             </thead>
             <tbody>
-              {!loading && error && (
+              {!loading && error ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-[13px] text-rose-600">
+                  <td colSpan={11} className="px-5 py-10 text-center text-[13px] text-rose-600">
                     {error}
                   </td>
                 </tr>
-              )}
-              {loading && (
+              ) : null}
+              {loading ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-[13px] text-slate-500">
+                  <td colSpan={11} className="px-5 py-10 text-center text-[13px] text-slate-500">
                     Loading manual review queue...
                   </td>
                 </tr>
-              )}
-              {!loading &&
-                !error &&
-                filtered.map((row) => (
-                  <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
-                    <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
-                    <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
-                    <td className="border-r border-slate-200 px-3 py-2">{row.shift}</td>
-                    <td className="border-r border-slate-200 px-3 py-2">{row.date}</td>
-                    <td className="border-r border-slate-200 px-3 py-2">{row.checkIn}</td>
-                    <td className="border-r border-slate-200 px-3 py-2">{row.checkOut}</td>
-                    <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.workHours}</td>
-                    <td className="border-r border-slate-200 px-3 py-2">
-                      <select
-                        value={decisionById[row.id] || "Present + OT"}
-                        onChange={(e) => setDecisionById((prev) => ({ ...prev, [row.id]: e.target.value }))}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-slate-900 outline-none"
-                      >
-                        <option value="Record Only">Record Only</option>
-                        <option value="OT Only">OT Only</option>
-                        <option value="Grant Comp Off">Grant Comp Off</option>
-                        <option value="Present + OT">Present + OT</option>
-                      </select>
-                    </td>
-                    <td className="border-r border-slate-200 px-3 py-2">
-                      <input
-                        value={remarkById[row.id] || ""}
-                        onChange={(e) => setRemarkById((prev) => ({ ...prev, [row.id]: e.target.value }))}
-                        placeholder="Optional remark"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-slate-900 outline-none"
-                      />
-                    </td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          disabled={savingId === row.id}
-                          onClick={() => resolveRow(row, "approve")}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-60"
-                        >
-                          {savingId === row.id ? "Saving..." : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={savingId === row.id}
-                          onClick={() => resolveRow(row, "reject")}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              {!loading && !error && filtered.length === 0 && (
+              ) : null}
+              {!loading && !error
+                ? filtered.map((row) => (
+                    <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        <div className="font-semibold text-slate-900">{row.caseTypeLabel}</div>
+                        <div className="text-[11px] text-slate-500">{row.title}</div>
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
+                      <td className="border-r border-slate-200 px-3 py-2 uppercase">{row.punchType || "-"}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        {row.caseType === "holiday_worked_review" || row.caseType === "weekly_off_worked_review"
+                          ? row.workDate || "-"
+                          : row.punchAt
+                            ? new Date(row.punchAt).toLocaleString("en-GB")
+                            : "-"}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        {row.caseType === "holiday_worked_review" || row.caseType === "weekly_off_worked_review"
+                          ? row.caseType === "holiday_worked_review"
+                            ? "Holiday"
+                            : "Weekly Off"
+                          : row.isOffline
+                            ? "Offline"
+                            : "Online"}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.reasonCodes.length > 0 ? row.reasonCodes.join(", ") : "-"}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">{row.addressText || "-"}</td>
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        {row.caseType === "holiday_worked_review" || row.caseType === "weekly_off_worked_review" ? (
+                          <select
+                            value={treatmentById[row.id] || row.suggestedTreatment || "Record Only"}
+                            onChange={(e) => setTreatmentById((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-slate-900 outline-none"
+                          >
+                            <option value="Record Only">Record Only</option>
+                            <option value="OT Only">OT Only</option>
+                            <option value="Grant Comp Off">Grant Comp Off</option>
+                            <option value="Present + OT">Present + OT</option>
+                          </select>
+                        ) : (
+                          <span className="text-[11px] text-slate-500">Approve / Reject</span>
+                        )}
+                      </td>
+                      <td className="border-r border-slate-200 px-3 py-2">
+                        <input
+                          value={noteById[row.id] || ""}
+                          onChange={(e) => setNoteById((prev) => ({ ...prev, [row.id]: e.target.value }))}
+                          placeholder="Write review note"
+                          className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-[11px] text-slate-900 outline-none"
+                        />
+                      </td>
+                      <td className="px-3 py-2">
+                        {row.caseType === "holiday_worked_review" || row.caseType === "weekly_off_worked_review" ? (
+                          <button
+                            type="button"
+                            disabled={savingId === row.id}
+                            onClick={() => resolveTreatmentRow(row)}
+                            className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-700 disabled:opacity-60"
+                          >
+                            {savingId === row.id ? "Saving..." : "Save Treatment"}
+                          </button>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={savingId === row.id}
+                              onClick={() => resolveRow(row, "approve")}
+                              className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-60"
+                            >
+                              {savingId === row.id ? "Saving..." : "Approve"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={savingId === row.id}
+                              onClick={() => resolveRow(row, "reject")}
+                              className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700 disabled:opacity-60"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                : null}
+              {!loading && !error && filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="px-5 py-10 text-center text-[13px] text-slate-500">
-                    No holiday or weekly-off manual review items found for the selected month.
+                  <td colSpan={11} className="px-5 py-10 text-center text-[13px] text-slate-500">
+                    No pending manual review cases found for the selected month.
                   </td>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="mt-4 w-full rounded-xl border border-slate-300 bg-white shadow-sm">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-2.5">
-          <h2 className="text-sm font-semibold text-slate-900">Action History</h2>
-          <span className="text-xs text-slate-500">{history.length} actions</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-[1180px] w-full table-fixed border-separate border-spacing-0 text-left">
-            <thead className="sticky top-0 z-10">
-              <tr className="border-b border-slate-200 bg-slate-100 text-[10px] uppercase tracking-wide text-slate-600">
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Reviewed On</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Reviewed By</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Employee</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Department</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Work Date</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Action</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Previous</th>
-                <th className="border-r border-slate-200 px-3 py-2 font-semibold">Final</th>
-                <th className="px-3 py-2 font-semibold">Remark</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((row) => (
-                <tr key={row.id} className="border-b border-slate-100 text-xs text-slate-700 hover:bg-slate-50 last:border-b-0">
-                  <td className="border-r border-slate-200 px-3 py-2">
-                    {row.resolvedAt ? new Date(row.resolvedAt).toLocaleString("en-GB") : "-"}
-                  </td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.resolvedBy || "-"}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.employee}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.department}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.workDate}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.actionType}</td>
-                  <td className="border-r border-slate-200 px-3 py-2">{row.previousTreatment}</td>
-                  <td className="border-r border-slate-200 px-3 py-2 font-semibold text-slate-900">{row.newTreatment}</td>
-                  <td className="px-3 py-2">{row.remark || "-"}</td>
-                </tr>
-              ))}
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-5 py-10 text-center text-[13px] text-slate-500">
-                    No review actions recorded for the selected month yet.
-                  </td>
-                </tr>
-              )}
+              ) : null}
             </tbody>
           </table>
         </div>

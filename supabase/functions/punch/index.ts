@@ -262,13 +262,13 @@ function resolveLeavePolicyRuntime(policy: PolicyDefinition | null) {
   const config = (policy?.configJson || {}) as Record<string, unknown>;
   const action = text(
     config.ifEmployeePunchesOnApprovedLeave,
-    text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Approval",
+    text(config.leaveOverridesAttendance) === "Yes" ? "Keep Leave" : "Allow Punch and Send for Manual Review",
   );
   return {
     ifEmployeePunchesOnApprovedLeave:
-      action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Approval"
+      action === "Keep Leave" || action === "Block Punch" || action === "Allow Punch and Send for Manual Review"
         ? action
-        : "Allow Punch and Send for Approval",
+        : "Allow Punch and Send for Manual Review",
   } as const;
 }
 
@@ -827,12 +827,12 @@ Deno.serve(async (req) => {
   let approvalStatus = approval.approvalStatus;
   const approvalReasonCodes = [...approval.approvalReasonCodes];
   let noticeMessage: string | null = null;
-  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Approval") {
+  if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Manual Review") {
     if (!approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) {
       approvalReasonCodes.push("PUNCH_ON_APPROVED_LEAVE");
     }
     approvalStatus = "pending_approval";
-    noticeMessage = "You have an approved leave today. This punch has been sent for approval review.";
+    noticeMessage = "You have an approved leave today. This punch has been sent for manual review.";
   }
 
   const serverNowIso = new Date().toISOString();
