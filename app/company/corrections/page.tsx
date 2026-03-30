@@ -95,6 +95,16 @@ export default function Page() {
     });
   }, [rows, search, status, date]);
 
+  const queueRows = useMemo(
+    () => filtered.filter((row) => row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr"),
+    [filtered],
+  );
+
+  const historyRows = useMemo(
+    () => filtered.filter((row) => row.status === "approved" || row.status === "rejected"),
+    [filtered],
+  );
+
   const stats = useMemo(() => {
     const total = filtered.length;
     const pending = filtered.filter((r) => r.status === "pending" || r.status === "pending_manager" || r.status === "pending_hr").length;
@@ -216,7 +226,7 @@ export default function Page() {
       <section className="mt-4 rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-200 px-5 py-3">
           <h2 className="text-base font-semibold text-slate-900">Correction Queue</h2>
-          <span className="text-xs text-slate-500">{loading ? "Loading..." : `${filtered.length} requests`}</span>
+          <span className="text-xs text-slate-500">{loading ? "Loading..." : `${queueRows.length} requests`}</span>
         </div>
 
         <div className="overflow-x-auto">
@@ -236,7 +246,7 @@ export default function Page() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((row) => (
+              {queueRows.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
                   <td className="px-5 py-3 font-semibold text-slate-900">{row.id.slice(0, 8).toUpperCase()}</td>
                   <td className="px-5 py-3">
@@ -272,35 +282,31 @@ export default function Page() {
                     </span>
                   </td>
                   <td className="px-5 py-3">
-                    {row.status === "pending" || row.status === "pending_manager" || row.status === "pending_hr" ? (
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          disabled={actionId === row.id}
-                          onClick={() => updateStatus(row.id, "approved")}
-                          className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
-                        >
-                          {row.status === "pending_manager" ? "Manager Approve" : row.status === "pending_hr" ? "HR Approve" : "Approve"}
-                        </button>
-                        <button
-                          type="button"
-                          disabled={actionId === row.id}
-                          onClick={() => updateStatus(row.id, "rejected")}
-                          className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-slate-500">Closed</span>
-                    )}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={actionId === row.id}
+                        onClick={() => updateStatus(row.id, "approved")}
+                        className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
+                      >
+                        {row.status === "pending_manager" ? "Manager Approve" : row.status === "pending_hr" ? "HR Approve" : "Approve"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={actionId === row.id}
+                        onClick={() => updateStatus(row.id, "rejected")}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                      >
+                        Reject
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
-              {!loading && filtered.length === 0 && (
+              {!loading && queueRows.length === 0 && (
                 <tr>
                   <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
-                    No correction requests match current filters.
+                    No pending correction requests match current filters.
                   </td>
                 </tr>
               )}
@@ -330,7 +336,7 @@ export default function Page() {
               </tr>
             </thead>
             <tbody>
-              {filtered.flatMap((row) =>
+              {historyRows.flatMap((row) =>
                 (row.auditLogs || []).map((log) => (
                   <tr key={log.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
                     <td className="px-5 py-3">{log.createdAt ? new Date(log.createdAt).toLocaleString("en-GB") : "-"}</td>
@@ -344,7 +350,7 @@ export default function Page() {
                   </tr>
                 ))
               )}
-              {!loading && filtered.flatMap((row) => row.auditLogs || []).length === 0 && (
+              {!loading && historyRows.flatMap((row) => row.auditLogs || []).length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-500">
                     No correction action history available yet.
