@@ -185,6 +185,20 @@ function buildPunchReviewCaseType(reasonCodes: string[]) {
   return reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE") ? "punch_on_approved_leave" : "offline_punch_review";
 }
 
+function normalizeApprovalReasonCodes(reasonCodes: string[]) {
+  return [...new Set(reasonCodes.map((code) => code.trim()).filter(Boolean))];
+}
+
+function mustReviewOfflineWorkingDayReason(code: string) {
+  return (
+    code === "NO_TRUSTED_TIME_ANCHOR" ||
+    code === "OFFLINE_NO_ESTIMATED_TIME" ||
+    code === "CLOCK_DRIFT_EXCEEDED" ||
+    code === "MOCK_LOCATION" ||
+    code === "FAKE_GPS"
+  );
+}
+
 function buildApproval(params: {
   payload: PunchPayload;
   employee: Record<string, unknown>;
@@ -262,18 +276,16 @@ function buildApproval(params: {
 
   if (params.payload.is_offline) {
     reasons.push(...incomingReasonCodes);
-    if (params.payload.requires_approval) {
-      reasons.push("CLIENT_MARKED_REQUIRES_APPROVAL");
-    }
     if (!params.payload.estimated_time_ms) {
       reasons.push("OFFLINE_NO_ESTIMATED_TIME");
     }
   }
 
-  const approvalReasonCodes = [...new Set(reasons)];
+  const approvalReasonCodes = normalizeApprovalReasonCodes(reasons);
+  const mustReviewReasons = approvalReasonCodes.filter((code) => mustReviewOfflineWorkingDayReason(code));
   return {
     ok: true as const,
-    approvalStatus: approvalReasonCodes.length ? "pending_approval" : "auto_approved",
+    approvalStatus: mustReviewReasons.length ? "pending_approval" : "auto_approved",
     approvalReasonCodes,
   };
 }
