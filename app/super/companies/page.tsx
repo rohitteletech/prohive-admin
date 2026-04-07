@@ -22,6 +22,7 @@ export default function Page() {
   const [companies, setCompanies] = useState<CompanyRow[]>([]);
   const [statusFilter, setStatusFilter] = useState<"all" | CompanyStatus>("all");
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [dataMessage, setDataMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -116,6 +117,66 @@ export default function Page() {
     return `Expired ${past} day${past === 1 ? "" : "s"} ago`;
   };
 
+  async function deleteCompany(company: CompanyRow) {
+    const typedCode = window.prompt(
+      `Type ${company.code} to permanently delete ${company.name}. This will wipe all company data and linked Supabase records.`
+    );
+    if (typedCode === null) return;
+    if (typedCode.trim() !== company.code) {
+      setDataMessage(`Delete cancelled. Confirmation code did not match ${company.code}.`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Final confirmation: delete ${company.name} (${company.code}) permanently? This action cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    const supabase = getSupabaseBrowserClient("super");
+    if (!supabase) {
+      setDataMessage("Supabase client unavailable.");
+      return;
+    }
+
+    const sessionResult = await supabase.auth.getSession();
+    const accessToken = sessionResult.data.session?.access_token || "";
+    if (!accessToken) {
+      setDataMessage("Super admin session not found. Please login again.");
+      return;
+    }
+
+    setDeletingId(company.id);
+    try {
+      const response = await fetch(`/api/super/companies/${company.id}`, {
+        method: "DELETE",
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+        },
+      });
+
+      const json = (await response.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        warning?: string | null;
+      };
+
+      if (!response.ok || !json.ok) {
+        throw new Error(json.error || "Unable to delete company.");
+      }
+
+      setCompanies((prev) => prev.filter((row) => row.id !== company.id));
+      setDataMessage(
+        json.warning
+          ? `${company.name} deleted. Warning: ${json.warning}`
+          : `${company.name} deleted permanently from app data and Supabase.`
+      );
+    } catch (error) {
+      setDataMessage(error instanceof Error ? error.message : "Unable to delete company.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div style={pageWrap}>
       <div style={topBar}>
@@ -185,6 +246,14 @@ export default function Page() {
                 <Link href={`/super/companies/${c.id}`} style={actionLinkStyle}>
                   View
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => deleteCompany(c)}
+                  disabled={deletingId === c.id}
+                  style={deletingId === c.id ? deleteActionBtnDisabledStyle : deleteActionBtnStyle}
+                >
+                  {deletingId === c.id ? "Deleting..." : "Delete"}
+                </button>
                 <button type="button" disabled style={disabledActionBtnStyle}>
                   Renew Soon
                 </button>
@@ -342,4 +411,17 @@ const disabledActionBtnStyle: React.CSSProperties = {
   opacity: 0.55,
   color: "#6b7280",
   background: "#f8fafc",
+};
+
+const deleteActionBtnStyle: React.CSSProperties = {
+  ...actionBtnStyle,
+  border: "1px solid #ef4444",
+  color: "#b91c1c",
+  background: "#fff5f5",
+};
+
+const deleteActionBtnDisabledStyle: React.CSSProperties = {
+  ...deleteActionBtnStyle,
+  cursor: "not-allowed",
+  opacity: 0.7,
 };
