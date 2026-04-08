@@ -6,6 +6,8 @@ import { defaultPolicyDefinitions } from "@/lib/companyPolicies";
 
 type PlanType = "trial" | "monthly" | "yearly";
 
+const DEFAULT_PRODUCTION_SITE_URL = "https://prohive-admin.vercel.app";
+
 function addDaysISO(baseIso: string, days: number) {
   const match = baseIso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!match) return baseIso;
@@ -46,12 +48,17 @@ function getCompanyAdminRedirectOrigin(req: NextRequest) {
     .map((value) => normalize(value || ""))
     .find(Boolean);
 
+  const isLocalDev = process.env.NODE_ENV === "development";
   const requestOrigin = req.nextUrl.origin;
-  if (requestOrigin.includes("localhost") || requestOrigin.includes("127.0.0.1")) {
-    return explicitOrigin || requestOrigin;
-  }
+  const normalizedRequestOrigin = normalize(requestOrigin);
+  const requestIsLocalhost =
+    normalizedRequestOrigin.includes("localhost") || normalizedRequestOrigin.includes("127.0.0.1");
 
-  return explicitOrigin || requestOrigin;
+  if (explicitOrigin) return explicitOrigin;
+  if (!requestIsLocalhost) return normalizedRequestOrigin;
+  if (isLocalDev) return normalizedRequestOrigin;
+
+  return DEFAULT_PRODUCTION_SITE_URL;
 }
 
 async function sendCompanyAdminMagicLink(req: NextRequest, email: string) {
