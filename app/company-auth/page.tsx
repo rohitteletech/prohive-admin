@@ -36,6 +36,23 @@ function hardNavigate(path: string) {
   window.location.assign(path);
 }
 
+function getStoredCompanyTarget() {
+  try {
+    const raw = window.localStorage.getItem("phv_company_session");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { role?: string; must_change_password?: boolean };
+    if (parsed.role !== "company_admin") return null;
+    return parsed.must_change_password ? "/company/settings?forcePassword=1" : "/company/dashboard";
+  } catch {
+    return null;
+  }
+}
+
+function hasExpiredLinkError() {
+  const source = `${window.location.hash}${window.location.search}`.toLowerCase();
+  return source.includes("error_code=otp_expired") || source.includes("error=access_denied");
+}
+
 export default function CompanyAuthCallbackPage() {
   const router = useRouter();
   const [message, setMessage] = useState("Login link verifying...");
@@ -136,6 +153,15 @@ export default function CompanyAuthCallbackPage() {
 
     const attempt = async () => {
       try {
+        const existingTarget = hasExpiredLinkError() ? getStoredCompanyTarget() : null;
+        if (existingTarget) {
+          completedRef.current = true;
+          setError(null);
+          setMessage("Existing login found. Redirecting...");
+          hardNavigate(existingTarget);
+          return;
+        }
+
         const done = await completeSignIn();
         if (!done && active) {
           setMessage("Waiting for secure login confirmation...");
