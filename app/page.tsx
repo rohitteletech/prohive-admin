@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import LoginCard from "../components/LoginCard";
 
 export default function Home() {
-  redirect("/login");
+  return <LoginCard mode="company" />;
 }

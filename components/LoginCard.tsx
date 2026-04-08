@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
 
@@ -43,6 +43,103 @@ export default function LoginCard({ mode }: { mode: LoginMode }) {
   function hardNavigate(path: string) {
     window.location.assign(path);
   }
+
+  useEffect(() => {
+    if (mode !== "company" || !hasSupabaseEnv()) return;
+
+    const supabaseClient = getSupabaseBrowserClient("company");
+    if (!supabaseClient) return;
+    const supabase = supabaseClient;
+
+    let active = true;
+    let redirecting = false;
+
+    async function completeCompanyMagicLink() {
+      if (!active || redirecting) return;
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      const email = session?.user?.email?.trim().toLowerCase() || "";
+      const accessToken = session?.access_token || "";
+      if (!email || !accessToken) return;
+
+      redirecting = true;
+      setBusy(true);
+      setMsg("Completing secure login...");
+
+      try {
+        const { data: companyRows, error: companyError } = await supabase
+          .from("companies")
+          .select("id,name,code,status,admin_email,authorized_name,company_tagline")
+          .eq("admin_email", email)
+          .order("created_at", { ascending: false })
+          .limit(2);
+
+        if (companyError) {
+          throw new Error(companyError.message || "Unable to load company admin mapping.");
+        }
+        if (!companyRows || companyRows.length === 0) {
+          throw new Error("This account is not mapped to any company admin.");
+        }
+        if (companyRows.length > 1) {
+          throw new Error("Multiple companies are mapped to this admin email. Contact super admin.");
+        }
+
+        const company = companyRows[0];
+        if (company.status === "suspended") {
+          throw new Error("Company is suspended. Contact super admin.");
+        }
+
+        const mustChangePassword = Boolean(session?.user?.user_metadata?.must_change_password);
+
+        await establishServerSession({ token: accessToken, mode: "company", companyId: company.id });
+
+        localStorage.setItem(
+          "phv_company",
+          JSON.stringify({
+            id: company.id,
+            name: company.name,
+            code: company.code,
+            admin_email: company.admin_email,
+            status: company.status,
+            authorized_name: company.authorized_name,
+            company_tagline: company.company_tagline,
+          })
+        );
+        localStorage.setItem(
+          "phv_company_session",
+          JSON.stringify({
+            role: "company_admin",
+            email,
+            must_change_password: mustChangePassword,
+          })
+        );
+
+        const target = mustChangePassword ? "/company/settings?forcePassword=1" : "/company/dashboard";
+        router.replace(target);
+        setTimeout(() => {
+          if (window.location.pathname + window.location.search !== target) {
+            hardNavigate(target);
+          }
+        }, 150);
+      } catch (error) {
+        redirecting = false;
+        setBusy(false);
+        setMsg(error instanceof Error ? error.message : "Unable to complete company admin login.");
+      }
+    }
+
+    void completeCompanyMagicLink();
+
+    const subscription = supabase.auth.onAuthStateChange(() => {
+      void completeCompanyMagicLink();
+    });
+
+    return () => {
+      active = false;
+      subscription.data.subscription.unsubscribe();
+    };
+  }, [mode, router]);
 
   async function establishServerSession(input: { token: string; mode: LoginMode; companyId?: string }) {
     const response = await fetch("/api/auth/session", {
