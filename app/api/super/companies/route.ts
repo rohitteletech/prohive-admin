@@ -29,12 +29,29 @@ function superAdminAllowList() {
 }
 
 function getCompanyAdminRedirectOrigin(req: NextRequest) {
-  const explicitOrigin =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
-    process.env.SITE_URL?.trim() ||
-    "";
-  return explicitOrigin || req.nextUrl.origin;
+  const normalize = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return "";
+    if (/^https?:\/\//i.test(trimmed)) return trimmed;
+    return `https://${trimmed}`;
+  };
+
+  const explicitOrigin = [
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.SITE_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+  ]
+    .map((value) => normalize(value || ""))
+    .find(Boolean);
+
+  const requestOrigin = req.nextUrl.origin;
+  if (requestOrigin.includes("localhost") || requestOrigin.includes("127.0.0.1")) {
+    return explicitOrigin || requestOrigin;
+  }
+
+  return explicitOrigin || requestOrigin;
 }
 
 async function sendCompanyAdminMagicLink(req: NextRequest, email: string) {
