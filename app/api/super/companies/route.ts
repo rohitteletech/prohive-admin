@@ -28,6 +28,39 @@ function superAdminAllowList() {
     .filter(Boolean);
 }
 
+function getCompanyAdminRedirectOrigin(req: NextRequest) {
+  const explicitOrigin =
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_APP_URL?.trim() ||
+    process.env.SITE_URL?.trim() ||
+    "";
+  return explicitOrigin || req.nextUrl.origin;
+}
+
+async function sendCompanyAdminMagicLink(req: NextRequest, email: string) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || "";
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() || "";
+  if (!url || !anonKey) {
+    return { ok: false as const, error: "Supabase env is not configured." };
+  }
+
+  const authClient = createClient(url, anonKey);
+  const redirectTo = `${getCompanyAdminRedirectOrigin(req).replace(/\/$/, "")}/company-auth`;
+  const { error } = await authClient.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false,
+      emailRedirectTo: redirectTo,
+    },
+  });
+
+  if (error) {
+    return { ok: false as const, error: error.message || "Unable to send company admin login link." };
+  }
+
+  return { ok: true as const };
+}
+
 export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -143,5 +176,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: policySeedError.message || "Unable to seed default company policies." }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true });
+  const loginLinkResult = await sendCompanyAdminMagicLink(req, adminEmail);
+  if (!loginLinkResult.ok) {
+    await admin.from("companies").delete().eq("id", createdCompany.id);
+    await admin.auth.admin.deleteUser(createdAuth.user.id).catch(() => {});
+    return NextResponse.json({ error: loginLinkResult.error }, { status: 400 });
+  }
+
+  return NextResponse.json({ ok: true, loginLinkSent: true });
 }

@@ -64,7 +64,6 @@ function CompanySettingsPageContent() {
   }, []);
 
   async function handleChangePassword() {
-    if (!currentPassword.trim()) return showToast("Current password is required.");
     if (!newPassword.trim()) return showToast("New password is required.");
     if (newPassword.length < 8) return showToast("New password must be at least 8 characters.");
     if (newPassword !== confirmPassword) return showToast("New password and confirm password must match.");
@@ -82,18 +81,23 @@ function CompanySettingsPageContent() {
 
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const email = authData.user?.email;
+    const mustChangePassword = Boolean(authData.user?.user_metadata?.must_change_password);
     if (authError || !email) {
       showToast("Session expired. Please login again.");
       return;
     }
 
-    const { error: reauthError } = await supabase.auth.signInWithPassword({
-      email,
-      password: currentPassword.trim(),
-    });
-    if (reauthError) {
-      showToast("Current password is incorrect.");
-      return;
+    if (!mustChangePassword) {
+      if (!currentPassword.trim()) return showToast("Current password is required.");
+
+      const { error: reauthError } = await supabase.auth.signInWithPassword({
+        email,
+        password: currentPassword.trim(),
+      });
+      if (reauthError) {
+        showToast("Current password is incorrect.");
+        return;
+      }
     }
 
     const { error: updateError } = await supabase.auth.updateUser({
@@ -221,13 +225,19 @@ function CompanySettingsPageContent() {
           <section className={cardClass()}>
             <div className="flex flex-col gap-1 border-b border-slate-100 pb-4">
               <h2 className="text-lg font-semibold text-slate-900">Change Password</h2>
-              <p className="text-sm text-slate-600">Update your login password and keep your admin account secure.</p>
+              <p className="text-sm text-slate-600">
+                {forcePassword
+                  ? "First-time access detected. Set a new password to activate the admin account."
+                  : "Update your login password and keep your admin account secure."}
+              </p>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1.5 sm:col-span-2">
-                <span className="text-sm text-slate-700">Current Password</span>
-                <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
-              </label>
+              {!forcePassword ? (
+                <label className="grid gap-1.5 sm:col-span-2">
+                  <span className="text-sm text-slate-700">Current Password</span>
+                  <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />
+                </label>
+              ) : null}
               <label className="grid gap-1.5">
                 <span className="text-sm text-slate-700">New Password</span>
                 <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none" />

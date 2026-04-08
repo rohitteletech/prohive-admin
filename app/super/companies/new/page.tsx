@@ -111,7 +111,7 @@ export default function NewCompanyPage() {
       return;
     }
 
-    alert("Company created successfully.");
+    alert("Company created successfully. Login link sent to company admin email.");
     window.location.href = "/super/companies";
   }
 
