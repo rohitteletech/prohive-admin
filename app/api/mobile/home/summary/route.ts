@@ -51,6 +51,15 @@ function buildMonthWindow(date: string) {
   };
 }
 
+function punchEventAt(row: {
+  effective_punch_at?: string | null;
+  estimated_time_at?: string | null;
+  device_time_at?: string | null;
+  server_received_at?: string | null;
+}) {
+  return row.effective_punch_at || row.estimated_time_at || row.device_time_at || row.server_received_at || null;
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     sessionToken?: string;
@@ -90,12 +99,12 @@ export async function POST(req: NextRequest) {
       .maybeSingle(),
     session.admin
       .from("attendance_punch_events")
-      .select("punch_type,effective_punch_at,server_received_at,approval_status")
+      .select("punch_type,effective_punch_at,estimated_time_at,device_time_at,server_received_at,approval_status,approval_reason_codes")
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
       .neq("approval_status", "rejected")
-      .gte("effective_punch_at", fromIso)
-      .lt("effective_punch_at", toIso)
+      .gte("server_received_at", fromIso)
+      .lt("server_received_at", toIso)
       .order("server_received_at", { ascending: false }),
     session.admin
       .from("company_holidays")
@@ -121,20 +130,24 @@ export async function POST(req: NextRequest) {
   const recentEvents = (eventsResult.data || []) as Array<{
     punch_type: "in" | "out";
     effective_punch_at: string | null;
+    estimated_time_at: string | null;
+    device_time_at: string | null;
     server_received_at: string;
     approval_status: "auto_approved" | "pending_approval" | "approved" | "rejected";
+    approval_reason_codes?: string[] | null;
   }>;
   const holidayDates = new Set(((holidayResult.data || []) as Array<{ holiday_date: string }>).map((row) => row.holiday_date));
 
   const events = [...recentEvents].reverse().filter((row) => {
-    const punchAt = row.effective_punch_at || row.server_received_at;
+    const punchAt = punchEventAt(row);
     return punchAt ? isoDateInIndia(punchAt) === today : false;
   });
 
   const firstIn = events.find((row) => row.punch_type === "in") || null;
   const lastOut = [...events].reverse().find((row) => row.punch_type === "out") || null;
-  const checkInAt = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
-  const checkOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
+  const checkInAt = firstIn ? punchEventAt(firstIn) : null;
+  const checkOutAt = lastOut ? punchEventAt(lastOut) : null;
+  const pendingApprovalEvent = [...events].reverse().find((row) => row.approval_status === "pending_approval") || null;
   const currentStatus = checkInAt ? (checkOutAt ? "COMPLETED" : "PUNCHED_IN") : "NOT_PUNCHED_IN";
   const employeeShiftName = employeeResult.data?.shift_name || "General";
   const resolvedShift = resolveShiftPolicyRuntime(policyContext.resolved.shift, {
@@ -179,7 +192,7 @@ export async function POST(req: NextRequest) {
   let earlyCycleCount = 0;
   const groupedByDate = new Map<string, typeof events>();
   for (const event of [...recentEvents].reverse()) {
-    const punchAt = event.effective_punch_at || event.server_received_at;
+    const punchAt = punchEventAt(event);
     if (!punchAt) continue;
     const localDate = isoDateInIndia(punchAt);
     const bucket = groupedByDate.get(localDate) || [];
@@ -199,8 +212,8 @@ export async function POST(req: NextRequest) {
           ? "weekly_off"
           : null;
     const metrics = buildAttendanceMetrics({
-      checkInIso: firstInForDay?.effective_punch_at || firstInForDay?.server_received_at || null,
-      checkOutIso: lastOutForDay?.effective_punch_at || lastOutForDay?.server_received_at || null,
+      checkInIso: firstInForDay ? punchEventAt(firstInForDay) : null,
+      checkOutIso: lastOutForDay ? punchEventAt(lastOutForDay) : null,
       timeZone,
       shiftStart: matchedShift?.startTime || null,
       shiftEnd: matchedShift?.endTime || null,
@@ -217,8 +230,8 @@ export async function POST(req: NextRequest) {
     if (countsTowardLateCycle) lateCycleCount += 1;
     if (countsTowardEarlyCycle) earlyCycleCount += 1;
     const decision = buildDailyAttendanceDecision({
-      checkInIso: firstInForDay?.effective_punch_at || firstInForDay?.server_received_at || null,
-      checkOutIso: lastOutForDay?.effective_punch_at || lastOutForDay?.server_received_at || null,
+      checkInIso: firstInForDay ? punchEventAt(firstInForDay) : null,
+      checkOutIso: lastOutForDay ? punchEventAt(lastOutForDay) : null,
       timeZone,
       shiftStart: matchedShift?.startTime || null,
       shiftEnd: matchedShift?.endTime || null,
@@ -266,6 +279,21 @@ export async function POST(req: NextRequest) {
           ? (resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment)
           : null,
   });
+  const pendingApprovalReasonCodes = Array.isArray(pendingApprovalEvent?.approval_reason_codes)
+    ? pendingApprovalEvent.approval_reason_codes.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  const todayRequiresPunchApproval = Boolean(pendingApprovalEvent);
+  const todayNextStep = todayRequiresPunchApproval
+    ? pendingApprovalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")
+      ? "punch_on_approved_leave"
+      : "offline_punch_review"
+    : attendanceDecision.status === "manual_review"
+      ? todayDayType === "holiday"
+        ? "holiday_worked_review"
+        : todayDayType === "weekly_off"
+          ? "weekly_off_worked_review"
+          : "manual_review"
+      : null;
 
   return NextResponse.json({
     employee: {
@@ -282,15 +310,8 @@ export async function POST(req: NextRequest) {
       date: today,
       status: currentStatus,
       attendanceStatus: attendanceDecision.status,
-      requiresManualReview: attendanceDecision.status === "manual_review",
-      nextStep:
-        attendanceDecision.status === "manual_review"
-          ? todayDayType === "holiday"
-            ? "holiday_worked_review"
-            : todayDayType === "weekly_off"
-              ? "weekly_off_worked_review"
-              : "manual_review"
-          : null,
+      requiresManualReview: todayRequiresPunchApproval || attendanceDecision.status === "manual_review",
+      nextStep: todayNextStep,
       dayType: todayDayType,
       punchInAt: checkInAt,
       punchOutAt: checkOutAt,
