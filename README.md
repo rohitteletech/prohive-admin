@@ -85,22 +85,20 @@ npx supabase@latest login
 npx supabase@latest projects list
 ```
 
-4. Deploy edge functions
-
-```bash
-npx supabase@latest functions deploy punch
-```
-
-5. Apply database changes when new migrations are added
+4. Apply database changes when new migrations are added
 
 ```bash
 npx supabase@latest db push
 ```
 
+5. Configure scheduled manual-review reconciliation
+
+- Set `CRON_SECRET` in your deployment environment
+- Vercel cron calls `/api/internal/manual-reviews/reconcile` daily at `19:00 UTC` (`00:30 IST`)
+
 Notes:
-- `git push` updates GitHub only. It does not deploy Supabase functions or database changes by itself.
+- `git push` updates GitHub only. It does not deploy database changes by itself.
 - Use `supabase/schema.sql` as the current schema reference, and `supabase/migrations/` for tracked DB changes.
-- If you add a new Edge Function, create it inside `supabase/functions/<name>/`.
 
 Current starter integration:
 - Superadmin companies list fetches live data from `companies` table.

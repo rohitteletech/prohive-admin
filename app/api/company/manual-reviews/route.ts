@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
 import { getAttendanceReportData } from "@/lib/companyReportsAttendance";
 import { INDIA_TIME_ZONE } from "@/lib/dateTime";
-import { resolveNonWorkingDayManualReviewCase, resolvePunchManualReviewCase } from "@/lib/manualReviewCases";
+import {
+  ensurePendingPunchReviewCases,
+  resolveNonWorkingDayManualReviewCase,
+  resolvePunchManualReviewCase,
+} from "@/lib/manualReviewCases";
 
 type ManualReviewCaseType = "offline_punch_review" | "punch_on_approved_leave" | "holiday_worked_review" | "weekly_off_worked_review";
 
@@ -68,6 +72,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: ensureResult.error }, { status: ensureResult.status });
   }
 
+  const ensurePunchReviewResult = await ensurePendingPunchReviewCases({
+    admin: context.admin,
+    companyId: context.companyId,
+    monthKey,
+  });
+  if (!ensurePunchReviewResult.ok) {
+    return NextResponse.json({ error: ensurePunchReviewResult.error }, { status: 400 });
+  }
+
   const { data: cases, error } = await context.admin
     .from("manual_review_cases")
     .select(
@@ -88,7 +101,7 @@ export async function GET(req: NextRequest) {
     const monthSource =
       caseType === "holiday_worked_review" || caseType === "weekly_off_worked_review"
         ? String(payload.workDate || "")
-        : String(payload.punchAt || row.created_at || "");
+        : String(payload.workDate || payload.punchAt || row.created_at || "");
     return monthMatches(monthSource, monthKey);
   });
   const employeeIds = Array.from(new Set(((cases || []) as Array<Record<string, unknown>>).map((row) => String(row.employee_id || "")).filter(Boolean)));
@@ -161,11 +174,11 @@ export async function GET(req: NextRequest) {
       department: employee?.department?.trim() || "-",
       sourceId,
       sourceTable: String(row.source_table || "").trim(),
-      punchType: String(punch?.punch_type || "").trim() || "-",
+      punchType: String(payload.punchType || "").trim() || String(punch?.punch_type || "").trim() || "-",
       punchAt,
       workDate: String(payload.workDate || "").trim(),
-      addressText: String(punch?.address_text || "").trim() || "-",
-      isOffline: Boolean(punch?.is_offline),
+      addressText: String(payload.addressText || "").trim() || String(punch?.address_text || "").trim() || "-",
+      isOffline: payload.isOffline == null ? Boolean(punch?.is_offline) : Boolean(payload.isOffline),
       approvalStatus: String(punch?.approval_status || "").trim() || "pending_approval",
       reasonCodes: Array.isArray(row.reason_codes) ? row.reason_codes.map((value) => String(value)) : [],
       suggestedTreatment: String(payload.suggestedTreatment || "").trim() || "",
@@ -226,7 +239,7 @@ export async function POST(req: NextRequest) {
 
   const { data: reviewCase, error: reviewCaseError } = await context.admin
     .from("manual_review_cases")
-    .select("id,case_type,source_id,source_table,status")
+    .select("id,case_type,source_id,source_table,status,employee_id,payload_json")
     .eq("company_id", context.companyId)
     .eq("id", caseId)
     .maybeSingle();
@@ -270,6 +283,8 @@ export async function POST(req: NextRequest) {
     companyId: context.companyId,
     caseId: reviewCase.id,
     caseType: reviewCase.case_type,
+    employeeId: String(reviewCase.employee_id || "").trim(),
+    workDate: String((reviewCase.payload_json as Record<string, unknown> | null)?.workDate || "").trim(),
     sourceId: String(reviewCase.source_id),
     action: action === "approve" ? "approve" : "reject",
     reviewNote,

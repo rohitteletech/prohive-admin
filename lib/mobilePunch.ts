@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { upsertPendingManualReviewCase } from "@/lib/manualReviewCases";
+import { upsertPendingDailyPunchReviewCase } from "@/lib/manualReviewCases";
 import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
 import { isPunchInAllowedByShiftWindow, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
@@ -681,32 +681,40 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   }
 
   if (inserted.approval_status === "pending_approval") {
-    const caseType = buildPunchReviewCaseType(approvalReasonCodes);
-    const reviewCase = await upsertPendingManualReviewCase({
-      admin,
-      companyId: payload.company_id,
-      employeeId: payload.employee_id,
-      caseType,
-      sourceTable: "attendance_punch_events",
-      sourceId: inserted.id,
-      reasonCodes: approvalReasonCodes,
-      payloadJson: {
-        eventId: inserted.event_id,
-        punchType: payload.punch_type,
-        dayType,
-        isOffline: payload.is_offline,
-        punchOnApprovedLeave,
-        deviceTimeAt: deviceTimeIso,
-        estimatedTimeAt: estimatedTimeIso,
-        serverReceivedAt: inserted.server_received_at,
-        effectivePunchAt: inserted.effective_punch_at,
-        employeeName: String(employee.full_name || "").trim() || null,
-        companyName: String(company.name || "").trim() || null,
-        addressText: payload.address || null,
-      },
-    });
-    if (!reviewCase.ok) {
-      return { status: 500, body: { error: reviewCase.error } };
+    if (payload.punch_type === "out") {
+      const caseType = buildPunchReviewCaseType(approvalReasonCodes);
+      const reviewCase = await upsertPendingDailyPunchReviewCase({
+        admin,
+        companyId: payload.company_id,
+        employeeId: payload.employee_id,
+        workDate: punchDate,
+        caseType,
+        sourceId: inserted.id,
+        reasonCodes: approvalReasonCodes,
+        payloadJson: {
+          workDate: punchDate,
+          punchAt: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
+          firstPunchAt: null,
+          lastPunchAt: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
+          checkIn: null,
+          checkOut: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
+          workHours: "-",
+          workedMinutes: 0,
+          punchType: "OUT",
+          dayType: dayType === "holiday" ? "Holiday" : dayType === "weekly_off" ? "Weekly Off" : "Working Day",
+          addressText: payload.address || null,
+          isOffline: payload.is_offline,
+          pendingPunchIds: [inserted.id],
+          hasPunchOut: true,
+          triggerPunchId: inserted.id,
+          employeeName: String(employee.full_name || "").trim() || null,
+          companyName: String(company.name || "").trim() || null,
+          punchOnApprovedLeave,
+        },
+      });
+      if (!reviewCase.ok) {
+        return { status: 500, body: { error: reviewCase.error } };
+      }
     }
   }
 

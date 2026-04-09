@@ -37,7 +37,6 @@ Date: 2026-03-29
 - `lib/companyPolicies.ts`
   - `resolvePolicyForEmployee(...)`
   - assignment priority and date-effectiveness logic
-- `supabase/functions/punch/index.ts`
   - reads `company_policy_assignments` directly for mobile punch policy resolution
 
 ## Current write-path status

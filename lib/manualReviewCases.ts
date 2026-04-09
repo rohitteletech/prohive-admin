@@ -73,22 +73,139 @@ function workedHoursLabelFromMinutes(workedMinutes: number) {
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 }
 
-export async function upsertPendingManualReviewCase(params: {
+type PunchReviewEventRow = {
+  id?: string | null;
+  employee_id?: string | null;
+  punch_type?: "in" | "out" | null;
+  address_text?: string | null;
+  is_offline?: boolean | null;
+  approval_reason_codes?: string[] | null;
+  day_type?: string | null;
+  effective_punch_at?: string | null;
+  estimated_time_at?: string | null;
+  device_time_at?: string | null;
+  server_received_at?: string | null;
+};
+
+function punchEventAtForReview(row: PunchReviewEventRow) {
+  return String(
+    row.effective_punch_at ||
+      row.estimated_time_at ||
+      row.device_time_at ||
+      row.server_received_at ||
+      "",
+  ).trim();
+}
+
+function punchEventWorkDate(row: PunchReviewEventRow) {
+  const punchAt = punchEventAtForReview(row);
+  return punchAt ? isoDateInIndia(punchAt) : "";
+}
+
+function reasonCodesFromUnknown(value: unknown) {
+  if (!Array.isArray(value)) return [] as string[];
+  return trimReasonCodes(value.map((item) => String(item || "")));
+}
+
+function reviewCaseWorkDate(payloadJson: Record<string, JsonValue> | null | undefined) {
+  const direct = String(payloadJson?.workDate || "").trim();
+  if (direct) return direct;
+  const punchAt = String(payloadJson?.punchAt || "").trim();
+  return punchAt ? isoDateInIndia(punchAt) : "";
+}
+
+function buildDailyPunchReviewPayload(rows: PunchReviewEventRow[], workDate: string) {
+  const ordered = [...rows].sort((a, b) => punchEventAtForReview(a).localeCompare(punchEventAtForReview(b)));
+  const firstIn = ordered.find((row) => row.punch_type === "in") || null;
+  const lastOut = [...ordered].reverse().find((row) => row.punch_type === "out") || null;
+  const firstPunch = ordered[0] || null;
+  const lastPunch = ordered[ordered.length - 1] || null;
+  const firstPunchAt = firstIn ? punchEventAtForReview(firstIn) : firstPunch ? punchEventAtForReview(firstPunch) : "";
+  const lastPunchAt = lastOut ? punchEventAtForReview(lastOut) : lastPunch ? punchEventAtForReview(lastPunch) : "";
+  const workedMinutes = rawWorkedMinutes(firstIn ? punchEventAtForReview(firstIn) : null, lastOut ? punchEventAtForReview(lastOut) : null);
+  const reasonCodes = trimReasonCodes(
+    ordered.flatMap((row) => reasonCodesFromUnknown(row.approval_reason_codes)),
+  );
+  const hasApprovedLeaveReason = reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE");
+  const punchTypes = Array.from(new Set(ordered.map((row) => String(row.punch_type || "").trim()).filter(Boolean)));
+  const punchTypeLabel =
+    punchTypes.length === 2
+      ? "IN + OUT"
+      : punchTypes.length === 1
+        ? punchTypes[0].toUpperCase()
+        : "-";
+  const dayTypeLabel = (() => {
+    const dayType = String(firstPunch?.day_type || lastPunch?.day_type || "").trim();
+    if (dayType === "holiday") return "Holiday";
+    if (dayType === "weekly_off") return "Weekly Off";
+    if (dayType === "working_day") return "Working Day";
+    return "";
+  })();
+
+  return {
+    caseType: (hasApprovedLeaveReason ? "punch_on_approved_leave" : "offline_punch_review") as
+      | "offline_punch_review"
+      | "punch_on_approved_leave",
+    sourceId: String(lastPunch?.id || firstPunch?.id || "").trim(),
+    reasonCodes,
+    payloadJson: {
+      workDate,
+      punchAt: lastPunchAt || firstPunchAt || null,
+      firstPunchAt: firstPunchAt || null,
+      lastPunchAt: lastPunchAt || null,
+      checkIn: firstIn ? punchEventAtForReview(firstIn) : null,
+      checkOut: lastOut ? punchEventAtForReview(lastOut) : null,
+      workHours: workedHoursLabelFromMinutes(workedMinutes),
+      workedMinutes,
+      punchType: punchTypeLabel,
+      dayType: dayTypeLabel,
+      addressText:
+        String(firstIn?.address_text || "").trim() ||
+        String(lastOut?.address_text || "").trim() ||
+        String(firstPunch?.address_text || "").trim() ||
+        String(lastPunch?.address_text || "").trim() ||
+        null,
+      isOffline: ordered.some((row) => Boolean(row.is_offline)),
+      pendingPunchIds: ordered.map((row) => String(row.id || "").trim()).filter(Boolean),
+      hasPunchOut: Boolean(lastOut),
+      triggerPunchId: String(lastPunch?.id || "").trim() || null,
+    } satisfies Record<string, JsonValue>,
+  };
+}
+
+export async function upsertPendingDailyPunchReviewCase(params: {
   admin: AdminClientLike;
   companyId: string;
   employeeId: string;
-  caseType: ManualReviewCaseType;
-  sourceTable: ManualReviewSourceTable;
+  workDate: string;
+  caseType: "offline_punch_review" | "punch_on_approved_leave";
   sourceId: string;
   reasonCodes: string[];
   payloadJson: Record<string, JsonValue>;
   title?: string | null;
 }) {
+  const { data: existingRows, error: existingError } = await params.admin
+    .from("manual_review_cases")
+    .select("id,payload_json")
+    .eq("company_id", params.companyId)
+    .eq("employee_id", params.employeeId)
+    .in("case_type", ["offline_punch_review", "punch_on_approved_leave"])
+    .eq("status", "pending")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (existingError) return { ok: false as const, error: existingError.message || "Unable to load manual review cases." };
+
+  const sameDayRows = ((existingRows || []) as Array<{ id?: string | null; payload_json?: Record<string, JsonValue> | null }>).filter((row) => {
+    return reviewCaseWorkDate(row.payload_json) === params.workDate;
+  });
+  const matchingExisting = sameDayRows[0];
+
   const payload = {
     company_id: params.companyId,
     employee_id: params.employeeId,
     case_type: params.caseType,
-    source_table: params.sourceTable,
+    source_table: "attendance_punch_events" as const,
     source_id: params.sourceId,
     status: "pending" as const,
     title: params.title?.trim() || buildReviewTitle(params.caseType),
@@ -97,26 +214,27 @@ export async function upsertPendingManualReviewCase(params: {
     updated_at: new Date().toISOString(),
   };
 
-  const { data: existing, error: existingError } = await params.admin
-    .from("manual_review_cases")
-    .select("id")
-    .eq("company_id", params.companyId)
-    .eq("source_table", params.sourceTable)
-    .eq("source_id", params.sourceId)
-    .eq("case_type", params.caseType)
-    .eq("status", "pending")
-    .maybeSingle();
-
-  if (existingError) return { ok: false as const, error: existingError.message || "Unable to load manual review case." };
-
-  if (existing?.id) {
+  if (matchingExisting?.id) {
     const { error } = await params.admin
       .from("manual_review_cases")
       .update(payload)
       .eq("company_id", params.companyId)
-      .eq("id", existing.id);
+      .eq("id", matchingExisting.id);
     if (error) return { ok: false as const, error: error.message || "Unable to update manual review case." };
-    return { ok: true as const, id: existing.id, action: "updated" as const };
+
+    const duplicateIds = sameDayRows
+      .map((row) => String(row.id || "").trim())
+      .filter((id) => id && id !== matchingExisting.id);
+    if (duplicateIds.length > 0) {
+      const { error: deleteError } = await params.admin
+        .from("manual_review_cases")
+        .delete()
+        .eq("company_id", params.companyId)
+        .in("id", duplicateIds);
+      if (deleteError) return { ok: false as const, error: deleteError.message || "Unable to delete duplicate manual review cases." };
+    }
+
+    return { ok: true as const, id: matchingExisting.id, action: "updated" as const };
   }
 
   const { data, error } = await params.admin
@@ -129,7 +247,82 @@ export async function upsertPendingManualReviewCase(params: {
     .single();
 
   if (error || !data?.id) return { ok: false as const, error: error?.message || "Unable to create manual review case." };
+
+  const duplicateIds = sameDayRows
+    .map((row) => String(row.id || "").trim())
+    .filter(Boolean);
+  if (duplicateIds.length > 0) {
+    const { error: deleteError } = await params.admin
+      .from("manual_review_cases")
+      .delete()
+      .eq("company_id", params.companyId)
+      .in("id", duplicateIds);
+    if (deleteError) return { ok: false as const, error: deleteError.message || "Unable to delete duplicate manual review cases." };
+  }
+
   return { ok: true as const, id: String(data.id), action: "created" as const };
+}
+
+export async function ensurePendingPunchReviewCases(params: {
+  admin: AdminClientLike;
+  companyId?: string;
+  monthKey?: string;
+}) {
+  let query = params.admin
+    .from("attendance_punch_events")
+    .select("id,company_id,employee_id,punch_type,address_text,is_offline,approval_reason_codes,day_type,effective_punch_at,estimated_time_at,device_time_at,server_received_at")
+    .eq("approval_status", "pending_approval")
+    .order("server_received_at", { ascending: true })
+    .limit(5000);
+
+  if (params.companyId) {
+    query = query.eq("company_id", params.companyId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    return { ok: false as const, error: error.message || "Unable to load pending punch reviews." };
+  }
+
+  const todayIndia = isoDateInIndia(new Date().toISOString());
+  const groups = new Map<string, (PunchReviewEventRow & { company_id?: string | null })[]>();
+  let touchedGroups = 0;
+
+  ((data || []) as Array<PunchReviewEventRow & { company_id?: string | null }>).forEach((row) => {
+    const workDate = punchEventWorkDate(row);
+    if (!workDate) return;
+    if (params.monthKey && !workDate.startsWith(`${params.monthKey}-`)) return;
+    const companyId = String(row.company_id || "").trim();
+    const employeeId = String(row.employee_id || "").trim();
+    if (!companyId || !employeeId) return;
+    const key = `${companyId}:${employeeId}:${workDate}`;
+    const bucket = groups.get(key) || [];
+    bucket.push(row);
+    groups.set(key, bucket);
+  });
+
+  for (const [key, rows] of groups.entries()) {
+    const [companyId, employeeId, workDate] = key.split(":");
+    const hasPunchOut = rows.some((row) => row.punch_type === "out");
+    if (!hasPunchOut && workDate >= todayIndia) continue;
+
+    const payload = buildDailyPunchReviewPayload(rows, workDate);
+    const result = await upsertPendingDailyPunchReviewCase({
+      admin: params.admin,
+      companyId,
+      employeeId,
+      workDate,
+      caseType: payload.caseType,
+      sourceId: payload.sourceId,
+      reasonCodes: payload.reasonCodes,
+      payloadJson: payload.payloadJson,
+    });
+    if (!result.ok) return result;
+    touchedGroups += 1;
+  }
+
+  return { ok: true as const, touchedGroups };
 }
 
 export async function upsertPendingNonWorkingDayReviewCase(params: {
@@ -368,6 +561,8 @@ export async function resolvePunchManualReviewCase(params: {
   companyId: string;
   caseId: string;
   caseType: "offline_punch_review" | "punch_on_approved_leave";
+  employeeId: string;
+  workDate: string;
   sourceId: string;
   action: "approve" | "reject";
   reviewNote: string;
@@ -377,60 +572,110 @@ export async function resolvePunchManualReviewCase(params: {
   const approvalStatus = params.action === "approve" ? "approved" : "rejected";
   const caseStatus = params.action === "approve" ? "approved" : "rejected";
 
-  const { data: punchEvent, error: punchLoadError } = await params.admin
+  const { data: punchEvents, error: punchLoadError } = await params.admin
     .from("attendance_punch_events")
-    .select("id,employee_id,is_offline,estimated_time_at,device_time_at,server_received_at,effective_punch_at,requires_approval,approval_status")
+    .select("id,employee_id,is_offline,estimated_time_at,device_time_at,server_received_at,effective_punch_at,requires_approval,approval_status,day_type")
     .eq("company_id", params.companyId)
-    .eq("id", params.sourceId)
-    .maybeSingle();
+    .eq("employee_id", params.employeeId)
+    .eq("approval_status", "pending_approval")
+    .order("server_received_at", { ascending: true });
 
-  if (punchLoadError || !punchEvent?.id) {
-    return { ok: false as const, error: punchLoadError?.message || "Punch event not found for review resolution." };
+  if (punchLoadError) {
+    return { ok: false as const, error: punchLoadError?.message || "Unable to load punch events for review resolution." };
   }
 
-  const effectivePunchAt =
-    params.action === "approve"
-      ? punchEvent.effective_punch_at ||
-        (punchEvent.is_offline
-          ? punchEvent.estimated_time_at || punchEvent.device_time_at || punchEvent.server_received_at
-          : punchEvent.server_received_at)
-      : null;
+  const dayPunches = ((punchEvents || []) as Array<{
+    id?: string | null;
+    employee_id?: string | null;
+    is_offline?: boolean | null;
+    estimated_time_at?: string | null;
+    device_time_at?: string | null;
+    server_received_at?: string | null;
+    effective_punch_at?: string | null;
+    requires_approval?: boolean | null;
+    approval_status?: string | null;
+    day_type?: string | null;
+  }>);
 
-  const { error: punchError } = await params.admin
-    .from("attendance_punch_events")
-    .update({
-      approval_status: approvalStatus,
-      requires_approval: false,
-      effective_punch_at: effectivePunchAt,
-    })
-    .eq("company_id", params.companyId)
-    .eq("id", params.sourceId);
+  const resolvedWorkDate =
+    params.workDate ||
+    (() => {
+      const sourcePunch = dayPunches.find((row) => String(row.id || "").trim() === params.sourceId);
+      return sourcePunch ? punchEventWorkDate(sourcePunch) : "";
+    })();
 
-  if (punchError) {
-    return { ok: false as const, error: punchError.message || "Unable to update punch approval status." };
+  const matchedDayPunches = dayPunches.filter((row) => punchEventWorkDate(row) === resolvedWorkDate);
+
+  if (matchedDayPunches.length === 0) {
+    return { ok: false as const, error: "No pending punch events found for this attendance date." };
+  }
+
+  const previousState = matchedDayPunches.map((row) => ({
+    id: String(row.id || "").trim(),
+    approval_status: row.approval_status || null,
+    requires_approval: row.requires_approval ?? null,
+    effective_punch_at: row.effective_punch_at || null,
+  }));
+
+  for (const punchEvent of matchedDayPunches) {
+    const effectivePunchAt =
+      params.action === "approve"
+        ? punchEvent.effective_punch_at ||
+          (punchEvent.is_offline
+            ? punchEvent.estimated_time_at || punchEvent.device_time_at || punchEvent.server_received_at
+            : punchEvent.server_received_at)
+        : null;
+
+    const { error: punchError } = await params.admin
+      .from("attendance_punch_events")
+      .update({
+        approval_status: approvalStatus,
+        requires_approval: false,
+        effective_punch_at: effectivePunchAt,
+      })
+      .eq("company_id", params.companyId)
+      .eq("id", String(punchEvent.id || "").trim());
+
+    if (punchError) {
+      for (const previous of previousState) {
+        if (!previous.id) continue;
+        await params.admin
+          .from("attendance_punch_events")
+          .update({
+            approval_status: previous.approval_status,
+            requires_approval: previous.requires_approval,
+            effective_punch_at: previous.effective_punch_at,
+          })
+          .eq("company_id", params.companyId)
+          .eq("id", previous.id);
+      }
+      return { ok: false as const, error: punchError.message || "Unable to update punch approval status." };
+    }
   }
 
   if (params.action === "approve") {
-    const workDate = isoDateInIndia(String(effectivePunchAt || punchEvent.server_received_at || "").trim());
     const followUpResult = await ensureNonWorkingDayReviewCaseForApprovedDate({
       admin: params.admin,
       companyId: params.companyId,
-      employeeId: String(punchEvent.employee_id || "").trim(),
-      workDate,
+      employeeId: params.employeeId,
+      workDate: resolvedWorkDate,
       triggerSourceId: params.sourceId,
       triggerSourceCaseId: params.caseId,
       triggerSourceCaseType: params.caseType,
     });
     if (!followUpResult.ok) {
-      await params.admin
-        .from("attendance_punch_events")
-        .update({
-          approval_status: punchEvent.approval_status,
-          requires_approval: punchEvent.requires_approval,
-          effective_punch_at: punchEvent.effective_punch_at,
-        })
-        .eq("company_id", params.companyId)
-        .eq("id", params.sourceId);
+      for (const previous of previousState) {
+        if (!previous.id) continue;
+        await params.admin
+          .from("attendance_punch_events")
+          .update({
+            approval_status: previous.approval_status,
+            requires_approval: previous.requires_approval,
+            effective_punch_at: previous.effective_punch_at,
+          })
+          .eq("company_id", params.companyId)
+          .eq("id", previous.id);
+      }
       return { ok: false as const, error: followUpResult.error };
     }
   }

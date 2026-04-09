@@ -48,7 +48,6 @@ This audit captures where the current project reads holiday / weekly off policy 
   - `lib/companyReportsAttendance.ts`
   - `lib/companyReportsLatePenalty.ts`
   - `lib/leaveAccrual.ts`
-  - `supabase/functions/punch/index.ts`
 
 ## Operational holiday date reads still on `company_holidays`
 
@@ -72,7 +71,6 @@ This audit captures where the current project reads holiday / weekly off policy 
   - Reads holiday dates from `company_holidays`
 - `lib/leaveAccrual.ts`
   - Reads holiday dates from `company_holidays` for comp-off earning logic
-- `supabase/functions/punch/index.ts`
   - Reads holiday dates from `company_holidays`
 
 ## Remaining bridge or fallback assumptions
@@ -81,7 +79,6 @@ This audit captures where the current project reads holiday / weekly off policy 
   - Default `holiday_weekoff` policy now seeds a canonical holiday config
 - `lib/companyPolicyRuntime.ts`
   - Holiday runtime now normalizes from canonical engine config instead of old fallback values
-- `supabase/functions/punch/index.ts`
   - Holiday runtime now reads policy behavior directly from engine config instead of old fallback values
 - `supabase/schema.sql`
   - local snapshot now reflects company-admin-scoped RLS for `company_holidays`

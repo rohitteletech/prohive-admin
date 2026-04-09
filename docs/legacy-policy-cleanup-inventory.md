@@ -74,7 +74,6 @@ Cleanup recommendation:
 - remove `loginAccessRule` from response payload if mobile app no longer depends on it
 - if compatibility is still needed, document a removal deadline
 
-### `supabase/functions/punch/index.ts`
 
 Current issue:
 
