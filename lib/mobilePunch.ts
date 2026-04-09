@@ -189,6 +189,17 @@ function normalizeApprovalReasonCodes(reasonCodes: string[]) {
   return [...new Set(reasonCodes.map((code) => code.trim()).filter(Boolean))];
 }
 
+function normalizeClientApprovalHints(reasonCodes: string[]) {
+  const allowedHints = new Set([
+    "AUTO_TIME_DISABLED",
+    "AUTO_TIMEZONE_DISABLED",
+    "GPS_WEAK_ACCURACY",
+    "MOCK_LOCATION",
+    "FAKE_GPS",
+  ]);
+  return normalizeApprovalReasonCodes(reasonCodes.filter((code) => allowedHints.has(code)));
+}
+
 function mustReviewOfflineWorkingDayReason(code: string) {
   return (
     code === "NO_TRUSTED_TIME_ANCHOR" ||
@@ -199,6 +210,29 @@ function mustReviewOfflineWorkingDayReason(code: string) {
   );
 }
 
+function deriveServerApprovalReasons(payload: PunchPayload) {
+  const reasons: string[] = [];
+
+  if (
+    payload.clock_drift_ms != null &&
+    Number.isFinite(Number(payload.clock_drift_ms)) &&
+    Math.abs(Number(payload.clock_drift_ms)) > 120000
+  ) {
+    reasons.push("CLOCK_DRIFT_EXCEEDED");
+  }
+
+  if (payload.is_offline) {
+    if (!payload.trusted_anchor_time_ms || !payload.trusted_anchor_elapsed_ms) {
+      reasons.push("NO_TRUSTED_TIME_ANCHOR");
+    }
+    if (!payload.estimated_time_ms) {
+      reasons.push("OFFLINE_NO_ESTIMATED_TIME");
+    }
+  }
+
+  return normalizeApprovalReasonCodes(reasons);
+}
+
 function buildApproval(params: {
   payload: PunchPayload;
   employee: Record<string, unknown>;
@@ -206,7 +240,8 @@ function buildApproval(params: {
   distanceFromOfficeM: number | null;
 }) {
   const reasons: string[] = [];
-  const incomingReasonCodes = parseReasonCodes(params.payload.approval_reason_codes);
+  const incomingReasonCodes = normalizeClientApprovalHints(parseReasonCodes(params.payload.approval_reason_codes));
+  const serverReasonCodes = deriveServerApprovalReasons(params.payload);
 
   if (!params.payload.is_offline && !String(params.payload.address || "").trim()) {
     return {
@@ -266,20 +301,11 @@ function buildApproval(params: {
     reasons.push("GPS_WEAK_ACCURACY");
   }
 
-  if (
-    params.payload.clock_drift_ms != null &&
-    Number.isFinite(Number(params.payload.clock_drift_ms)) &&
-    Math.abs(Number(params.payload.clock_drift_ms)) > 120000
-  ) {
-    reasons.push("CLOCK_DRIFT_EXCEEDED");
+  if (params.payload.is_offline) {
+    reasons.push(...serverReasonCodes);
   }
 
-  if (params.payload.is_offline) {
-    reasons.push(...incomingReasonCodes);
-    if (!params.payload.estimated_time_ms) {
-      reasons.push("OFFLINE_NO_ESTIMATED_TIME");
-    }
-  }
+  reasons.push(...incomingReasonCodes.filter((code) => code !== "MOCK_LOCATION" && code !== "FAKE_GPS"));
 
   const approvalReasonCodes = normalizeApprovalReasonCodes(reasons);
   const mustReviewReasons = approvalReasonCodes.filter((code) => mustReviewOfflineWorkingDayReason(code));
