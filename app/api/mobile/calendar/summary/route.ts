@@ -42,6 +42,15 @@ function clampIsoToRange(iso: string, start: string, end: string) {
   return iso;
 }
 
+function punchEventAt(row: {
+  effective_punch_at?: string | null;
+  estimated_time_at?: string | null;
+  device_time_at?: string | null;
+  server_received_at?: string | null;
+}) {
+  return row.effective_punch_at || row.estimated_time_at || row.device_time_at || row.server_received_at || null;
+}
+
 export async function POST(req: NextRequest) {
   const body = (await req.json().catch(() => ({}))) as {
     sessionToken?: string;
@@ -108,13 +117,13 @@ export async function POST(req: NextRequest) {
       .order("from_date", { ascending: true }),
     session.admin
       .from("attendance_punch_events")
-      .select("punch_type,effective_punch_at,server_received_at,approval_status")
+      .select("punch_type,effective_punch_at,estimated_time_at,device_time_at,server_received_at,approval_status,approval_reason_codes")
       .eq("company_id", session.employee.company_id)
       .eq("employee_id", session.employee.id)
-      .in("approval_status", ["auto_approved", "approved"])
-      .gte("effective_punch_at", `${attendanceQueryStart}T00:00:00.000Z`)
-      .lt("effective_punch_at", `${attendanceQueryNextStart}T00:00:00.000Z`)
-      .order("effective_punch_at", { ascending: true }),
+      .in("approval_status", ["auto_approved", "approved", "pending_approval"])
+      .gte("server_received_at", `${attendanceQueryStart}T00:00:00.000Z`)
+      .lt("server_received_at", `${attendanceQueryNextStart}T00:00:00.000Z`)
+      .order("server_received_at", { ascending: true }),
   ]);
 
   if (monthHolidayResult.error) {
@@ -164,8 +173,11 @@ export async function POST(req: NextRequest) {
   const attendanceRows = (attendanceResult.data || []) as Array<{
     punch_type: "in" | "out";
     effective_punch_at: string | null;
+    estimated_time_at: string | null;
+    device_time_at: string | null;
     server_received_at: string;
     approval_status: string;
+    approval_reason_codes?: string[] | null;
   }>;
 
   const holidayDates = new Set(holidayRows.map((row) => row.holiday_date));
@@ -178,7 +190,7 @@ export async function POST(req: NextRequest) {
   const attendanceByDate = new Map<string, typeof attendanceRows>();
 
   attendanceRows.forEach((row) => {
-    const punchAt = row.effective_punch_at || row.server_received_at;
+    const punchAt = punchEventAt(row);
     if (!punchAt) return;
     const isoDate = isoDateInIndia(punchAt);
     if (isoDate >= start && isoDate < nextStart) {
@@ -249,18 +261,19 @@ export async function POST(req: NextRequest) {
     let punchInAt: string | null = null;
     let punchOutAt: string | null = null;
     const dayEvents = (attendanceByDate.get(iso) || []).slice().sort((left, right) => {
-      const leftTime = new Date(left.effective_punch_at || left.server_received_at).getTime();
-      const rightTime = new Date(right.effective_punch_at || right.server_received_at).getTime();
+      const leftTime = new Date(punchEventAt(left) || left.server_received_at).getTime();
+      const rightTime = new Date(punchEventAt(right) || right.server_received_at).getTime();
       return leftTime - rightTime;
     });
 
     if (!isPastDate) {
       status = null;
     } else if (dayEvents.length > 0) {
+      const pendingApprovalEvent = dayEvents.find((row) => row.approval_status === "pending_approval") || null;
       const firstIn = dayEvents.find((row) => row.punch_type === "in") || null;
       const lastOut = [...dayEvents].reverse().find((row) => row.punch_type === "out") || null;
-      punchInAt = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
-      punchOutAt = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
+      punchInAt = firstIn ? punchEventAt(firstIn) : null;
+      punchOutAt = lastOut ? punchEventAt(lastOut) : null;
 
       const isHoliday = holidayDates.has(iso);
       const isWeeklyOff = !isHoliday && weeklyOffDates.has(iso);
@@ -310,7 +323,7 @@ export async function POST(req: NextRequest) {
       if (baseDecision.resetLateCycle) lateCycleCount = 0;
       if (baseDecision.resetEarlyGoCycle) earlyGoCycleCount = 0;
 
-      status = decision.status;
+      status = pendingApprovalEvent ? "manual_review" : decision.status;
     } else if (leaveDates.has(iso)) {
       status = "leave";
     } else if (holidayDates.has(iso)) {
@@ -322,6 +335,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (status) {
+      const pendingApprovalEvent = dayEvents.find((row) => row.approval_status === "pending_approval") || null;
+      const pendingReasonCodes = Array.isArray(pendingApprovalEvent?.approval_reason_codes)
+        ? pendingApprovalEvent.approval_reason_codes.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
       monthlyStatuses.push({
         date: iso,
         status,
@@ -330,7 +347,9 @@ export async function POST(req: NextRequest) {
         requiresManualReview: status === "manual_review",
         nextStep:
           status === "manual_review"
-            ? holidayDates.has(iso)
+            ? pendingReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")
+              ? "punch_on_approved_leave"
+              : holidayDates.has(iso)
               ? "holiday_worked_review"
               : weeklyOffDates.has(iso)
                 ? "weekly_off_worked_review"

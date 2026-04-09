@@ -22,7 +22,10 @@ type EventRow = {
   lat: number;
   lon: number;
   effective_punch_at: string | null;
+  estimated_time_at?: string | null;
+  device_time_at?: string | null;
   server_received_at: string;
+  approval_status?: string | null;
 };
 
 type EmployeeLookupRow = {
@@ -129,6 +132,10 @@ function latLngLabel(lat: number | null | undefined, lon: number | null | undefi
   return `${Number(lat).toFixed(6)}, ${Number(lon).toFixed(6)}`;
 }
 
+function punchEventAt(event: EventRow) {
+  return event.effective_punch_at || event.estimated_time_at || event.device_time_at || event.server_received_at || null;
+}
+
 function aggregateRows(
   events: EventRow[],
   employeesById: Map<string, EmployeeLookupRow>,
@@ -141,7 +148,7 @@ function aggregateRows(
   const grouped = new Map<string, EventRow[]>();
 
   events.forEach((event) => {
-    const punchAt = event.effective_punch_at || event.server_received_at;
+    const punchAt = punchEventAt(event);
     if (!punchAt) return;
     const localDate = isoDateInTimeZone(punchAt, timeZone);
     if (localDate > selectedDate) return;
@@ -157,17 +164,18 @@ function aggregateRows(
   const preparedRows = Array.from(grouped.entries())
     .map(([key, bucket]) => {
       const ordered = [...bucket].sort((a, b) => {
-        const left = new Date(a.effective_punch_at || a.server_received_at).getTime();
-        const right = new Date(b.effective_punch_at || b.server_received_at).getTime();
+        const left = new Date(punchEventAt(a) || a.server_received_at).getTime();
+        const right = new Date(punchEventAt(b) || b.server_received_at).getTime();
         return left - right;
       });
       const employee = employeesById.get(ordered[0]?.employee_id || "");
       const shift = employee?.shift_name?.trim() || "General";
       const resolvedPolicies = employee ? resolvedPoliciesByEmployee.get(employee.id) : null;
+      const pendingApprovalPresent = ordered.some((event) => event.approval_status === "pending_approval");
       const firstIn = ordered.find((event) => event.punch_type === "in") || null;
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
-      const checkInIso = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
-      const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
+      const checkInIso = firstIn ? punchEventAt(firstIn) : null;
+      const checkOutIso = lastOut ? punchEventAt(lastOut) : null;
       const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
         shiftName: shift,
       });
@@ -236,6 +244,7 @@ function aggregateRows(
             : isWeeklyOff
               ? (resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment)
               : null,
+        pendingApprovalPresent,
       };
     })
     .sort((a, b) => a.employee.localeCompare(b.employee));
@@ -303,7 +312,7 @@ function aggregateRows(
           checkOutAddress: row.checkOutAddress,
           checkOutLatLng: row.checkOutLatLng,
           workHours: row.workHours,
-          status: decision.status,
+          status: row.pendingApprovalPresent ? "manual_review" : decision.status,
           nonWorkingDayTreatment: treatmentLabel || undefined,
           presentTodayEligible: row.presentTodayEligible,
         });
@@ -337,12 +346,12 @@ export async function GET(req: NextRequest) {
     const [eventsResult, holidayResult, leaveResult] = await Promise.all([
       context.admin
         .from("attendance_punch_events")
-        .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
+        .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,estimated_time_at,device_time_at,server_received_at,approval_status")
         .eq("company_id", context.companyId)
-        .in("approval_status", APPROVED_STATUSES)
-        .gte("effective_punch_at", fromIso)
-        .lt("effective_punch_at", toIso)
-        .order("effective_punch_at", { ascending: true }),
+        .in("approval_status", [...APPROVED_STATUSES, "pending_approval"])
+        .gte("server_received_at", fromIso)
+        .lt("server_received_at", toIso)
+        .order("server_received_at", { ascending: true }),
       context.admin
         .from("company_holidays")
         .select("holiday_date")

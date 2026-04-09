@@ -1,7 +1,7 @@
 import { SupabaseClient } from "@supabase/supabase-js";
 import { resolveHolidayPolicyRuntime, resolveLeavePolicyRuntime, resolveShiftPolicyRuntime } from "@/lib/companyPolicyRuntime";
 import { resolvePoliciesForEmployee } from "@/lib/companyPoliciesServer";
-import { upsertPendingDailyPunchReviewCase } from "@/lib/manualReviewCases";
+import { upsertPendingDailyPunchReviewCase, upsertPendingNonWorkingDayReviewCase } from "@/lib/manualReviewCases";
 import { verifyMobileSessionToken } from "@/lib/mobileSessionToken";
 import { isPunchInAllowedByShiftWindow, normalizePunchAccessRule } from "@/lib/shiftWorkPolicy";
 import { rawWorkedMinutes } from "@/lib/attendancePolicy";
@@ -185,6 +185,26 @@ function buildPunchReviewCaseType(reasonCodes: string[]) {
   return reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE") ? "punch_on_approved_leave" : "offline_punch_review";
 }
 
+function buildPendingPunchCaseType(params: {
+  dayType: "working_day" | "holiday" | "weekly_off";
+  reasonCodes: string[];
+}) {
+  if (params.reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) return "punch_on_approved_leave" as const;
+  if (params.dayType === "holiday") return "holiday_worked_review" as const;
+  if (params.dayType === "weekly_off") return "weekly_off_worked_review" as const;
+  return "offline_punch_review" as const;
+}
+
+function buildPendingPunchNextStep(params: {
+  dayType: "working_day" | "holiday" | "weekly_off";
+  reasonCodes: string[];
+}) {
+  if (params.reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) return "punch_on_approved_leave_review";
+  if (params.dayType === "holiday") return "holiday_worked_review";
+  if (params.dayType === "weekly_off") return "weekly_off_worked_review";
+  return "offline_punch_review";
+}
+
 function normalizeApprovalReasonCodes(reasonCodes: string[]) {
   return [...new Set(reasonCodes.map((code) => code.trim()).filter(Boolean))];
 }
@@ -238,6 +258,7 @@ function buildApproval(params: {
   employee: Record<string, unknown>;
   company: Record<string, unknown>;
   distanceFromOfficeM: number | null;
+  dayType: "working_day" | "holiday" | "weekly_off";
 }) {
   const reasons: string[] = [];
   const incomingReasonCodes = normalizeClientApprovalHints(parseReasonCodes(params.payload.approval_reason_codes));
@@ -309,9 +330,10 @@ function buildApproval(params: {
 
   const approvalReasonCodes = normalizeApprovalReasonCodes(reasons);
   const mustReviewReasons = approvalReasonCodes.filter((code) => mustReviewOfflineWorkingDayReason(code));
+  const requiresSpecialDayApproval = params.dayType === "holiday" || params.dayType === "weekly_off";
   return {
     ok: true as const,
-    approvalStatus: mustReviewReasons.length ? "pending_approval" : "auto_approved",
+    approvalStatus: requiresSpecialDayApproval || mustReviewReasons.length ? "pending_approval" : "auto_approved",
     approvalReasonCodes,
   };
 }
@@ -628,6 +650,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
     employee,
     company,
     distanceFromOfficeM,
+    dayType,
   });
 
   if (!approval.ok) {
@@ -637,6 +660,13 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
   let approvalStatus = approval.approvalStatus;
   const approvalReasonCodes = [...approval.approvalReasonCodes];
   let noticeMessage: string | null = null;
+  if (dayType === "holiday") {
+    approvalStatus = "pending_approval";
+    noticeMessage = "You punched on a holiday. This attendance will continue in approval flow.";
+  } else if (dayType === "weekly_off") {
+    approvalStatus = "pending_approval";
+    noticeMessage = "You punched on a weekly off. This attendance will continue in approval flow.";
+  }
   if (punchOnApprovedLeave && resolvedLeave.ifEmployeePunchesOnApprovedLeave === "Allow Punch and Send for Manual Review") {
     if (!approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) {
       approvalReasonCodes.push("PUNCH_ON_APPROVED_LEAVE");
@@ -708,36 +738,53 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   if (inserted.approval_status === "pending_approval") {
     if (payload.punch_type === "out") {
-      const caseType = buildPunchReviewCaseType(approvalReasonCodes);
-      const reviewCase = await upsertPendingDailyPunchReviewCase({
-        admin,
-        companyId: payload.company_id,
-        employeeId: payload.employee_id,
+      const caseType = buildPendingPunchCaseType({ dayType, reasonCodes: approvalReasonCodes });
+      const basePayload = {
         workDate: punchDate,
-        caseType,
-        sourceId: inserted.id,
-        reasonCodes: approvalReasonCodes,
-        payloadJson: {
-          workDate: punchDate,
-          punchAt: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
-          firstPunchAt: null,
-          lastPunchAt: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
-          checkIn: null,
-          checkOut: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
-          workHours: "-",
-          workedMinutes: 0,
-          punchType: "OUT",
-          dayType: dayType === "holiday" ? "Holiday" : dayType === "weekly_off" ? "Weekly Off" : "Working Day",
-          addressText: payload.address || null,
-          isOffline: payload.is_offline,
-          pendingPunchIds: [inserted.id],
-          hasPunchOut: true,
-          triggerPunchId: inserted.id,
-          employeeName: String(employee.full_name || "").trim() || null,
-          companyName: String(company.name || "").trim() || null,
-          punchOnApprovedLeave,
-        },
-      });
+        punchAt: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
+        firstPunchAt: null,
+        lastPunchAt: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
+        checkIn: null,
+        checkOut: inserted.effective_punch_at || estimatedTimeIso || deviceTimeIso || inserted.server_received_at,
+        workHours: "-",
+        workedMinutes: 0,
+        punchType: "OUT",
+        dayType: dayType === "holiday" ? "Holiday" : dayType === "weekly_off" ? "Weekly Off" : "Working Day",
+        addressText: payload.address || null,
+        isOffline: payload.is_offline,
+        pendingPunchIds: [inserted.id],
+        hasPunchOut: true,
+        triggerPunchId: inserted.id,
+        employeeName: String(employee.full_name || "").trim() || null,
+        companyName: String(company.name || "").trim() || null,
+        punchOnApprovedLeave,
+      };
+      const reviewCase =
+        caseType === "holiday_worked_review" || caseType === "weekly_off_worked_review"
+          ? await upsertPendingNonWorkingDayReviewCase({
+              admin,
+              companyId: payload.company_id,
+              employeeId: payload.employee_id,
+              workDate: punchDate,
+              caseType,
+              sourceId: inserted.id,
+              reasonCodes: approvalReasonCodes,
+              payloadJson: {
+                ...basePayload,
+                suggestedTreatment:
+                  dayType === "holiday" ? resolvedHoliday.holidayWorkedStatus : resolvedHoliday.weeklyOffWorkedStatus,
+              },
+            })
+          : await upsertPendingDailyPunchReviewCase({
+              admin,
+              companyId: payload.company_id,
+              employeeId: payload.employee_id,
+              workDate: punchDate,
+              caseType,
+              sourceId: inserted.id,
+              reasonCodes: approvalReasonCodes,
+              payloadJson: basePayload,
+            });
       if (!reviewCase.ok) {
         return { status: 500, body: { error: reviewCase.error } };
       }
@@ -746,9 +793,7 @@ export async function submitMobilePunch(admin: SupabaseClient, rawBody: JsonBody
 
   const requiresManualReview = inserted.approval_status === "pending_approval";
   const nextStep = requiresManualReview
-    ? approvalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")
-      ? "punch_on_approved_leave_review"
-      : "offline_punch_review"
+    ? buildPendingPunchNextStep({ dayType, reasonCodes: approvalReasonCodes })
     : null;
 
   return {

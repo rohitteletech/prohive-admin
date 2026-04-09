@@ -417,12 +417,6 @@ export async function ensureNonWorkingDayReviewCaseForApprovedDate(params: {
     ["holiday_weekoff"],
   );
   const resolvedHoliday = resolveHolidayPolicyRuntime(policyContext.resolved.holiday_weekoff);
-  const caseType =
-    resolvedHoliday.holidayWorkedStatus === "Manual Review"
-      ? "holiday_worked_review"
-      : resolvedHoliday.weeklyOffWorkedStatus === "Manual Review"
-        ? "weekly_off_worked_review"
-        : null;
 
   const { data: dayPunches, error: dayPunchesError } = await params.admin
     .from("attendance_punch_events")
@@ -463,16 +457,8 @@ export async function ensureNonWorkingDayReviewCaseForApprovedDate(params: {
 
   const requiredCaseType =
     dayType === "holiday"
-      ? resolvedHoliday.holidayWorkedStatus === "Manual Review"
-        ? "holiday_worked_review"
-        : null
-      : resolvedHoliday.weeklyOffWorkedStatus === "Manual Review"
-        ? "weekly_off_worked_review"
-        : null;
-
-  if (!requiredCaseType || caseType !== requiredCaseType) {
-    return { ok: true as const, action: "skipped" as const };
-  }
+      ? "holiday_worked_review"
+      : "weekly_off_worked_review";
 
   const firstIn = approvedDayPunches.find((row) => row.punch_type === "in") || null;
   const lastOut = [...approvedDayPunches].reverse().find((row) => row.punch_type === "out") || null;

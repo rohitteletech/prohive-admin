@@ -30,7 +30,10 @@ type EventRow = {
   lat: number;
   lon: number;
   effective_punch_at: string | null;
+  estimated_time_at?: string | null;
+  device_time_at?: string | null;
   server_received_at: string;
+  approval_status?: string | null;
 };
 
 type EmployeeLookupRow = {
@@ -187,6 +190,10 @@ function formatPresentCount(value: number) {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function punchEventAt(event: EventRow) {
+  return event.effective_punch_at || event.estimated_time_at || event.device_time_at || event.server_received_at || null;
+}
+
 function presentDaysValueForStatus(params: {
   status: AttendanceReportRow["status"];
   halfDayValue: number;
@@ -260,7 +267,7 @@ function aggregateRows(params: {
   const grouped = new Map<string, EventRow[]>();
 
   for (const event of params.events) {
-    const punchAt = event.effective_punch_at || event.server_received_at;
+    const punchAt = punchEventAt(event);
     if (!punchAt) continue;
     const localDate = isoDateInTimeZone(punchAt, params.timeZone);
     const employee = params.employeesById.get(event.employee_id);
@@ -274,17 +281,18 @@ function aggregateRows(params: {
   const preparedRows = Array.from(grouped.entries())
     .map(([key, bucket]) => {
       const ordered = [...bucket].sort((a, b) => {
-        const left = new Date(a.effective_punch_at || a.server_received_at).getTime();
-        const right = new Date(b.effective_punch_at || b.server_received_at).getTime();
+        const left = new Date(punchEventAt(a) || a.server_received_at).getTime();
+        const right = new Date(punchEventAt(b) || b.server_received_at).getTime();
         return left - right;
       });
       const employee = params.employeesById.get(ordered[0]?.employee_id || "");
       const shift = employee?.shift_name?.trim() || "General";
       const resolvedPolicies = employee ? params.resolvedPoliciesByEmployee.get(employee.id) : null;
+      const pendingApprovalPresent = ordered.some((event) => event.approval_status === "pending_approval");
       const firstIn = ordered.find((event) => event.punch_type === "in") || null;
       const lastOut = [...ordered].reverse().find((event) => event.punch_type === "out") || null;
-      const checkInIso = firstIn?.effective_punch_at || firstIn?.server_received_at || null;
-      const checkOutIso = lastOut?.effective_punch_at || lastOut?.server_received_at || null;
+      const checkInIso = firstIn ? punchEventAt(firstIn) : null;
+      const checkOutIso = lastOut ? punchEventAt(lastOut) : null;
       const resolvedShift = resolveShiftPolicyRuntime(resolvedPolicies?.resolved?.shift || null, {
         shiftName: shift,
       });
@@ -350,6 +358,7 @@ function aggregateRows(params: {
             : isWeeklyOff
               ? (resolvedHoliday.weeklyOffWorkedStatus as NonWorkingDayTreatment)
               : null,
+        pendingApprovalPresent,
       };
     })
     .sort((a, b) => {
@@ -415,7 +424,7 @@ function aggregateRows(params: {
         checkIn: row.checkIn,
         checkOut: row.checkOut,
         workHours: row.workHours,
-        status: decision.status,
+        status: row.pendingApprovalPresent ? "manual_review" : decision.status,
         lateMinutes: decision.lateMinutes,
         latePenaltyPolicy: buildLatePenaltyPolicyFromAttendancePolicy(row.attendancePolicy),
         nonWorkingDayTreatment: treatmentLabel || undefined,
@@ -474,12 +483,12 @@ export async function getAttendanceReportData(params: {
 
   const eventsResult = await params.admin
     .from("attendance_punch_events")
-    .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,server_received_at")
+    .select("id,employee_id,punch_type,address_text,lat,lon,effective_punch_at,estimated_time_at,device_time_at,server_received_at,approval_status")
     .eq("company_id", params.companyId)
-    .in("approval_status", APPROVED_STATUSES)
-    .gte("effective_punch_at", fromIso)
-    .lt("effective_punch_at", toIso)
-    .order("effective_punch_at", { ascending: true });
+    .in("approval_status", [...APPROVED_STATUSES, "pending_approval"])
+    .gte("server_received_at", fromIso)
+    .lt("server_received_at", toIso)
+    .order("server_received_at", { ascending: true });
 
   if (eventsResult.error) {
     return { ok: false as const, status: 400, error: eventsResult.error.message || "Unable to load attendance events." };
