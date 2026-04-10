@@ -15,7 +15,6 @@ const mainMenuItems = [
   { href: "/company/manual-reviews", label: "Manual Reviews", description: "Review offline and approved-leave punch cases" },
   { href: "/company/comp-off-ledger", label: "Comp Off Ledger", description: "Track earned and used comp off balances" },
   { href: "/company/claims", label: "Claim", description: "Review employee claim submissions" },
-  { href: "/company/hr-policy", label: "HR Policy", description: "Policy and handbook" },
   { href: "/company/settings/holidays", label: "Holiday Calendar", description: "Manage company-wide holiday dates" },
   { href: "/company/settings", label: "Settings", description: "Admin account, company profile, and security settings" },
 ];

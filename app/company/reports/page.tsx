@@ -266,7 +266,7 @@ export default function Page() {
       {
         key: "late_penalty",
         title: "Late Penalty Report",
-        category: "HR Policy",
+        category: "Policy",
         description: "Employee-wise late marks, bracket counts, and calculated penalty days for the selected period.",
         status: "ready_next",
         primaryMetric: "02",
