@@ -286,7 +286,11 @@ export async function POST(req: NextRequest) {
   const todayNextStep = todayRequiresPunchApproval
     ? pendingApprovalReasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")
       ? "punch_on_approved_leave"
-      : "offline_punch_review"
+      : todayDayType === "holiday"
+        ? "holiday_worked_review"
+        : todayDayType === "weekly_off"
+          ? "weekly_off_worked_review"
+          : "offline_punch_review"
     : attendanceDecision.status === "manual_review"
       ? todayDayType === "holiday"
         ? "holiday_worked_review"
