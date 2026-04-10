@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import {
+  MAX_MASTER_ITEM_LENGTH,
+  MAX_MASTER_ITEMS,
+  isAllowedMasterValue,
+  normalizeMasterList,
+} from "@/lib/companySettingsMasters";
 
 type Body = {
   office_lat?: number | null;
   office_lon?: number | null;
   office_radius_m?: number | null;
   company_tagline?: string | null;
+  department_options?: string[] | null;
+  designation_options?: string[] | null;
 };
 
 function normalizeNumber(value: unknown) {
@@ -34,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await context.admin
     .from("companies")
-    .select("office_lat,office_lon,office_radius_m,company_tagline")
+    .select("office_lat,office_lon,office_radius_m,company_tagline,department_options,designation_options")
     .eq("id", context.companyId)
     .maybeSingle();
 
@@ -47,6 +55,8 @@ export async function GET(req: NextRequest) {
     office_lon: data?.office_lon ?? null,
     office_radius_m: data?.office_radius_m ?? null,
     company_tagline: data?.company_tagline ?? null,
+    department_options: normalizeMasterList(data?.department_options),
+    designation_options: normalizeMasterList(data?.designation_options),
   });
 }
 
@@ -64,7 +74,9 @@ export async function PUT(req: NextRequest) {
   const hasOfficeRadiusM = Object.prototype.hasOwnProperty.call(body, "office_radius_m");
   const hasAttendanceUpdate = hasOfficeLat || hasOfficeLon || hasOfficeRadiusM;
   const hasTaglineUpdate = Object.prototype.hasOwnProperty.call(body, "company_tagline");
-  if (!hasAttendanceUpdate && !hasTaglineUpdate) {
+  const hasDepartmentUpdate = Object.prototype.hasOwnProperty.call(body, "department_options");
+  const hasDesignationUpdate = Object.prototype.hasOwnProperty.call(body, "designation_options");
+  if (!hasAttendanceUpdate && !hasTaglineUpdate && !hasDepartmentUpdate && !hasDesignationUpdate) {
     return NextResponse.json({ error: "No settings fields provided." }, { status: 400 });
   }
 
@@ -73,6 +85,8 @@ export async function PUT(req: NextRequest) {
     office_lon?: number | null;
     office_radius_m?: number | null;
     company_tagline?: string | null;
+    department_options?: string[];
+    designation_options?: string[];
   } = {};
 
   if (hasAttendanceUpdate) {
@@ -110,6 +124,100 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: "Company tagline must be 100 characters or less." }, { status: 400 });
     }
     payload.company_tagline = tagline;
+  }
+
+  if (hasDepartmentUpdate) {
+    const departments = normalizeMasterList(body.department_options);
+    if (Array.isArray(body.department_options) && body.department_options.length > MAX_MASTER_ITEMS) {
+      return NextResponse.json({ error: `You can add up to ${MAX_MASTER_ITEMS} departments.` }, { status: 400 });
+    }
+    if (
+      Array.isArray(body.department_options)
+      && body.department_options.some((item) => typeof item === "string" && item.trim().length > MAX_MASTER_ITEM_LENGTH)
+    ) {
+      return NextResponse.json(
+        { error: `Each department must be ${MAX_MASTER_ITEM_LENGTH} characters or less.` },
+        { status: 400 }
+      );
+    }
+    payload.department_options = departments;
+  }
+
+  if (hasDesignationUpdate) {
+    const designations = normalizeMasterList(body.designation_options);
+    if (Array.isArray(body.designation_options) && body.designation_options.length > MAX_MASTER_ITEMS) {
+      return NextResponse.json({ error: `You can add up to ${MAX_MASTER_ITEMS} designations.` }, { status: 400 });
+    }
+    if (
+      Array.isArray(body.designation_options)
+      && body.designation_options.some((item) => typeof item === "string" && item.trim().length > MAX_MASTER_ITEM_LENGTH)
+    ) {
+      return NextResponse.json(
+        { error: `Each designation must be ${MAX_MASTER_ITEM_LENGTH} characters or less.` },
+        { status: 400 }
+      );
+    }
+    payload.designation_options = designations;
+  }
+
+  if (hasDepartmentUpdate || hasDesignationUpdate) {
+    const nextDepartments = hasDepartmentUpdate
+      ? payload.department_options || []
+      : normalizeMasterList(
+          (
+            await context.admin
+              .from("companies")
+              .select("department_options")
+              .eq("id", context.companyId)
+              .maybeSingle()
+          ).data?.department_options
+        );
+    const nextDesignations = hasDesignationUpdate
+      ? payload.designation_options || []
+      : normalizeMasterList(
+          (
+            await context.admin
+              .from("companies")
+              .select("designation_options")
+              .eq("id", context.companyId)
+              .maybeSingle()
+          ).data?.designation_options
+        );
+
+    const { data: employeeRows, error: employeeError } = await context.admin
+      .from("employees")
+      .select("department,designation")
+      .eq("company_id", context.companyId);
+
+    if (employeeError) {
+      return NextResponse.json(
+        { error: employeeError.message || "Unable to validate employee master data usage." },
+        { status: 400 }
+      );
+    }
+
+    const rows = Array.isArray(employeeRows) ? employeeRows : [];
+    const invalidDepartment = rows.find((row) => {
+      const value = typeof row.department === "string" ? row.department : "";
+      return value.trim() && !isAllowedMasterValue(value, nextDepartments);
+    });
+    if (invalidDepartment) {
+      return NextResponse.json(
+        { error: `Cannot remove department in use by employees: ${String(invalidDepartment.department).trim()}` },
+        { status: 400 }
+      );
+    }
+
+    const invalidDesignation = rows.find((row) => {
+      const value = typeof row.designation === "string" ? row.designation : "";
+      return value.trim() && !isAllowedMasterValue(value, nextDesignations);
+    });
+    if (invalidDesignation) {
+      return NextResponse.json(
+        { error: `Cannot remove designation in use by employees: ${String(invalidDesignation.designation).trim()}` },
+        { status: 400 }
+      );
+    }
   }
 
   const { error } = await context.admin.from("companies").update(payload).eq("id", context.companyId);

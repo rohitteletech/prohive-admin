@@ -10,6 +10,7 @@ import {
   loadCompanyEmployeesSupabase,
   nextEmployeeId,
 } from "@/lib/companyEmployees";
+import { isAllowedMasterValue, loadCompanyMasterSettings } from "@/lib/companySettingsMasters";
 import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -40,27 +41,6 @@ function normalizeMobileInput(value: string) {
   return value.replace(/\D/g, "").slice(0, 10);
 }
 
-const DESIGNATION_OPTIONS = [
-  "Software Engineer",
-  "Senior Engineer",
-  "Team Lead",
-  "Manager",
-  "HR Executive",
-  "Accountant",
-  "Sales Executive",
-  "Operations Executive",
-];
-
-const DEPARTMENT_OPTIONS = [
-  "Engineering",
-  "HR",
-  "Accounts",
-  "Sales",
-  "Operations",
-  "Support",
-  "Administration",
-];
-
 function nextEmployeeCode(rows: CompanyEmployee[]) {
   const max = rows.reduce((acc, row) => {
     const match = row.employee_code.toUpperCase().match(/^EMP-(\d+)$/);
@@ -81,6 +61,8 @@ export default function NewEmployeePage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
   const [shiftOptions, setShiftOptions] = useState<string[]>(["General Shift"]);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [designationOptions, setDesignationOptions] = useState<string[]>([]);
   const [form, setForm] = useState<EmployeeDraft>({
     full_name: "",
     gender: "",
@@ -114,6 +96,11 @@ export default function NewEmployeePage() {
       const sessionResult = supabase ? await supabase.auth.getSession() : null;
       const token = sessionResult?.data.session?.access_token || "";
       if (!token) return;
+      const settingsResult = await loadCompanyMasterSettings(token);
+      if (!ignore) {
+        setDepartmentOptions(settingsResult.departmentOptions);
+        setDesignationOptions(settingsResult.designationOptions);
+      }
       const response = await fetch("/api/company/policies?policy_type=shift", {
         headers: { authorization: `Bearer ${token}` },
       });
@@ -166,8 +153,8 @@ export default function NewEmployeePage() {
     if (form.full_name.trim().length < 2) return "Full Name is required";
     if (!form.gender) return "Gender is required";
     if (!/^\d{10}$/.test(form.mobile.trim())) return "Mobile Number must be exactly 10 digits";
-    if (form.department.trim().length < 2) return "Department is required";
-    if (form.designation.trim().length < 2) return "Designation is required";
+    if (!isAllowedMasterValue(form.department, departmentOptions)) return "Please select a department from Settings";
+    if (!isAllowedMasterValue(form.designation, designationOptions)) return "Please select a designation from Settings";
     if (!form.joining_date) return "Joining Date is required";
     if (form.joining_date > todayISOInIndia()) return "Joining Date cannot be in the future";
     if (!form.employee_code.trim()) return "Employee Code is required";
@@ -353,16 +340,18 @@ export default function NewEmployeePage() {
             <DragDropPicker
               label="Department *"
               value={form.department}
-              options={DEPARTMENT_OPTIONS}
+              options={departmentOptions}
               placeholder="Select"
               onChange={(v) => setField("department", v)}
+              emptyLabel="No departments added in Settings"
             />
             <DragDropPicker
               label="Designation *"
               value={form.designation}
-              options={DESIGNATION_OPTIONS}
+              options={designationOptions}
               placeholder="Select"
               onChange={(v) => setField("designation", v)}
+              emptyLabel="No designations added in Settings"
             />
             <div>
               <div className="mb-1 text-xs font-medium text-zinc-700">Shift *</div>
@@ -624,12 +613,14 @@ function DragDropPicker({
   options,
   placeholder,
   onChange,
+  emptyLabel,
 }: {
   label: string;
   value: string;
   options: string[];
   placeholder: string;
   onChange: (v: string) => void;
+  emptyLabel?: string;
 }) {
   return (
     <div>
@@ -640,6 +631,11 @@ function DragDropPicker({
         className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
       >
         <option value="">{placeholder}</option>
+        {options.length === 0 && emptyLabel ? (
+          <option value="" disabled>
+            {emptyLabel}
+          </option>
+        ) : null}
         {options.map((opt) => (
           <option key={`${label}-${opt}`} value={opt}>
             {opt}

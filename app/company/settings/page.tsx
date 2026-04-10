@@ -1,6 +1,7 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import { MAX_MASTER_ITEM_LENGTH, normalizeMasterList } from "@/lib/companySettingsMasters";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
 
 function CompanySettingsPageContent() {
@@ -18,6 +19,11 @@ function CompanySettingsPageContent() {
   const [officeRadiusM, setOfficeRadiusM] = useState("");
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingTagline, setSavingTagline] = useState(false);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [designationOptions, setDesignationOptions] = useState<string[]>([]);
+  const [departmentInput, setDepartmentInput] = useState("");
+  const [designationInput, setDesignationInput] = useState("");
+  const [savingMasters, setSavingMasters] = useState(false);
 
   function showToast(message: string) {
     setToast(message);
@@ -40,6 +46,8 @@ function CompanySettingsPageContent() {
         office_lon?: number | null;
         office_radius_m?: number | null;
         company_tagline?: string | null;
+        department_options?: string[];
+        designation_options?: string[];
       };
       if (!response.ok || ignore) return;
       setOfficeLat(result.office_lat == null ? "" : String(result.office_lat));
@@ -47,6 +55,8 @@ function CompanySettingsPageContent() {
       setOfficeRadiusM(result.office_radius_m == null ? "" : String(result.office_radius_m));
       setSavedTagline(result.company_tagline || "");
       setTaglineInput(result.company_tagline || "");
+      setDepartmentOptions(normalizeMasterList(result.department_options));
+      setDesignationOptions(normalizeMasterList(result.designation_options));
 
       try {
         const raw = localStorage.getItem("phv_company");
@@ -199,6 +209,72 @@ function CompanySettingsPageContent() {
     })();
   }
 
+  function addMasterItem(kind: "department" | "designation") {
+    const rawValue = kind === "department" ? departmentInput : designationInput;
+    const normalized = normalizeMasterList([rawValue])[0];
+    if (!normalized) {
+      showToast(`Enter a valid ${kind} name first.`);
+      return;
+    }
+
+    if (kind === "department") {
+      setDepartmentOptions((prev) => {
+        const next = normalizeMasterList([...prev, normalized]);
+        if (next.length === prev.length) {
+          showToast("Department already added.");
+          return prev;
+        }
+        return next;
+      });
+      setDepartmentInput("");
+      return;
+    }
+
+    setDesignationOptions((prev) => {
+      const next = normalizeMasterList([...prev, normalized]);
+      if (next.length === prev.length) {
+        showToast("Designation already added.");
+        return prev;
+      }
+      return next;
+    });
+    setDesignationInput("");
+  }
+
+  function removeMasterItem(kind: "department" | "designation", value: string) {
+    if (kind === "department") {
+      setDepartmentOptions((prev) => prev.filter((item) => item !== value));
+      return;
+    }
+    setDesignationOptions((prev) => prev.filter((item) => item !== value));
+  }
+
+  async function handleSaveMasters() {
+    const supabase = getSupabaseBrowserClient("company");
+    const sessionResult = supabase ? await supabase.auth.getSession() : null;
+    const accessToken = sessionResult?.data.session?.access_token;
+    if (!accessToken) return showToast("Company session not found. Please login again.");
+
+    setSavingMasters(true);
+    const response = await fetch("/api/company/settings", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({
+        department_options: departmentOptions,
+        designation_options: designationOptions,
+      }),
+    });
+    const result = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+    setSavingMasters(false);
+    if (!response.ok || !result.ok) {
+      return showToast(result.error || "Unable to save department and designation settings.");
+    }
+    showToast("Department and designation settings saved.");
+  }
+
   function cardClass(tone: "default" | "danger" = "default") {
     return [
       "rounded-[24px] border bg-white shadow-sm p-5 sm:p-6",
@@ -273,6 +349,100 @@ function CompanySettingsPageContent() {
             </div>
             <button type="button" onClick={handleSaveAttendanceSettings} disabled={savingAttendance} className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
               {savingAttendance ? "Saving..." : "Save Office Attendance Settings"}
+            </button>
+          </section>
+
+          <section className={cardClass()}>
+            <div className="flex flex-col gap-1 border-b border-slate-100 pb-4">
+              <h2 className="text-lg font-semibold text-slate-900">Employee Master Lists</h2>
+              <p className="text-sm text-slate-600">
+                Add departments and designations here. Employee dropdowns will show only these saved items with a default Select option.
+              </p>
+            </div>
+
+            <div className="mt-4 grid gap-5 lg:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-900">Departments</div>
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={departmentInput}
+                    onChange={(e) => setDepartmentInput(e.target.value.slice(0, MAX_MASTER_ITEM_LENGTH))}
+                    placeholder="Add department"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addMasterItem("department")}
+                    className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {departmentOptions.length === 0 ? (
+                    <div className="text-xs text-slate-500">No departments added yet.</div>
+                  ) : (
+                    departmentOptions.map((item) => (
+                      <span key={item} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => removeMasterItem("department", item)}
+                          className="text-rose-600 hover:text-rose-700"
+                        >
+                          Remove
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-sm font-semibold text-slate-900">Designations</div>
+                <div className="mt-3 flex gap-2">
+                  <input
+                    value={designationInput}
+                    onChange={(e) => setDesignationInput(e.target.value.slice(0, MAX_MASTER_ITEM_LENGTH))}
+                    placeholder="Add designation"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addMasterItem("designation")}
+                    className="rounded-lg border border-sky-200 bg-sky-50 px-4 py-2.5 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+                  >
+                    Add
+                  </button>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {designationOptions.length === 0 ? (
+                    <div className="text-xs text-slate-500">No designations added yet.</div>
+                  ) : (
+                    designationOptions.map((item) => (
+                      <span key={item} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700">
+                        {item}
+                        <button
+                          type="button"
+                          onClick={() => removeMasterItem("designation", item)}
+                          className="text-rose-600 hover:text-rose-700"
+                        >
+                          Remove
+                        </button>
+                      </span>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveMasters}
+              disabled={savingMasters}
+              className="mt-4 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400"
+            >
+              {savingMasters ? "Saving..." : "Save Department and Designation Settings"}
             </button>
           </section>
 

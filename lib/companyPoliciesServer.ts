@@ -11,6 +11,7 @@ import {
   PolicyType,
   resolvePolicyForEmployee,
 } from "@/lib/companyPolicies";
+import { normalizeMasterList } from "@/lib/companySettingsMasters";
 
 export async function ensureCompanyPolicyDefinitions(admin: SupabaseClient, companyId: string, createdBy: string) {
   const { data, error } = await admin
@@ -65,6 +66,16 @@ export async function listCompanyPolicyAssignments(admin: SupabaseClient, compan
 }
 
 export async function listCompanyAssignmentTargets(admin: SupabaseClient, companyId: string) {
+  const { data: companyData, error: companyError } = await admin
+    .from("companies")
+    .select("department_options")
+    .eq("id", companyId)
+    .maybeSingle();
+
+  if (companyError) {
+    throw new Error(companyError.message || "Unable to load company department settings.");
+  }
+
   const { data, error } = await admin
     .from("employees")
     .select("id,full_name,employee_code,department,status")
@@ -84,13 +95,10 @@ export async function listCompanyAssignmentTargets(admin: SupabaseClient, compan
       status: String(row.status || ""),
     }));
 
-  const departmentSet = new Set<string>();
-  for (const employee of employees) {
-    if (employee.department.trim()) departmentSet.add(employee.department.trim());
-  }
+  const departmentOptions = normalizeMasterList(companyData?.department_options);
 
   return {
-    departments: Array.from(departmentSet).sort((a, b) => a.localeCompare(b)).map((name) => ({ id: name, label: name })),
+    departments: departmentOptions.map((name) => ({ id: name, label: name })),
     employees: employees.map((employee) => ({ id: employee.id, label: employee.label })),
   };
 }

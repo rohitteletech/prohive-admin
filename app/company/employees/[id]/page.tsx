@@ -10,6 +10,7 @@ import {
   loadCompanyEmployees,
   loadCompanyEmployeesSupabase,
 } from "@/lib/companyEmployees";
+import { isAllowedMasterValue, loadCompanyMasterSettings } from "@/lib/companySettingsMasters";
 import { formatDisplayDate, formatDisplayDateTime, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -109,27 +110,6 @@ function deviceInfoFromEmployee(employee?: CompanyEmployee): EmployeeModel["devi
   };
 }
 
-const DESIGNATION_OPTIONS = [
-  "Software Engineer",
-  "Senior Engineer",
-  "Team Lead",
-  "Manager",
-  "HR Executive",
-  "Accountant",
-  "Sales Executive",
-  "Operations Executive",
-];
-
-const DEPARTMENT_OPTIONS = [
-  "Engineering",
-  "HR",
-  "Accounts",
-  "Sales",
-  "Operations",
-  "Support",
-  "Administration",
-];
-
 function parseEmploymentType(value: string): EmploymentType | undefined {
   if (value === "full_time" || value === "contract" || value === "intern") return value;
   return undefined;
@@ -188,6 +168,8 @@ export default function EmployeeDetailPage() {
   const [saved, setSaved] = useState<EmployeeModel>(initial);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
   const [shiftOptions, setShiftOptions] = useState<string[]>(["General Shift"]);
+  const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
+  const [designationOptions, setDesignationOptions] = useState<string[]>([]);
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -213,15 +195,15 @@ export default function EmployeeDetailPage() {
     const nameOk = draft.full_name.trim().length >= 2;
     const mobileOk = /^\d{10}$/.test(draft.mobile.trim());
     const genderOk = !!draft.gender;
-    const desigOk = draft.designation.trim().length >= 2;
-    const deptOk = (draft.department || "").trim().length >= 2;
+    const desigOk = isAllowedMasterValue(draft.designation, designationOptions);
+    const deptOk = isAllowedMasterValue(draft.department || "", departmentOptions);
     const joinOk = draft.joining_date?.trim().length === 10;
 
     if (!nameOk) return showToast("Name is required");
     if (!mobileOk) return showToast("Mobile Number must be exactly 10 digits");
     if (!genderOk) return showToast("Gender is required");
-    if (!desigOk) return showToast("Designation is required");
-    if (!deptOk) return showToast("Department is required");
+    if (!desigOk) return showToast("Please select a designation from Settings");
+    if (!deptOk) return showToast("Please select a department from Settings");
     if (!joinOk) return showToast("Joining date is required");
     if (draft.joining_date > todayISOInIndia()) return showToast("Joining date cannot be in the future");
     if (draft.aadhaar_number && !/^\d{12}$/.test(draft.aadhaar_number)) {
@@ -362,6 +344,11 @@ export default function EmployeeDetailPage() {
       const sessionResult = supabase ? await supabase.auth.getSession() : null;
       const token = sessionResult?.data.session?.access_token || "";
       if (!token) return;
+      const settingsResult = await loadCompanyMasterSettings(token);
+      if (!ignore) {
+        setDepartmentOptions(settingsResult.departmentOptions);
+        setDesignationOptions(settingsResult.designationOptions);
+      }
       const response = await fetch("/api/company/policies?policy_type=shift", {
         headers: { authorization: `Bearer ${token}` },
       });
@@ -612,18 +599,20 @@ export default function EmployeeDetailPage() {
               label="Department *"
               value={data.department || ""}
               editable={isEditing}
-              options={DEPARTMENT_OPTIONS}
+              options={departmentOptions}
               placeholder="Select"
               onChange={(v) => setField("department", v)}
+              emptyLabel="No departments added in Settings"
             />
 
             <DragDropField
               label="Designation *"
               value={data.designation}
               editable={isEditing}
-              options={DESIGNATION_OPTIONS}
+              options={designationOptions}
               placeholder="Select"
               onChange={(v) => setField("designation", v)}
+              emptyLabel="No designations added in Settings"
             />
 
             <div>
@@ -957,6 +946,7 @@ function DragDropField({
   options,
   placeholder,
   onChange,
+  emptyLabel,
 }: {
   label: string;
   value: string;
@@ -964,6 +954,7 @@ function DragDropField({
   options: string[];
   placeholder: string;
   onChange: (v: string) => void;
+  emptyLabel?: string;
 }) {
   if (!editable) {
     return (
@@ -985,6 +976,11 @@ function DragDropField({
         className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
       >
         <option value="">{placeholder}</option>
+        {options.length === 0 && emptyLabel ? (
+          <option value="" disabled>
+            {emptyLabel}
+          </option>
+        ) : null}
         {options.map((opt) => (
           <option key={`${label}-opt-${opt}`} value={opt}>
             {opt}

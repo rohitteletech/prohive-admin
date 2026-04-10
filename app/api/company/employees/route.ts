@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCompanyAdminContext } from "@/lib/companyAdminServer";
+import { isAllowedMasterValue, normalizeMasterList } from "@/lib/companySettingsMasters";
 
 type Body = {
   full_name?: string;
@@ -93,6 +94,27 @@ export async function POST(req: NextRequest) {
     .maybeSingle();
   if (duplicateMobile?.id) {
     return NextResponse.json({ error: "Mobile already exists. Use a unique mobile number." }, { status: 409 });
+  }
+
+  const { data: companySettings, error: companySettingsError } = await context.admin
+    .from("companies")
+    .select("department_options,designation_options")
+    .eq("id", context.companyId)
+    .maybeSingle();
+  if (companySettingsError) {
+    return NextResponse.json(
+      { error: companySettingsError.message || "Unable to validate company department and designation settings." },
+      { status: 400 }
+    );
+  }
+
+  const allowedDepartments = normalizeMasterList(companySettings?.department_options);
+  const allowedDesignations = normalizeMasterList(companySettings?.designation_options);
+  if (!isAllowedMasterValue(body.department, allowedDepartments)) {
+    return NextResponse.json({ error: "Please select a valid department from Settings." }, { status: 400 });
+  }
+  if (!isAllowedMasterValue(body.designation, allowedDesignations)) {
+    return NextResponse.json({ error: "Please select a valid designation from Settings." }, { status: 400 });
   }
 
   const payload = {
