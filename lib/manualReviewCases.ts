@@ -141,11 +141,16 @@ function buildDailyPunchReviewPayload(rows: PunchReviewEventRow[], workDate: str
     if (dayType === "working_day") return "Working Day";
     return "";
   })();
+  const caseType = (() => {
+    if (hasApprovedLeaveReason) return "punch_on_approved_leave" as const;
+    const normalizedDayType = String(firstPunch?.day_type || lastPunch?.day_type || "").trim();
+    if (normalizedDayType === "holiday") return "holiday_worked_review" as const;
+    if (normalizedDayType === "weekly_off") return "weekly_off_worked_review" as const;
+    return "offline_punch_review" as const;
+  })();
 
   return {
-    caseType: (hasApprovedLeaveReason ? "punch_on_approved_leave" : "offline_punch_review") as
-      | "offline_punch_review"
-      | "punch_on_approved_leave",
+    caseType,
     sourceId: String(lastPunch?.id || firstPunch?.id || "").trim(),
     reasonCodes,
     payloadJson: {
@@ -308,16 +313,28 @@ export async function ensurePendingPunchReviewCases(params: {
     if (!hasPunchOut && workDate >= todayIndia) continue;
 
     const payload = buildDailyPunchReviewPayload(rows, workDate);
-    const result = await upsertPendingDailyPunchReviewCase({
-      admin: params.admin,
-      companyId,
-      employeeId,
-      workDate,
-      caseType: payload.caseType,
-      sourceId: payload.sourceId,
-      reasonCodes: payload.reasonCodes,
-      payloadJson: payload.payloadJson,
-    });
+    const result =
+      payload.caseType === "holiday_worked_review" || payload.caseType === "weekly_off_worked_review"
+        ? await upsertPendingNonWorkingDayReviewCase({
+            admin: params.admin,
+            companyId,
+            employeeId,
+            workDate,
+            caseType: payload.caseType,
+            sourceId: payload.sourceId,
+            reasonCodes: payload.reasonCodes,
+            payloadJson: payload.payloadJson,
+          })
+        : await upsertPendingDailyPunchReviewCase({
+            admin: params.admin,
+            companyId,
+            employeeId,
+            workDate,
+            caseType: payload.caseType,
+            sourceId: payload.sourceId,
+            reasonCodes: payload.reasonCodes,
+            payloadJson: payload.payloadJson,
+          });
     if (!result.ok) return result;
     touchedGroups += 1;
   }

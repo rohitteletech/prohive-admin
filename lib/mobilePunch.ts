@@ -199,7 +199,7 @@ function buildPendingPunchNextStep(params: {
   dayType: "working_day" | "holiday" | "weekly_off";
   reasonCodes: string[];
 }) {
-  if (params.reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) return "punch_on_approved_leave_review";
+  if (params.reasonCodes.includes("PUNCH_ON_APPROVED_LEAVE")) return "punch_on_approved_leave";
   if (params.dayType === "holiday") return "holiday_worked_review";
   if (params.dayType === "weekly_off") return "weekly_off_worked_review";
   return "offline_punch_review";
