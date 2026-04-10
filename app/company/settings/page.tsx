@@ -24,6 +24,7 @@ function CompanySettingsPageContent() {
   const [departmentInput, setDepartmentInput] = useState("");
   const [designationInput, setDesignationInput] = useState("");
   const [savingMasters, setSavingMasters] = useState(false);
+  const [loggingOutOtherSessions, setLoggingOutOtherSessions] = useState(false);
 
   function showToast(message: string) {
     setToast(message);
@@ -275,6 +276,31 @@ function CompanySettingsPageContent() {
     showToast("Department and designation settings saved.");
   }
 
+  async function handleLogoutOtherSessions() {
+    if (!hasSupabaseEnv()) {
+      showToast("Supabase is not configured.");
+      return;
+    }
+
+    const supabase = getSupabaseBrowserClient("company");
+    if (!supabase) {
+      showToast("Supabase client unavailable.");
+      return;
+    }
+
+    setLoggingOutOtherSessions(true);
+    try {
+      const { error } = await supabase.auth.signOut({ scope: "others" });
+      if (error) {
+        showToast(error.message || "Unable to logout other sessions.");
+        return;
+      }
+      showToast("All other active sessions have been logged out.");
+    } finally {
+      setLoggingOutOtherSessions(false);
+    }
+  }
+
   function cardClass(tone: "default" | "danger" = "default") {
     return [
       "rounded-[24px] border bg-white shadow-sm p-5 sm:p-6",
@@ -479,8 +505,13 @@ function CompanySettingsPageContent() {
               <h2 className="text-lg font-semibold text-rose-700">Security Actions</h2>
               <p className="text-sm text-slate-600">Use this if account access is suspected on another device.</p>
             </div>
-            <button type="button" onClick={() => showToast("All other sessions logged out (UI only).")} className="mt-4 w-full rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100">
-              Logout from all other sessions
+            <button
+              type="button"
+              onClick={handleLogoutOtherSessions}
+              disabled={loggingOutOtherSessions}
+              className="mt-4 w-full rounded-lg border border-rose-300 bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loggingOutOtherSessions ? "Logging out..." : "Logout from all other sessions"}
             </button>
           </section>
         </div>

@@ -248,7 +248,7 @@ export default function Page() {
   const yesterdayISO = useMemo(() => toISODate(yesterday), [yesterday]);
   const monthOptions = useMemo(() => buildLast3CompleteMonths(today), [today]);
   const defaultMonth = monthOptions[monthOptions.length - 1] || monthOptions[0];
-  const firstAvailableDate = "2025-11-01";
+  const defaultStartDate = defaultMonth?.startISO || yesterdayISO;
 
   const reports = useMemo<ReportCard[]>(
     () => [
@@ -260,7 +260,7 @@ export default function Page() {
         status: "ready_next",
         primaryMetric: "01",
         primaryLabel: "Highest priority",
-        exports: ["CSV", "XLSX"],
+        exports: ["CSV"],
         includes: ["Present / Late / Absent", "Check-in / Check-out", "Work hours", "Shift-wise filters"],
       },
       {
@@ -282,7 +282,7 @@ export default function Page() {
         status: "ready_next",
         primaryMetric: "03",
         primaryLabel: "Preview + export ready",
-        exports: ["CSV", "XLSX"],
+        exports: ["CSV"],
         includes: ["Leave balance", "Approved / Pending", "Policy-wise usage", "Employee-wise summary"],
       },
       {
@@ -292,8 +292,8 @@ export default function Page() {
         description: "Claims register with amount, type, approval status, and processing turnaround tracking.",
         status: "ready_next",
         primaryMetric: "04",
-        primaryLabel: "Preview ready",
-        exports: ["CSV", "PDF"],
+        primaryLabel: "Preview + export ready",
+        exports: ["CSV"],
         includes: ["Claim type", "Amount", "Approval status", "Submitted / reviewed dates"],
       },
       {
@@ -303,8 +303,8 @@ export default function Page() {
         description: "Attendance correction audit trail for manager review, remark visibility, and approval tracking.",
         status: "ready_next",
         primaryMetric: "05",
-        primaryLabel: "Preview ready",
-        exports: ["CSV", "PDF"],
+        primaryLabel: "Preview + export ready",
+        exports: ["CSV"],
         includes: ["Requested change", "Approval status", "Admin remark", "Audit-ready history"],
       },
       {
@@ -315,7 +315,7 @@ export default function Page() {
         status: "ready_next",
         primaryMetric: "06",
         primaryLabel: "Preview ready",
-        exports: ["CSV", "XLSX"],
+        exports: ["CSV"],
         includes: ["Employee directory", "Department and shift", "Joining date", "Mobile app status"],
       },
     ],
@@ -325,7 +325,7 @@ export default function Page() {
   const [selectedReport, setSelectedReport] = useState<ReportKey>("attendance");
   const [dateMode, setDateMode] = useState<DateMode>("monthly");
   const [monthKey, setMonthKey] = useState(defaultMonth?.key || "");
-  const [startDate, setStartDate] = useState(firstAvailableDate);
+  const [startDate, setStartDate] = useState(defaultStartDate);
   const [endDate, setEndDate] = useState(yesterdayISO);
   const [employeeQuery, setEmployeeQuery] = useState("");
   const [department, setDepartment] = useState("all");
@@ -842,7 +842,6 @@ export default function Page() {
                     <input
                       type="date"
                       value={startDate}
-                      min={firstAvailableDate}
                       max={yesterdayISO}
                       disabled={dateMode !== "date_range"}
                       onChange={(e) => setStartDate(e.target.value)}

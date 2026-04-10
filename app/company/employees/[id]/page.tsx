@@ -893,7 +893,7 @@ export default function EmployeeDetailPage() {
             <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
               <div className="text-sm font-semibold text-amber-900">Notes</div>
               <div className="mt-1 text-sm text-amber-900/80">
-                Device reset is a sensitive action. In production, this will be audited and restricted by role.
+                Device reset is a sensitive action. Use it only when the employee must bind a new device and sign in again.
               </div>
             </div>
           </div>

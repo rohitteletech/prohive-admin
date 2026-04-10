@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
+import ActionRemarkDialog from "@/components/company/action-remark-dialog";
 import { ClaimRow, ClaimStatus } from "@/lib/companyClaims";
 import { formatDisplayDate, isoDateInIndia, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -29,6 +30,12 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    id: string;
+    nextStatus: "approved" | "rejected";
+    remark: string;
+    error: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -95,11 +102,23 @@ export default function Page() {
     return { total, pending, approved, rejected, totalAmount, pendingAmount, approvedAmount, rejectedAmount };
   }, [filtered]);
 
-  async function updateClaimStatus(id: string, nextStatus: "approved" | "rejected") {
-    const remark = window.prompt(
-      nextStatus === "approved" ? "Approval remark (optional)" : "Rejection remark (optional)"
-    );
-    if (remark === null) return;
+  function openActionDialog(id: string, nextStatus: "approved" | "rejected") {
+    setPendingAction({
+      id,
+      nextStatus,
+      remark: "",
+      error: null,
+    });
+  }
+
+  function closeActionDialog() {
+    if (actionId) return;
+    setPendingAction(null);
+  }
+
+  async function updateClaimStatus() {
+    if (!pendingAction) return;
+    const { id, nextStatus, remark } = pendingAction;
 
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
@@ -128,6 +147,7 @@ export default function Page() {
       prev.map((row) => (row.id === id ? { ...row, status: nextStatus, adminRemark: remark || undefined } : row))
     );
     showToast(nextStatus === "approved" ? "Claim approved." : "Claim rejected.");
+    setPendingAction(null);
   }
 
   return (
@@ -219,6 +239,13 @@ export default function Page() {
               </tr>
             </thead>
             <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
+                    Loading claims...
+                  </td>
+                </tr>
+              )}
               {filtered.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
                   <td className="px-5 py-3 font-semibold text-slate-900">{row.id.slice(0, 8).toUpperCase()}</td>
@@ -268,7 +295,7 @@ export default function Page() {
                         <button
                           type="button"
                           disabled={actionId === row.id}
-                          onClick={() => updateClaimStatus(row.id, "approved")}
+                          onClick={() => openActionDialog(row.id, "approved")}
                           className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
                         >
                           Approve
@@ -276,7 +303,7 @@ export default function Page() {
                         <button
                           type="button"
                           disabled={actionId === row.id}
-                          onClick={() => updateClaimStatus(row.id, "rejected")}
+                          onClick={() => openActionDialog(row.id, "rejected")}
                           className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
                         >
                           Reject
@@ -299,6 +326,21 @@ export default function Page() {
           </table>
         </div>
       </section>
+
+      <ActionRemarkDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.nextStatus === "approved" ? "Approve Claim" : "Reject Claim"}
+        description="Add an optional remark before saving this claim action."
+        value={pendingAction?.remark || ""}
+        error={pendingAction?.error || null}
+        confirmLabel={pendingAction?.nextStatus === "approved" ? "Confirm Approval" : "Confirm Rejection"}
+        saving={Boolean(actionId)}
+        onChange={(value) =>
+          setPendingAction((prev) => (prev ? { ...prev, remark: value, error: null } : prev))
+        }
+        onConfirm={updateClaimStatus}
+        onCancel={closeActionDialog}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import ActionRemarkDialog from "@/components/company/action-remark-dialog";
 import { CorrectionRow, CorrectionStatus } from "@/lib/companyCorrections";
 import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -38,6 +39,12 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [actionId, setActionId] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [pendingAction, setPendingAction] = useState<{
+    id: string;
+    nextStatus: "approved" | "rejected";
+    remark: string;
+    error: string | null;
+  } | null>(null);
 
   useEffect(() => {
     let ignore = false;
@@ -113,12 +120,27 @@ export default function Page() {
     return { total, pending, approved, rejected };
   }, [filtered]);
 
-  async function updateStatus(id: string, nextStatus: "approved" | "rejected") {
-    const remark = window.prompt(
-      nextStatus === "approved" ? "Approval remark (required)" : "Rejection remark (required)"
-    );
-    if (remark === null) return;
-    if (!remark.trim()) return showToast("Admin remark is required.");
+  function openActionDialog(id: string, nextStatus: "approved" | "rejected") {
+    setPendingAction({
+      id,
+      nextStatus,
+      remark: "",
+      error: null,
+    });
+  }
+
+  function closeActionDialog() {
+    if (actionId) return;
+    setPendingAction(null);
+  }
+
+  async function updateStatus() {
+    if (!pendingAction) return;
+    const { id, nextStatus, remark } = pendingAction;
+    if (!remark.trim()) {
+      setPendingAction((prev) => (prev ? { ...prev, error: "Admin remark is required." } : prev));
+      return;
+    }
 
     const supabase = getSupabaseBrowserClient("company");
     const sessionResult = supabase ? await supabase.auth.getSession() : null;
@@ -157,6 +179,7 @@ export default function Page() {
           : "Correction request approved."
         : "Correction request rejected.",
     );
+    setPendingAction(null);
   }
 
   return (
@@ -246,6 +269,13 @@ export default function Page() {
               </tr>
             </thead>
             <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={10} className="px-5 py-10 text-center text-sm text-slate-500">
+                    Loading correction requests...
+                  </td>
+                </tr>
+              )}
               {queueRows.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
                   <td className="px-5 py-3 font-semibold text-slate-900">{row.id.slice(0, 8).toUpperCase()}</td>
@@ -286,7 +316,7 @@ export default function Page() {
                       <button
                         type="button"
                         disabled={actionId === row.id}
-                        onClick={() => updateStatus(row.id, "approved")}
+                        onClick={() => openActionDialog(row.id, "approved")}
                         className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 disabled:opacity-60"
                       >
                         {row.status === "pending_manager" ? "Manager Approve" : row.status === "pending_hr" ? "HR Approve" : "Approve"}
@@ -294,7 +324,7 @@ export default function Page() {
                       <button
                         type="button"
                         disabled={actionId === row.id}
-                        onClick={() => updateStatus(row.id, "rejected")}
+                        onClick={() => openActionDialog(row.id, "rejected")}
                         className="rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
                       >
                         Reject
@@ -336,6 +366,13 @@ export default function Page() {
               </tr>
             </thead>
             <tbody>
+              {loading && (
+                <tr>
+                  <td colSpan={8} className="px-5 py-10 text-center text-sm text-slate-500">
+                    Loading correction history...
+                  </td>
+                </tr>
+              )}
               {historyRows.flatMap((row) =>
                 (row.auditLogs || []).map((log) => (
                   <tr key={log.id} className="border-b border-slate-100 text-sm text-slate-700 last:border-b-0">
@@ -361,6 +398,23 @@ export default function Page() {
           </table>
         </div>
       </section>
+
+      <ActionRemarkDialog
+        open={Boolean(pendingAction)}
+        title={pendingAction?.nextStatus === "approved" ? "Approve Correction Request" : "Reject Correction Request"}
+        description="Enter the required admin remark before saving this correction action."
+        value={pendingAction?.remark || ""}
+        error={pendingAction?.error || null}
+        confirmLabel={pendingAction?.nextStatus === "approved" ? "Confirm Approval" : "Confirm Rejection"}
+        saving={Boolean(actionId)}
+        required
+        minLength={1}
+        onChange={(value) =>
+          setPendingAction((prev) => (prev ? { ...prev, remark: value, error: null } : prev))
+        }
+        onConfirm={updateStatus}
+        onCancel={closeActionDialog}
+      />
     </div>
   );
 }
