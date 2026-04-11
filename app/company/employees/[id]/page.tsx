@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import FriendlyDateInput from "@/components/company/FriendlyDateInput";
 import {
   CompanyEmployee,
   getCompanyEmployeeByIdSupabase,
@@ -23,6 +24,7 @@ type EmployeeModel = {
   // Compulsory
   full_name: string;
   gender?: "male" | "female" | "other";
+  dob?: string;
   mobile: string;
   designation: string;
   department?: string;
@@ -70,14 +72,6 @@ function formatEmpType(v?: EmployeeModel["employment_type"]) {
   return "Intern";
 }
 
-function maskPan(pan?: string) {
-  if (!pan) return "-";
-  // Keep first 5 and last 1 as readable, mask middle
-  // Example: ABCDE1234F -> ABCDE****F
-  if (pan.length < 6) return pan;
-  return pan.slice(0, 5) + "****" + pan.slice(-1);
-}
-
 function maskAadhaar(aadhaar?: string) {
   if (!aadhaar) return "-";
   const digits = aadhaar.replace(/\D/g, "");
@@ -115,6 +109,12 @@ function parseEmploymentType(value: string): EmploymentType | undefined {
   return undefined;
 }
 
+function isAddressLinked(perm?: string, temp?: string) {
+  const permanent = String(perm || "").trim();
+  const temporary = String(temp || "").trim();
+  return Boolean(permanent) && permanent === temporary;
+}
+
 export default function EmployeeDetailPage() {
   const params = useParams();
   const id = (params?.id as string) || "e001";
@@ -128,6 +128,7 @@ export default function EmployeeDetailPage() {
       id,
       full_name: base?.full_name || "",
       gender: base?.gender,
+      dob: base?.dob,
       mobile: base?.mobile || "",
       designation: base?.designation || "",
       department: base?.department || "",
@@ -167,9 +168,12 @@ export default function EmployeeDetailPage() {
   // "Saved" state (read-only source)
   const [saved, setSaved] = useState<EmployeeModel>(initial);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(() => loadCompanyEmployees());
-  const [shiftOptions, setShiftOptions] = useState<string[]>(["General Shift"]);
+  const [shiftOptions, setShiftOptions] = useState<string[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
   const [designationOptions, setDesignationOptions] = useState<string[]>([]);
+  const [sameAsPermanentAddress, setSameAsPermanentAddress] = useState(() =>
+    isAddressLinked(initial.perm_address, initial.temp_address)
+  );
 
   const [toast, setToast] = useState<string | null>(null);
 
@@ -180,32 +184,39 @@ export default function EmployeeDetailPage() {
 
   function startEdit() {
     setDraft(saved);
+    setSameAsPermanentAddress(isAddressLinked(saved.perm_address, saved.temp_address));
     setIsEditing(true);
     showToast("Edit mode enabled");
   }
 
   function cancelEdit() {
     setDraft(saved);
+    setSameAsPermanentAddress(isAddressLinked(saved.perm_address, saved.temp_address));
     setIsEditing(false);
     showToast("Changes discarded");
   }
 
   async function saveEdit() {
     // Client-side validations (MVP)
-    const nameOk = draft.full_name.trim().length >= 2;
+    const nameOk = draft.full_name.trim().length > 0;
     const mobileOk = /^\d{10}$/.test(draft.mobile.trim());
     const genderOk = !!draft.gender;
     const desigOk = isAllowedMasterValue(draft.designation, designationOptions);
     const deptOk = isAllowedMasterValue(draft.department || "", departmentOptions);
     const joinOk = draft.joining_date?.trim().length === 10;
+    const shiftOk = Boolean(draft.shift_name?.trim());
+    const attendanceOk = draft.attendance_mode === "office_only" || draft.attendance_mode === "field_staff";
 
     if (!nameOk) return showToast("Name is required");
     if (!mobileOk) return showToast("Mobile Number must be exactly 10 digits");
     if (!genderOk) return showToast("Gender is required");
     if (!desigOk) return showToast("Please select a designation from Settings");
     if (!deptOk) return showToast("Please select a department from Settings");
+    if (!shiftOk) return showToast("Shift is required");
     if (!joinOk) return showToast("Joining date is required");
     if (draft.joining_date > todayISOInIndia()) return showToast("Joining date cannot be in the future");
+    if (draft.dob && draft.dob > todayISOInIndia()) return showToast("DOB cannot be in the future");
+    if (!attendanceOk) return showToast("Attendance Mode is required");
     if (draft.aadhaar_number && !/^\d{12}$/.test(draft.aadhaar_number)) {
       return showToast("Aadhaar Number must be exactly 12 digits");
     }
@@ -233,6 +244,7 @@ export default function EmployeeDetailPage() {
       body: JSON.stringify({
         full_name: draft.full_name,
         gender: draft.gender,
+        dob: draft.dob,
         email: draft.email,
         employee_code: draft.employee_code,
         mobile: draft.mobile,
@@ -273,13 +285,20 @@ export default function EmployeeDetailPage() {
 
     setSaved(nextSaved);
     setDraft(nextSaved);
+    setSameAsPermanentAddress(isAddressLinked(nextSaved.perm_address, nextSaved.temp_address));
     setAllEmployees(rows);
     setIsEditing(false);
     showToast("Profile saved");
   }
 
   function setField<K extends keyof EmployeeModel>(key: K, value: EmployeeModel[K]) {
-    setDraft((prev) => ({ ...prev, [key]: value }));
+    setDraft((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "perm_address" && sameAsPermanentAddress) {
+        next.temp_address = String(value);
+      }
+      return next;
+    });
   }
 
   function setStatus(v: EmpStatus) {
@@ -367,8 +386,8 @@ export default function EmployeeDetailPage() {
       );
       if (!ignore && names.length > 0) {
         setShiftOptions(names);
-        setDraft((prev) => (names.includes(prev.shift_name || "") ? prev : { ...prev, shift_name: names[0] || "General Shift" }));
-        setSaved((prev) => (names.includes(prev.shift_name || "") ? prev : { ...prev, shift_name: names[0] || "General Shift" }));
+        setDraft((prev) => (names.includes(prev.shift_name || "") ? prev : { ...prev, shift_name: "" }));
+        setSaved((prev) => (names.includes(prev.shift_name || "") ? prev : { ...prev, shift_name: "" }));
       }
     }
 
@@ -384,6 +403,7 @@ export default function EmployeeDetailPage() {
           id: employee.id,
           full_name: employee.full_name || "",
           gender: employee.gender,
+          dob: employee.dob || "",
           mobile: employee.mobile || "",
           designation: employee.designation || "",
           department: employee.department || "",
@@ -408,6 +428,7 @@ export default function EmployeeDetailPage() {
         };
         setDraft(hydrated);
         setSaved(hydrated);
+        setSameAsPermanentAddress(isAddressLinked(hydrated.perm_address, hydrated.temp_address));
       }
       setLoading(false);
     }
@@ -586,6 +607,14 @@ export default function EmployeeDetailPage() {
                 </select>
               )}
             </div>
+            <DateField
+              label="DOB (Optional)"
+              value={data.dob || ""}
+              editable={isEditing}
+              onChange={(v) => setField("dob", v || undefined)}
+              max={todayISOInIndia()}
+              placeholder="Select"
+            />
             <Field
               label="Mobile Number *"
               value={data.mobile}
@@ -627,7 +656,8 @@ export default function EmployeeDetailPage() {
                   onChange={(e) => setField("shift_name", e.target.value)}
                   className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
                 >
-                  {!shiftOptions.length && <option value="">No shift configured</option>}
+                  <option value="">Select</option>
+                  {!shiftOptions.length && <option value="" disabled>No shift configured</option>}
                   {shiftOptions.map((shift) => (
                     <option key={shift} value={shift}>
                       {shift}
@@ -713,6 +743,26 @@ export default function EmployeeDetailPage() {
               editable={isEditing}
               onChange={(v) => setField("temp_address", v)}
               placeholder="Current address..."
+              disabled={isEditing && sameAsPermanentAddress}
+              action={
+                isEditing ? (
+                  <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-zinc-600">
+                    <input
+                      type="checkbox"
+                      checked={sameAsPermanentAddress}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setSameAsPermanentAddress(checked);
+                        if (checked) {
+                          setDraft((prev) => ({ ...prev, temp_address: prev.perm_address }));
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-zinc-300"
+                    />
+                    Same as Permanent Address
+                  </label>
+                ) : null
+              }
             />
           </div>
         )}
@@ -772,7 +822,7 @@ export default function EmployeeDetailPage() {
                   }
                   className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
                 >
-                  <option value="">-</option>
+                  <option value="">Select</option>
                   <option value="full_time">Full-time</option>
                   <option value="contract">Contract</option>
                   <option value="intern">Intern</option>
@@ -784,17 +834,22 @@ export default function EmployeeDetailPage() {
               </div>
             </div>
             <div>
-              <div className="mb-1 text-xs font-medium text-zinc-700">Attendance Mode</div>
+              <div className="mb-1 text-xs font-medium text-zinc-700">Attendance Mode *</div>
               {!isEditing ? (
                 <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-                  {data.attendance_mode === "field_staff" ? "Field Staff" : "Office Only"}
+                  {data.attendance_mode === "field_staff"
+                    ? "Field Staff"
+                    : data.attendance_mode === "office_only"
+                    ? "Office Only"
+                    : "-"}
                 </div>
               ) : (
                 <select
-                  value={draft.attendance_mode || "office_only"}
+                  value={draft.attendance_mode || ""}
                   onChange={(e) => setField("attendance_mode", e.target.value as EmployeeModel["attendance_mode"])}
                   className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
                 >
+                  <option value="">Select</option>
                   <option value="office_only">Office Only</option>
                   <option value="field_staff">Field Staff</option>
                 </select>
@@ -811,11 +866,10 @@ export default function EmployeeDetailPage() {
           <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
             <Field
               label="PAN (Optional)"
-              value={isEditing ? data.pan || "" : maskPan(data.pan)}
+              value={data.pan || ""}
               editable={isEditing}
               onChange={(v) => setField("pan", v.toUpperCase())}
               placeholder="ABCDE1234F"
-              helper={!isEditing ? "Masked display for privacy." : undefined}
             />
 
             <Field
@@ -1081,16 +1135,23 @@ function TextArea({
   editable,
   onChange,
   placeholder,
+  disabled,
+  action,
 }: {
   label: string;
   value: string;
   editable: boolean;
   onChange: (v: string) => void;
   placeholder?: string;
+  disabled?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="sm:col-span-2">
-      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="text-xs font-medium text-zinc-700">{label}</div>
+        {action}
+      </div>
       {!editable ? (
         <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
           {value?.trim() ? value : "-"}
@@ -1101,7 +1162,13 @@ function TextArea({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={3}
-          className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
+          disabled={disabled}
+          className={[
+            "w-full rounded-2xl border px-4 py-3 text-sm text-zinc-900 outline-none transition",
+            disabled
+              ? "border-zinc-200 bg-zinc-50 cursor-not-allowed"
+              : "border-zinc-200 bg-white focus:border-zinc-300 focus:shadow-sm",
+          ].join(" ")}
         />
       )}
     </div>
@@ -1114,29 +1181,33 @@ function DateField({
   editable,
   onChange,
   max,
+  placeholder,
 }: {
   label: string;
   value: string;
   editable: boolean;
   onChange: (v: string) => void;
   max?: string;
+  placeholder?: string;
 }) {
+  if (editable) {
+    return (
+      <FriendlyDateInput
+        label={label}
+        value={value || ""}
+        onChange={onChange}
+        max={max}
+        placeholder={placeholder}
+      />
+    );
+  }
+
   return (
     <div>
       <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
-      {!editable ? (
-        <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
-          {value ? formatDisplayDate(value) : "-"}
-        </div>
-      ) : (
-        <input
-          type="date"
-          value={value || ""}
-          onChange={(e) => onChange(e.target.value)}
-          max={max}
-          className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
-        />
-      )}
+      <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-900">
+        {value ? formatDisplayDate(value) : "-"}
+      </div>
     </div>
   );
 }

@@ -10,6 +10,7 @@ export type CompanyEmployee = {
   full_name: string;
   email?: string;
   gender?: "male" | "female" | "other";
+  dob?: string;
   employee_code: string;
   mobile: string;
   designation: string;
@@ -59,6 +60,7 @@ type EmployeeDbRow = {
   full_name: string;
   email: string | null;
   gender: "male" | "female" | "other" | null;
+  dob: string | null;
   employee_code: string;
   mobile: string;
   designation: string;
@@ -91,6 +93,7 @@ type EmployeeUpsertInput = {
   full_name: string;
   email?: string | null;
   gender?: "male" | "female" | "other" | null;
+  dob?: string | null;
   employee_code: string;
   mobile: string;
   designation: string;
@@ -137,6 +140,7 @@ function toEmployee(row: EmployeeDbRow): CompanyEmployee {
     full_name: row.full_name,
     email: normalizeOptional(row.email),
     gender: row.gender || undefined,
+    dob: normalizeOptional(row.dob),
     employee_code: row.employee_code,
     mobile: row.mobile,
     designation: row.designation,
@@ -209,7 +213,7 @@ export async function loadCompanyEmployeesSupabase() {
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .select(
-      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
+      "id,company_id,full_name,email,gender,dob,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
       + ",attendance_mode"
     )
     .eq("company_id", companyId)
@@ -234,7 +238,7 @@ export async function getCompanyEmployeeByIdSupabase(id: string) {
   const { data, error } = await supabase
     .from(TABLE_NAME)
     .select(
-      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
+      "id,company_id,full_name,email,gender,dob,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
       + ",attendance_mode"
     )
     .eq("company_id", companyId)
@@ -269,6 +273,7 @@ export async function upsertCompanyEmployeeSupabase(next: CompanyEmployee) {
     full_name: next.full_name.trim(),
     email: normalizeOptional(next.email) || null,
     gender: next.gender || null,
+    dob: normalizeOptional(next.dob) || null,
     employee_code: next.employee_code.trim(),
     mobile: next.mobile.trim(),
     designation: next.designation.trim(),
@@ -326,7 +331,7 @@ export async function resetCompanyEmployeeDeviceBindingSupabase(id: string) {
     .eq("company_id", companyId)
     .eq("id", id)
     .select(
-      "id,company_id,full_name,email,gender,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
+      "id,company_id,full_name,email,gender,dob,employee_code,mobile,designation,department,shift_name,status,joined_on,reporting_manager,perm_address,temp_address,pan,aadhaar_number,emergency_name,emergency_mobile,employment_type,exit_date,mobile_app_status,mobile_verified_at,bound_device_id,bound_device_name,bound_app_version,bound_device_at,mobile_last_login_at"
       + ",attendance_mode"
     )
     .maybeSingle();

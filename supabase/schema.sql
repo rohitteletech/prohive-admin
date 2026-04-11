@@ -1293,6 +1293,7 @@ CREATE TABLE public.employees (
     full_name text,
     email text,
     designation text,
+    dob date,
     shift_name text,
     status text DEFAULT 'active'::text,
     joined_on date,

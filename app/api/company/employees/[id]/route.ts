@@ -6,6 +6,7 @@ type Body = {
   full_name?: string;
   email?: string;
   gender?: "male" | "female" | "other";
+  dob?: string;
   employee_code?: string;
   mobile?: string;
   designation?: string;
@@ -57,6 +58,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   const mobile = String(body.mobile || "").replace(/\D/g, "").slice(0, 10);
   const designation = (body.designation || "").trim();
   const joined_on = (body.joined_on || "").trim();
+  const dob = (body.dob || "").trim();
   const gender = body.gender;
   const aadhaar_number = String(body.aadhaar_number || "").replace(/\D/g, "").slice(0, 12);
 
@@ -72,6 +74,12 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
   }
   if (!designation) return NextResponse.json({ error: "Designation is required." }, { status: 400 });
   if (!joined_on) return NextResponse.json({ error: "Joining Date is required." }, { status: 400 });
+  if (dob && !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+    return NextResponse.json({ error: "DOB must be a valid date." }, { status: 400 });
+  }
+  if (body.attendance_mode !== "office_only" && body.attendance_mode !== "field_staff") {
+    return NextResponse.json({ error: "Attendance Mode is required." }, { status: 400 });
+  }
   if (aadhaar_number && !/^\d{12}$/.test(aadhaar_number)) {
     return NextResponse.json({ error: "Aadhaar Number must be exactly 12 digits." }, { status: 400 });
   }
@@ -121,6 +129,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     full_name,
     email: normalizeOptional(body.email),
     gender: gender || null,
+    dob: normalizeOptional(dob),
     employee_code,
     mobile,
     designation,
@@ -137,7 +146,7 @@ export async function PUT(req: NextRequest, contextArg: { params: Promise<{ id: 
     emergency_mobile: normalizeOptional(body.emergency_mobile),
     employment_type: body.employment_type || null,
     exit_date: normalizeOptional(body.exit_date),
-    attendance_mode: body.attendance_mode === "office_only" ? "office_only" : "field_staff",
+    attendance_mode: body.attendance_mode,
   };
 
   const { data, error } = await context.admin

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import FriendlyDateInput from "@/components/company/FriendlyDateInput";
 import {
   CompanyEmployee,
   getManagerOptions,
@@ -11,7 +12,7 @@ import {
   nextEmployeeId,
 } from "@/lib/companyEmployees";
 import { isAllowedMasterValue, loadCompanyMasterSettings } from "@/lib/companySettingsMasters";
-import { formatDisplayDate, todayISOInIndia } from "@/lib/dateTime";
+import { todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type EmploymentType = "full_time" | "contract" | "intern";
@@ -19,6 +20,7 @@ type EmploymentType = "full_time" | "contract" | "intern";
 type EmployeeDraft = {
   full_name: string;
   gender: "male" | "female" | "other" | "";
+  dob: string;
   mobile: string;
   designation: string;
   department: string;
@@ -34,7 +36,7 @@ type EmployeeDraft = {
   emergency_name: string;
   emergency_mobile: string;
   employment_type: EmploymentType | "";
-  attendance_mode: "office_only" | "field_staff";
+  attendance_mode: "office_only" | "field_staff" | "";
 };
 
 function normalizeMobileInput(value: string) {
@@ -60,16 +62,18 @@ export default function NewEmployeePage() {
   const [fieldErrors, setFieldErrors] = useState<{ mobile?: string; employee_code?: string }>({});
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [allEmployees, setAllEmployees] = useState<CompanyEmployee[]>(initialEmployees);
-  const [shiftOptions, setShiftOptions] = useState<string[]>(["General Shift"]);
+  const [shiftOptions, setShiftOptions] = useState<string[]>([]);
   const [departmentOptions, setDepartmentOptions] = useState<string[]>([]);
   const [designationOptions, setDesignationOptions] = useState<string[]>([]);
+  const [sameAsPermanentAddress, setSameAsPermanentAddress] = useState(false);
   const [form, setForm] = useState<EmployeeDraft>({
     full_name: "",
     gender: "",
+    dob: "",
     mobile: "",
     designation: "",
     department: "",
-    shift_name: "General Shift",
+    shift_name: "",
     joining_date: todayISOInIndia(),
     employee_code: nextEmployeeCode(initialEmployees),
     reporting_manager: "Admin",
@@ -81,7 +85,7 @@ export default function NewEmployeePage() {
     emergency_name: "",
     emergency_mobile: "",
     employment_type: "",
-    attendance_mode: "office_only",
+    attendance_mode: "",
   });
 
   const managerOptions = useMemo(
@@ -119,7 +123,7 @@ export default function NewEmployeePage() {
       );
       if (!ignore && names.length > 0) {
         setShiftOptions(names);
-        setForm((prev) => (names.includes(prev.shift_name) ? prev : { ...prev, shift_name: names[0] || "General Shift" }));
+        setForm((prev) => (names.includes(prev.shift_name) ? prev : { ...prev, shift_name: "" }));
       }
     }
 
@@ -146,17 +150,26 @@ export default function NewEmployeePage() {
     if (key === "mobile" || key === "employee_code") {
       setFieldErrors((prev) => ({ ...prev, [key]: undefined }));
     }
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === "perm_address" && sameAsPermanentAddress) {
+        next.temp_address = String(value);
+      }
+      return next;
+    });
   }
 
   function validate() {
-    if (form.full_name.trim().length < 2) return "Full Name is required";
+    if (!form.full_name.trim()) return "Full Name is required";
     if (!form.gender) return "Gender is required";
     if (!/^\d{10}$/.test(form.mobile.trim())) return "Mobile Number must be exactly 10 digits";
     if (!isAllowedMasterValue(form.department, departmentOptions)) return "Please select a department from Settings";
     if (!isAllowedMasterValue(form.designation, designationOptions)) return "Please select a designation from Settings";
+    if (!form.shift_name.trim()) return "Shift is required";
     if (!form.joining_date) return "Joining Date is required";
     if (form.joining_date > todayISOInIndia()) return "Joining Date cannot be in the future";
+    if (form.dob && form.dob > todayISOInIndia()) return "DOB cannot be in the future";
+    if (!form.attendance_mode) return "Attendance Mode is required";
     if (!form.employee_code.trim()) return "Employee Code is required";
     if (form.employee_code.trim().length < 6) return "Employee Code is too short";
     if (
@@ -225,6 +238,7 @@ export default function NewEmployeePage() {
       email: form.email.trim() || undefined,
       employee_code: form.employee_code.trim(),
       mobile: form.mobile.trim(),
+      dob: form.dob || undefined,
       designation: form.designation.trim(),
       department: form.department.trim(),
       shift_name: form.shift_name,
@@ -238,7 +252,7 @@ export default function NewEmployeePage() {
       emergency_name: form.emergency_name.trim() || undefined,
       emergency_mobile: form.emergency_mobile.trim() || undefined,
       employment_type: form.employment_type || undefined,
-      attendance_mode: form.attendance_mode,
+      attendance_mode: form.attendance_mode || undefined,
     };
 
     const supabase = getSupabaseBrowserClient("company");
@@ -328,6 +342,12 @@ export default function NewEmployeePage() {
                 <option value="other">Other</option>
               </select>
             </div>
+            <FriendlyDateInput
+              label="DOB (Optional)"
+              value={form.dob}
+              onChange={(v) => setField("dob", v)}
+              max={todayISOInIndia()}
+            />
             <Input
               label="Mobile Number *"
               value={form.mobile}
@@ -360,7 +380,8 @@ export default function NewEmployeePage() {
                 onChange={(e) => setField("shift_name", e.target.value)}
                 className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
               >
-                {!shiftOptions.length && <option value="">No shift configured</option>}
+                <option value="">Select</option>
+                {!shiftOptions.length && <option value="" disabled>No shift configured</option>}
                 {shiftOptions.map((shift) => (
                   <option key={shift} value={shift}>
                     {shift}
@@ -401,6 +422,24 @@ export default function NewEmployeePage() {
               value={form.temp_address}
               onChange={(v) => setField("temp_address", v)}
               placeholder="Current address..."
+              disabled={sameAsPermanentAddress}
+              action={(
+                <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-medium text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={sameAsPermanentAddress}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      setSameAsPermanentAddress(checked);
+                      if (checked) {
+                        setForm((prev) => ({ ...prev, temp_address: prev.perm_address }));
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-zinc-300"
+                  />
+                  Same as Permanent Address
+                </label>
+              )}
             />
           </div>
         </section>
@@ -408,13 +447,12 @@ export default function NewEmployeePage() {
         <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm">
           <h2 className="text-base font-semibold text-zinc-900">Employment and IDs</h2>
           <div className="mt-4 grid grid-cols-1 gap-5 sm:grid-cols-2">
-            <DateInput
+            <FriendlyDateInput
               label="Joining Date *"
               value={form.joining_date}
               onChange={(v) => setField("joining_date", v)}
               max={todayISOInIndia()}
             />
-            <div className="mt-2 text-xs text-zinc-500">Display format: {formatDisplayDate(form.joining_date)} (IST)</div>
             <div>
               <div className="mb-1 text-xs font-medium text-zinc-700">Employment Type (Optional)</div>
               <select
@@ -422,7 +460,7 @@ export default function NewEmployeePage() {
                 onChange={(e) => setField("employment_type", e.target.value as EmployeeDraft["employment_type"])}
                 className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
               >
-                <option value="">-</option>
+                <option value="">Select</option>
                 <option value="full_time">Full-time</option>
                 <option value="contract">Contract</option>
                 <option value="intern">Intern</option>
@@ -435,6 +473,7 @@ export default function NewEmployeePage() {
                 onChange={(e) => setField("attendance_mode", e.target.value as EmployeeDraft["attendance_mode"])}
                 className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none"
               >
+                <option value="">Select</option>
                 <option value="office_only">Office Only</option>
                 <option value="field_staff">Field Staff</option>
               </select>
@@ -558,50 +597,34 @@ function TextArea({
   value,
   onChange,
   placeholder,
+  disabled,
+  action,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  disabled?: boolean;
+  action?: React.ReactNode;
 }) {
   return (
     <div className="sm:col-span-2">
-      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
+      <div className="mb-1 flex items-center justify-between gap-3">
+        <div className="text-xs font-medium text-zinc-700">{label}</div>
+        {action}
+      </div>
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         rows={3}
-        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm"
-      />
-    </div>
-  );
-}
-
-function DateInput({
-  label,
-  value,
-  onChange,
-  disabled,
-  max,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-  max?: string;
-}) {
-  return (
-    <div>
-      <div className="mb-1 text-xs font-medium text-zinc-700">{label}</div>
-      <input
-        type="date"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
-        max={max}
-        autoComplete="off"
-        className="w-full rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-zinc-300 focus:shadow-sm disabled:bg-zinc-50"
+        className={[
+          "w-full rounded-2xl border px-4 py-3 text-sm text-zinc-900 outline-none transition",
+          disabled
+            ? "border-zinc-200 bg-zinc-50 cursor-not-allowed"
+            : "border-zinc-200 bg-white focus:border-zinc-300 focus:shadow-sm",
+        ].join(" ")}
       />
     </div>
   );
