@@ -59,6 +59,14 @@ function navItemStyle(active: boolean) {
   } satisfies React.CSSProperties;
 }
 
+function isNavItemActive(pathname: string, href: string) {
+  if (href === "/company/settings") {
+    return pathname === href;
+  }
+
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
 function SidebarGroup({
   items,
   pathname,
@@ -71,7 +79,7 @@ function SidebarGroup({
   return (
     <div style={{ display: "grid", gap: compact ? 2 : 4 }}>
       {items.map((item) => {
-        const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+        const active = isNavItemActive(pathname, item.href);
         return (
           <Link key={item.href} href={item.href} style={navItemStyle(active)}>
             <span style={{ display: "grid", gap: 3 }}>
