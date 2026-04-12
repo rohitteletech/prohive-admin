@@ -47,6 +47,18 @@ type LeavePolicyState = {
   sandwichLeave: "Enabled" | "Disabled";
 };
 
+const MAX_ANNUAL_QUOTA = 366;
+const MAX_NOTICE_PERIOD_DAYS = 365;
+const MAX_BACKDATED_LEAVE_DAYS = 365;
+const MAX_CARRY_FORWARD_DAYS = 366;
+const MAX_CARRY_FORWARD_EXPIRY_DAYS = 3650;
+
+function clampWholeNumberInput(value: string, max: number) {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+  return String(Math.min(Number(digits), max));
+}
+
 function createInitialPolicyState(): LeavePolicyState {
   const effectiveFrom = todayISOInIndia();
   return {
@@ -104,12 +116,49 @@ export default function LeavePolicyPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   function updatePolicy<K extends keyof LeavePolicyState>(key: K, value: LeavePolicyState[K]) {
-    setDraft((current) => ({ ...current, [key]: value }));
+    setDraft((current) => {
+      if (key === "noticePeriodDays") {
+        return { ...current, noticePeriodDays: clampWholeNumberInput(String(value), MAX_NOTICE_PERIOD_DAYS) };
+      }
+      if (key === "maximumBackdatedLeaveDays") {
+        return { ...current, maximumBackdatedLeaveDays: clampWholeNumberInput(String(value), MAX_BACKDATED_LEAVE_DAYS) };
+      }
+      if (key === "backdatedLeaveAllowed") {
+        return {
+          ...current,
+          backdatedLeaveAllowed: value,
+          maximumBackdatedLeaveDays: value === "Yes" ? (current.maximumBackdatedLeaveDays || "5") : "0",
+        };
+      }
+      return { ...current, [key]: value };
+    });
   }
 
   function updateLeaveType(id: string, key: keyof LeaveType, value: string) {
     setLeaveTypes((current) =>
-      current.map((leaveType) => (leaveType.id === id ? { ...leaveType, [key]: value } : leaveType)),
+      current.map((leaveType) => {
+        if (leaveType.id !== id) return leaveType;
+
+        if (key === "annualQuota") {
+          return { ...leaveType, annualQuota: clampWholeNumberInput(value, MAX_ANNUAL_QUOTA) };
+        }
+        if (key === "maximumCarryForwardDays") {
+          return { ...leaveType, maximumCarryForwardDays: clampWholeNumberInput(value, MAX_CARRY_FORWARD_DAYS) };
+        }
+        if (key === "carryForwardExpiryDays") {
+          return { ...leaveType, carryForwardExpiryDays: clampWholeNumberInput(value, MAX_CARRY_FORWARD_EXPIRY_DAYS) };
+        }
+        if (key === "carryForwardAllowed") {
+          return {
+            ...leaveType,
+            carryForwardAllowed: value as LeaveType["carryForwardAllowed"],
+            maximumCarryForwardDays: value === "Yes" ? (leaveType.maximumCarryForwardDays || "0") : "0",
+            carryForwardExpiryDays: value === "Yes" ? (leaveType.carryForwardExpiryDays || "0") : "0",
+          };
+        }
+
+        return { ...leaveType, [key]: value };
+      }),
     );
   }
 
@@ -493,7 +542,13 @@ export default function LeavePolicyPage() {
                       </Select>
                     </Field>
                     <Field label="Annual Quota">
-                      <TextInput value={leaveType.annualQuota} onChange={(e) => updateLeaveType(leaveType.id, "annualQuota", e.target.value)} />
+                      <TextInput
+                        value={leaveType.annualQuota}
+                        onChange={(e) => updateLeaveType(leaveType.id, "annualQuota", e.target.value)}
+                        inputMode="numeric"
+                        maxLength={3}
+                        placeholder={`0-${MAX_ANNUAL_QUOTA}`}
+                      />
                     </Field>
                     <Field label="Half Day Leave Allowed">
                       <Select value={leaveType.halfDayAllowed} onChange={(e) => updateLeaveType(leaveType.id, "halfDayAllowed", e.target.value)}>
@@ -523,6 +578,9 @@ export default function LeavePolicyPage() {
                         <TextInput
                           value={leaveType.maximumCarryForwardDays}
                           onChange={(e) => updateLeaveType(leaveType.id, "maximumCarryForwardDays", e.target.value)}
+                          inputMode="numeric"
+                          maxLength={3}
+                          placeholder={`0-${MAX_CARRY_FORWARD_DAYS}`}
                         />
                       )}
                     </Field>
@@ -533,6 +591,9 @@ export default function LeavePolicyPage() {
                         <TextInput
                           value={leaveType.carryForwardExpiryDays}
                           onChange={(e) => updateLeaveType(leaveType.id, "carryForwardExpiryDays", e.target.value)}
+                          inputMode="numeric"
+                          maxLength={4}
+                          placeholder={`0-${MAX_CARRY_FORWARD_EXPIRY_DAYS}`}
                         />
                       )}
                     </Field>
@@ -555,7 +616,13 @@ export default function LeavePolicyPage() {
                 </Select>
               </Field>
               <Field label="Notice Period for Leave Application (Days)">
-                <TextInput value={draft.noticePeriodDays} onChange={(e) => updatePolicy("noticePeriodDays", e.target.value)} />
+                <TextInput
+                  value={draft.noticePeriodDays}
+                  onChange={(e) => updatePolicy("noticePeriodDays", e.target.value)}
+                  inputMode="numeric"
+                  maxLength={3}
+                  placeholder={`0-${MAX_NOTICE_PERIOD_DAYS}`}
+                />
               </Field>
               <Field
                 label={
@@ -586,6 +653,9 @@ export default function LeavePolicyPage() {
                   <TextInput
                     value={draft.maximumBackdatedLeaveDays}
                     onChange={(e) => updatePolicy("maximumBackdatedLeaveDays", e.target.value)}
+                    inputMode="numeric"
+                    maxLength={3}
+                    placeholder={`0-${MAX_BACKDATED_LEAVE_DAYS}`}
                   />
                 )}
               </Field>

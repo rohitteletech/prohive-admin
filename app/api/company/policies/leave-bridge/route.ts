@@ -35,6 +35,12 @@ type LeaveBridgePayload = {
   leaveTypes?: LeaveTypePayload[];
 };
 
+const MAX_ANNUAL_QUOTA = 366;
+const MAX_NOTICE_PERIOD_DAYS = 365;
+const MAX_BACKDATED_LEAVE_DAYS = 365;
+const MAX_CARRY_FORWARD_DAYS = 366;
+const MAX_CARRY_FORWARD_EXPIRY_DAYS = 3650;
+
 function comparePolicyPriority(
   a: { effectiveFrom: string; updatedAt: string; createdAt: string },
   b: { effectiveFrom: string; updatedAt: string; createdAt: string }
@@ -49,9 +55,10 @@ function normalizeAccrualRule(value: unknown): LeaveTypePayload["accrualRule"] {
   return "Yearly Upfront";
 }
 
-function toNumberString(value: unknown, fallback: string) {
+function parseWholeNumberWithinRange(value: unknown, fallback: number, max: number) {
   const text = String(value ?? "").trim();
-  return text || fallback;
+  if (!/^\d+$/.test(text)) return fallback;
+  return Math.min(Number(text), max);
 }
 
 function isValidIsoDate(value: string) {
@@ -182,6 +189,43 @@ export async function PUT(req: NextRequest) {
   if (duplicateLeaveCode) {
     return NextResponse.json({ error: `Leave Code ${duplicateLeaveCode.code} is duplicated in this policy.` }, { status: 400 });
   }
+  const invalidAnnualQuota = trimmedLeaveTypes.find((leaveType) => parseWholeNumberWithinRange(leaveType.annualQuota, -1, MAX_ANNUAL_QUOTA) < 0);
+  if (invalidAnnualQuota) {
+    return NextResponse.json({ error: "Annual Quota must be a whole number." }, { status: 400 });
+  }
+  const annualQuotaTooHigh = trimmedLeaveTypes.find((leaveType) => Number(String(leaveType.annualQuota || "").trim() || "0") > MAX_ANNUAL_QUOTA);
+  if (annualQuotaTooHigh) {
+    return NextResponse.json({ error: `Annual Quota cannot exceed ${MAX_ANNUAL_QUOTA} days.` }, { status: 400 });
+  }
+  const maximumCarryForwardTooHigh = trimmedLeaveTypes.find(
+    (leaveType) =>
+      leaveType.carryForwardAllowed === "Yes" &&
+      Number(String(leaveType.maximumCarryForwardDays || "").trim() || "0") > MAX_CARRY_FORWARD_DAYS,
+  );
+  if (maximumCarryForwardTooHigh) {
+    return NextResponse.json({ error: `Maximum Carry Forward Days cannot exceed ${MAX_CARRY_FORWARD_DAYS}.` }, { status: 400 });
+  }
+  const carryForwardExpiryTooHigh = trimmedLeaveTypes.find(
+    (leaveType) =>
+      leaveType.carryForwardAllowed === "Yes" &&
+      Number(String(leaveType.carryForwardExpiryDays || "").trim() || "0") > MAX_CARRY_FORWARD_EXPIRY_DAYS,
+  );
+  if (carryForwardExpiryTooHigh) {
+    return NextResponse.json({ error: `Carry Forward Expiry cannot exceed ${MAX_CARRY_FORWARD_EXPIRY_DAYS} days.` }, { status: 400 });
+  }
+  const noticePeriodDays = parseWholeNumberWithinRange(body.noticePeriodDays, 1, MAX_NOTICE_PERIOD_DAYS);
+  if (Number(String(body.noticePeriodDays ?? "").trim() || "1") > MAX_NOTICE_PERIOD_DAYS) {
+    return NextResponse.json({ error: `Notice Period cannot exceed ${MAX_NOTICE_PERIOD_DAYS} days.` }, { status: 400 });
+  }
+  const maximumBackdatedLeaveDays = body.backdatedLeaveAllowed === "Yes"
+    ? parseWholeNumberWithinRange(body.maximumBackdatedLeaveDays, 5, MAX_BACKDATED_LEAVE_DAYS)
+    : 0;
+  if (
+    body.backdatedLeaveAllowed === "Yes" &&
+    Number(String(body.maximumBackdatedLeaveDays ?? "").trim() || "0") > MAX_BACKDATED_LEAVE_DAYS
+  ) {
+    return NextResponse.json({ error: `Maximum Backdated Leave Days cannot exceed ${MAX_BACKDATED_LEAVE_DAYS}.` }, { status: 400 });
+  }
 
   const otherLeavePolicies = definitions.filter((definition) => definition.policyType === "leave" && definition.id !== existingPolicyId);
   if (normalizedStatus === "active") {
@@ -205,21 +249,24 @@ export async function PUT(req: NextRequest) {
     defaultCompanyPolicy: normalizedDefaultCompanyPolicy,
     leaveCycleType: body.leaveCycleType === "Financial Year" ? "Financial Year" : "Calendar Year",
     approvalFlow: body.approvalFlow || "manager_hr",
-    noticePeriodDays: body.noticePeriodDays || "1",
+    noticePeriodDays: String(noticePeriodDays),
     backdatedLeaveAllowed: body.backdatedLeaveAllowed || "No",
-    maximumBackdatedLeaveDays:
-      body.backdatedLeaveAllowed === "Yes" ? toNumberString(body.maximumBackdatedLeaveDays, "5") : "0",
+    maximumBackdatedLeaveDays: String(maximumBackdatedLeaveDays),
     ifEmployeePunchesOnApprovedLeave: normalizePunchOnApprovedLeaveAction(body.ifEmployeePunchesOnApprovedLeave),
     sandwichLeave: body.sandwichLeave || "Disabled",
     leaveTypes: trimmedLeaveTypes.map((leaveType) => ({
       ...leaveType,
       accrualRule: normalizeAccrualRule(leaveType.accrualRule),
-      annualQuota: toNumberString(leaveType.annualQuota, "0"),
+      annualQuota: String(parseWholeNumberWithinRange(leaveType.annualQuota, 0, MAX_ANNUAL_QUOTA)),
       carryForwardAllowed: leaveType.carryForwardAllowed === "Yes" ? "Yes" : "No",
       maximumCarryForwardDays:
-        leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.maximumCarryForwardDays, "0") : "0",
+        leaveType.carryForwardAllowed === "Yes"
+          ? String(parseWholeNumberWithinRange(leaveType.maximumCarryForwardDays, 0, MAX_CARRY_FORWARD_DAYS))
+          : "0",
       carryForwardExpiryDays:
-        leaveType.carryForwardAllowed === "Yes" ? toNumberString(leaveType.carryForwardExpiryDays, "0") : "0",
+        leaveType.carryForwardAllowed === "Yes"
+          ? String(parseWholeNumberWithinRange(leaveType.carryForwardExpiryDays, 0, MAX_CARRY_FORWARD_EXPIRY_DAYS))
+          : "0",
     })),
   });
   const today = todayISOInIndia();
