@@ -124,10 +124,12 @@ export default function LeavePolicyPage() {
         return { ...current, maximumBackdatedLeaveDays: clampWholeNumberInput(String(value), MAX_BACKDATED_LEAVE_DAYS) };
       }
       if (key === "backdatedLeaveAllowed") {
+        const nextBackdatedLeaveAllowed = value as LeavePolicyState["backdatedLeaveAllowed"];
         return {
           ...current,
-          backdatedLeaveAllowed: value,
-          maximumBackdatedLeaveDays: value === "Yes" ? (current.maximumBackdatedLeaveDays || "5") : "0",
+          backdatedLeaveAllowed: nextBackdatedLeaveAllowed,
+          maximumBackdatedLeaveDays:
+            nextBackdatedLeaveAllowed === "Yes" ? (current.maximumBackdatedLeaveDays || "5") : "0",
         };
       }
       return { ...current, [key]: value };
