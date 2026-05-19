@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { todayISOInIndia } from "@/lib/dateTime";
 import { getSupabaseBrowserClient, hasSupabaseEnv } from "@/lib/supabase/client";
@@ -103,7 +104,10 @@ function InfoCard(props: { title: string; rows: Array<{ label: string; value: st
   );
 }
 
-export default function Page({ params }: { params: { companyId: string } }) {
+export default function Page() {
+  const routeParams = useParams<{ companyId?: string | string[] }>();
+  const companyIdParam = routeParams?.companyId;
+  const companyId = Array.isArray(companyIdParam) ? companyIdParam[0] || "" : companyIdParam || "";
   const [company, setCompany] = useState<CompanyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -114,6 +118,15 @@ export default function Page({ params }: { params: { companyId: string } }) {
     async function loadCompany() {
       setLoading(true);
       setError(null);
+
+      if (!companyId) {
+        if (!ignore) {
+          setCompany(null);
+          setLoading(false);
+          setError("Company id is missing.");
+        }
+        return;
+      }
 
       if (!hasSupabaseEnv()) {
         if (!ignore) {
@@ -146,7 +159,7 @@ export default function Page({ params }: { params: { companyId: string } }) {
       }
 
       try {
-        const response = await fetch(`/api/super/companies/${params.companyId}`, {
+        const response = await fetch(`/api/super/companies/${companyId}`, {
           headers: {
             authorization: `Bearer ${accessToken}`,
           },
@@ -179,7 +192,7 @@ export default function Page({ params }: { params: { companyId: string } }) {
     return () => {
       ignore = true;
     };
-  }, [params.companyId]);
+  }, [companyId]);
 
   const remainingText = useMemo(() => {
     const endDate = company?.plan_end || "";
@@ -211,7 +224,7 @@ export default function Page({ params }: { params: { companyId: string } }) {
           <p style={subTitle}>Registration details, subscription info, and admin ownership for this company.</p>
         </div>
 
-        <Link href={`/super/companies/${params.companyId}/employees`} style={employeesLink}>
+        <Link href={`/super/companies/${companyId}/employees`} style={employeesLink}>
           View Employees
         </Link>
       </div>
