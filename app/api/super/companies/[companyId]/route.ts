@@ -33,6 +33,9 @@ type CompanyDeleteRow = {
 };
 
 type CompanyUpdatePayload = {
+  name?: unknown;
+  code?: unknown;
+  size_of_employees?: unknown;
   authorized_name?: unknown;
   mobile?: unknown;
   address?: unknown;
@@ -217,6 +220,9 @@ export async function PATCH(req: NextRequest, contextArg: { params: Promise<{ co
   }
 
   const payload = {
+    name: normalizeOptionalText(body.name, 160),
+    code: normalizeOptionalText(body.code, 40),
+    size_of_employees: normalizeOptionalText(body.size_of_employees, 40),
     authorized_name: normalizeOptionalText(body.authorized_name, 120),
     mobile: mobileResult && "value" in mobileResult ? mobileResult.value : null,
     address: normalizeOptionalText(body.address, 240),
@@ -227,6 +233,10 @@ export async function PATCH(req: NextRequest, contextArg: { params: Promise<{ co
     gst: normalizeOptionalText(body.gst, 30),
     business_nature: normalizeOptionalText(body.business_nature, 120),
   };
+
+  if (!payload.name) {
+    return NextResponse.json({ error: "Company name is required." }, { status: 400 });
+  }
 
   const { data, error } = await admin
     .from("companies")

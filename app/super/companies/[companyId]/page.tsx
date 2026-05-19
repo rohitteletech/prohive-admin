@@ -33,6 +33,9 @@ type CompanyDetail = {
 };
 
 type EditFormState = {
+  name: string;
+  code: string;
+  size_of_employees: string;
   authorized_name: string;
   mobile: string;
   address: string;
@@ -127,6 +130,9 @@ export default function Page() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [form, setForm] = useState<EditFormState>({
+    name: "",
+    code: "",
+    size_of_employees: "",
     authorized_name: "",
     mobile: "",
     address: "",
@@ -140,6 +146,9 @@ export default function Page() {
 
   function syncForm(nextCompany: CompanyDetail | null) {
     setForm({
+      name: nextCompany?.name || "",
+      code: nextCompany?.code || "",
+      size_of_employees: nextCompany?.size_of_employees || "",
       authorized_name: nextCompany?.authorized_name || "",
       mobile: nextCompany?.mobile || "",
       address: nextCompany?.address || "",
@@ -388,6 +397,43 @@ export default function Page() {
               </div>
 
               <div style={editGrid}>
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Company Name</span>
+                  <input
+                    value={form.name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="Company name"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Company Code</span>
+                  <input
+                    value={form.code}
+                    onChange={(e) => setForm((prev) => ({ ...prev, code: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="Company code"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Size of Employees</span>
+                  <select
+                    value={form.size_of_employees}
+                    onChange={(e) => setForm((prev) => ({ ...prev, size_of_employees: e.target.value }))}
+                    style={fieldInputStyle}
+                  >
+                    <option value="">Select size</option>
+                    <option value="1-10">1-10</option>
+                    <option value="11-25">11-25</option>
+                    <option value="26-50">26-50</option>
+                    <option value="51-100">51-100</option>
+                    <option value="101-200">101-200</option>
+                    <option value="201-500">201-500</option>
+                  </select>
+                </label>
+
                 <label style={fieldWrapStyle}>
                   <span style={fieldLabelStyle}>Authorized Name</span>
                   <input
