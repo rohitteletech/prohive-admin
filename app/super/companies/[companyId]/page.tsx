@@ -32,6 +32,18 @@ type CompanyDetail = {
   created_at: string | null;
 };
 
+type EditFormState = {
+  authorized_name: string;
+  mobile: string;
+  address: string;
+  city: string;
+  state: string;
+  country: string;
+  pin_code: string;
+  gst: string;
+  business_nature: string;
+};
+
 function planLabel(value: PlanType | null) {
   if (value === "trial") return "Trial";
   if (value === "monthly") return "Monthly";
@@ -111,6 +123,34 @@ export default function Page() {
   const [company, setCompany] = useState<CompanyDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [form, setForm] = useState<EditFormState>({
+    authorized_name: "",
+    mobile: "",
+    address: "",
+    city: "",
+    state: "",
+    country: "",
+    pin_code: "",
+    gst: "",
+    business_nature: "",
+  });
+
+  function syncForm(nextCompany: CompanyDetail | null) {
+    setForm({
+      authorized_name: nextCompany?.authorized_name || "",
+      mobile: nextCompany?.mobile || "",
+      address: nextCompany?.address || "",
+      city: nextCompany?.city || "",
+      state: nextCompany?.state || "",
+      country: nextCompany?.country || "",
+      pin_code: nextCompany?.pin_code || "",
+      gst: nextCompany?.gst || "",
+      business_nature: nextCompany?.business_nature || "",
+    });
+  }
 
   useEffect(() => {
     let ignore = false;
@@ -174,7 +214,9 @@ export default function Page() {
         }
 
         if (!ignore) {
-          setCompany(json.company || null);
+          const nextCompany = json.company || null;
+          setCompany(nextCompany);
+          syncForm(nextCompany);
         }
       } catch (loadError) {
         if (!ignore) {
@@ -224,9 +266,30 @@ export default function Page() {
           <p style={subTitle}>Registration details, subscription info, and admin ownership for this company.</p>
         </div>
 
-        <Link href={`/super/companies/${companyId}/employees`} style={employeesLink}>
-          View Employees
-        </Link>
+        <div style={topActions}>
+          {company ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (editMode) {
+                  syncForm(company);
+                  setSaveMessage(null);
+                  setEditMode(false);
+                  return;
+                }
+                setSaveMessage(null);
+                syncForm(company);
+                setEditMode(true);
+              }}
+              style={editMode ? cancelEditBtnStyle : editBtnStyle}
+            >
+              {editMode ? "Cancel Edit" : "Edit Details"}
+            </button>
+          ) : null}
+          <Link href={`/super/companies/${companyId}/employees`} style={employeesLink}>
+            View Employees
+          </Link>
+        </div>
       </div>
 
       {loading ? (
@@ -237,6 +300,8 @@ export default function Page() {
         <div style={messageCard}>Company details not found.</div>
       ) : (
         <>
+          {saveMessage ? <div style={saveMessageStyle}>{saveMessage}</div> : null}
+
           <section style={heroCard}>
             <div>
               <div style={eyebrow}>Company</div>
@@ -253,6 +318,168 @@ export default function Page() {
               <div style={heroHint}>{remainingText}</div>
             </div>
           </section>
+
+          {editMode ? (
+            <section style={editPanelStyle}>
+              <div style={editPanelHeader}>
+                <div>
+                  <h2 style={sectionTitle}>Edit Company Details</h2>
+                  <p style={editPanelText}>Changes saved here will update the same company record in Supabase.</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    if (!companyId) {
+                      setSaveMessage("Company id is missing.");
+                      return;
+                    }
+
+                    const supabase = getSupabaseBrowserClient("super");
+                    if (!supabase) {
+                      setSaveMessage("Supabase client unavailable.");
+                      return;
+                    }
+
+                    const sessionResult = await supabase.auth.getSession();
+                    const accessToken = sessionResult.data.session?.access_token || "";
+                    if (!accessToken) {
+                      setSaveMessage("Super admin session not found. Please login again.");
+                      return;
+                    }
+
+                    setSaving(true);
+                    setSaveMessage(null);
+
+                    try {
+                      const response = await fetch(`/api/super/companies/${companyId}`, {
+                        method: "PATCH",
+                        headers: {
+                          "content-type": "application/json",
+                          authorization: `Bearer ${accessToken}`,
+                        },
+                        body: JSON.stringify(form),
+                      });
+
+                      const json = (await response.json().catch(() => ({}))) as {
+                        ok?: boolean;
+                        company?: CompanyDetail;
+                        error?: string;
+                      };
+
+                      if (!response.ok || !json.ok || !json.company) {
+                        throw new Error(json.error || "Unable to update company details.");
+                      }
+
+                      setCompany(json.company);
+                      syncForm(json.company);
+                      setEditMode(false);
+                      setSaveMessage("Company details updated successfully in Supabase.");
+                    } catch (saveError) {
+                      setSaveMessage(saveError instanceof Error ? saveError.message : "Unable to update company details.");
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  style={saving ? saveBtnDisabledStyle : saveBtnStyle}
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+
+              <div style={editGrid}>
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Authorized Name</span>
+                  <input
+                    value={form.authorized_name}
+                    onChange={(e) => setForm((prev) => ({ ...prev, authorized_name: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="Authorized person name"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Mobile</span>
+                  <input
+                    value={form.mobile}
+                    onChange={(e) => setForm((prev) => ({ ...prev, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                    style={fieldInputStyle}
+                    placeholder="10-digit mobile"
+                  />
+                </label>
+
+                <label style={{ ...fieldWrapStyle, gridColumn: "1 / -1" }}>
+                  <span style={fieldLabelStyle}>Address</span>
+                  <input
+                    value={form.address}
+                    onChange={(e) => setForm((prev) => ({ ...prev, address: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="Street, area, building"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>City</span>
+                  <input
+                    value={form.city}
+                    onChange={(e) => setForm((prev) => ({ ...prev, city: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="City"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>State</span>
+                  <input
+                    value={form.state}
+                    onChange={(e) => setForm((prev) => ({ ...prev, state: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="State"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Country</span>
+                  <input
+                    value={form.country}
+                    onChange={(e) => setForm((prev) => ({ ...prev, country: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="Country"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>PIN Code</span>
+                  <input
+                    value={form.pin_code}
+                    onChange={(e) => setForm((prev) => ({ ...prev, pin_code: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                    style={fieldInputStyle}
+                    placeholder="6-digit PIN"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>GST</span>
+                  <input
+                    value={form.gst}
+                    onChange={(e) => setForm((prev) => ({ ...prev, gst: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="GST"
+                  />
+                </label>
+
+                <label style={fieldWrapStyle}>
+                  <span style={fieldLabelStyle}>Business Nature</span>
+                  <input
+                    value={form.business_nature}
+                    onChange={(e) => setForm((prev) => ({ ...prev, business_nature: e.target.value }))}
+                    style={fieldInputStyle}
+                    placeholder="Business nature"
+                  />
+                </label>
+              </div>
+            </section>
+          ) : null}
 
           <div style={sectionGrid}>
             <InfoCard
@@ -317,6 +544,13 @@ const topBar: React.CSSProperties = {
   flexWrap: "wrap",
 };
 
+const topActions: React.CSSProperties = {
+  display: "flex",
+  gap: 12,
+  flexWrap: "wrap",
+  alignItems: "center",
+};
+
 const breadcrumbRow: React.CSSProperties = {
   display: "flex",
   gap: 8,
@@ -365,6 +599,27 @@ const employeesLink: React.CSSProperties = {
   fontWeight: 700,
 };
 
+const editBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "#ffffff",
+  color: "#0f172a",
+  textDecoration: "none",
+  fontWeight: 700,
+  border: "1px solid #cbd5e1",
+  cursor: "pointer",
+};
+
+const cancelEditBtnStyle: React.CSSProperties = {
+  ...editBtnStyle,
+  background: "#fff7ed",
+  borderColor: "#fdba74",
+  color: "#9a3412",
+};
+
 const messageCard: React.CSSProperties = {
   border: "1px solid #e2e8f0",
   borderRadius: 16,
@@ -389,6 +644,86 @@ const heroCard: React.CSSProperties = {
   borderRadius: 18,
   padding: 20,
   background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+};
+
+const saveMessageStyle: React.CSSProperties = {
+  border: "1px solid #bbf7d0",
+  background: "#ecfdf5",
+  color: "#166534",
+  borderRadius: 14,
+  padding: "14px 16px",
+  fontWeight: 600,
+};
+
+const editPanelStyle: React.CSSProperties = {
+  border: "1px solid #dbeafe",
+  background: "#f8fbff",
+  borderRadius: 18,
+  padding: 20,
+  display: "grid",
+  gap: 18,
+};
+
+const editPanelHeader: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "flex-start",
+  flexWrap: "wrap",
+};
+
+const editPanelText: React.CSSProperties = {
+  margin: "8px 0 0 0",
+  color: "#475569",
+  fontSize: 14,
+};
+
+const saveBtnStyle: React.CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  padding: "10px 16px",
+  borderRadius: 10,
+  background: "#0f172a",
+  color: "#fff",
+  border: "1px solid #0f172a",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
+const saveBtnDisabledStyle: React.CSSProperties = {
+  ...saveBtnStyle,
+  cursor: "not-allowed",
+  opacity: 0.7,
+};
+
+const editGrid: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: 14,
+};
+
+const fieldWrapStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 6,
+};
+
+const fieldLabelStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#475569",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: 0.4,
+};
+
+const fieldInputStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  borderRadius: 10,
+  border: "1px solid #cbd5e1",
+  outline: "none",
+  background: "#fff",
+  fontSize: 14,
+  color: "#0f172a",
 };
 
 const eyebrow: React.CSSProperties = {

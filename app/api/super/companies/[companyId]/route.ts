@@ -32,6 +32,18 @@ type CompanyDeleteRow = {
   admin_email: string | null;
 };
 
+type CompanyUpdatePayload = {
+  authorized_name?: unknown;
+  mobile?: unknown;
+  address?: unknown;
+  city?: unknown;
+  state?: unknown;
+  country?: unknown;
+  pin_code?: unknown;
+  gst?: unknown;
+  business_nature?: unknown;
+};
+
 function superAdminAllowList() {
   const raw = process.env.SUPERADMIN_EMAILS || process.env.NEXT_PUBLIC_SUPERADMIN_EMAILS || "";
   return raw
@@ -87,6 +99,26 @@ async function findAuthUserIdByEmail(admin: NonNullable<ReturnType<typeof getSup
   }
 
   return { userId: null, error: null as string | null };
+}
+
+function normalizeOptionalText(value: unknown, maxLength: number) {
+  const text = String(value ?? "").trim();
+  if (!text) return null;
+  return text.slice(0, maxLength);
+}
+
+function normalizeMobile(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 10);
+  if (!digits) return null;
+  if (digits.length !== 10) return { error: "Mobile must be a 10-digit number." };
+  return { value: digits };
+}
+
+function normalizePinCode(value: unknown) {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 6);
+  if (!digits) return null;
+  if (digits.length !== 6) return { error: "PIN code must be a 6-digit number." };
+  return { value: digits };
 }
 
 export async function GET(req: NextRequest, contextArg: { params: Promise<{ companyId: string }> }) {
@@ -147,6 +179,95 @@ export async function GET(req: NextRequest, contextArg: { params: Promise<{ comp
   }
 
   return NextResponse.json({ company });
+}
+
+export async function PATCH(req: NextRequest, contextArg: { params: Promise<{ companyId: string }> }) {
+  const auth = await authenticateSuperAdmin(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const { companyId } = await contextArg.params;
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return NextResponse.json({ error: "Company id is required." }, { status: 400 });
+  }
+
+  const admin = getSupabaseAdminClient();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Supabase service role key is missing or invalid. Use the service_role secret key." },
+      { status: 500 }
+    );
+  }
+
+  const body = (await req.json().catch(() => null)) as CompanyUpdatePayload | null;
+  if (!body || typeof body !== "object") {
+    return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
+  }
+
+  const mobileResult = normalizeMobile(body.mobile);
+  if (mobileResult && "error" in mobileResult) {
+    return NextResponse.json({ error: mobileResult.error }, { status: 400 });
+  }
+
+  const pinResult = normalizePinCode(body.pin_code);
+  if (pinResult && "error" in pinResult) {
+    return NextResponse.json({ error: pinResult.error }, { status: 400 });
+  }
+
+  const payload = {
+    authorized_name: normalizeOptionalText(body.authorized_name, 120),
+    mobile: mobileResult && "value" in mobileResult ? mobileResult.value : null,
+    address: normalizeOptionalText(body.address, 240),
+    city: normalizeOptionalText(body.city, 120),
+    state: normalizeOptionalText(body.state, 120),
+    country: normalizeOptionalText(body.country, 120),
+    pin_code: pinResult && "value" in pinResult ? pinResult.value : null,
+    gst: normalizeOptionalText(body.gst, 30),
+    business_nature: normalizeOptionalText(body.business_nature, 120),
+  };
+
+  const { data, error } = await admin
+    .from("companies")
+    .update(payload)
+    .eq("id", normalizedCompanyId)
+    .select(
+      [
+        "id",
+        "name",
+        "code",
+        "size_of_employees",
+        "authorized_name",
+        "mobile",
+        "address",
+        "city",
+        "state",
+        "country",
+        "pin_code",
+        "plan_type",
+        "plan_start",
+        "plan_end",
+        "status",
+        "admin_email",
+        "gst",
+        "business_nature",
+        "company_tagline",
+        "created_at",
+      ].join(",")
+    )
+    .maybeSingle();
+
+  const company = (data || null) as CompanyDetailRow | null;
+
+  if (error) {
+    return NextResponse.json({ error: error.message || "Unable to update company." }, { status: 400 });
+  }
+  if (!company?.id) {
+    return NextResponse.json({ error: "Company not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ ok: true, company });
 }
 
 export async function DELETE(req: NextRequest, contextArg: { params: Promise<{ companyId: string }> }) {
