@@ -174,12 +174,12 @@ export async function GET(req: NextRequest) {
       latePunchUpToMinutes: String(normalizeLatePenaltyMinutes(config.latePunchUpToMinutes, 60)),
       repeatLateDaysInMonth: String(normalizeLatePenaltyCount(config.repeatLateDaysInMonth, 3)),
       penaltyForRepeatLate: normalizeAttendancePenaltyDayValue(config.penaltyForRepeatLate, 0.5),
-      latePunchAboveMinutes: String(normalizeLatePenaltyMinutes(config.latePunchUpToMinutes || config.latePunchAboveMinutes, 60)),
+      latePunchAboveMinutes: String(normalizeLatePenaltyMinutes(config.latePunchAboveMinutes, 60)),
       penaltyForLateAboveLimit: normalizeAttendancePenaltyDayValue(config.penaltyForLateAboveLimit, 0.5),
       earlyGoUpToMinutes: String(normalizeLatePenaltyMinutes(config.earlyGoUpToMinutes, 30)),
       repeatEarlyGoDaysInMonth: String(normalizeLatePenaltyCount(config.repeatEarlyGoDaysInMonth, 3)),
       penaltyForRepeatEarlyGo: normalizeAttendancePenaltyDayValue(config.penaltyForRepeatEarlyGo, 0.5),
-      earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(config.earlyGoUpToMinutes || config.earlyGoAboveMinutes, 30)),
+      earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(config.earlyGoAboveMinutes, 30)),
       penaltyForEarlyGoAboveLimit: normalizeAttendancePenaltyDayValue(config.penaltyForEarlyGoAboveLimit, 0.5),
     } satisfies AttendanceBridgePayload);
   } catch (error) {
@@ -305,12 +305,7 @@ export async function PUT(req: NextRequest) {
     latePunchUpToMinutes: String(normalizeLatePenaltyMinutes(body.latePunchUpToMinutes ?? existingConfig.latePunchUpToMinutes, 60)),
     repeatLateDaysInMonth: String(normalizeLatePenaltyCount(body.repeatLateDaysInMonth ?? existingConfig.repeatLateDaysInMonth, 3)),
     penaltyForRepeatLate: normalizeAttendancePenaltyDayValue(body.penaltyForRepeatLate ?? existingConfig.penaltyForRepeatLate, 0.5),
-    latePunchAboveMinutes: String(
-      normalizeLatePenaltyMinutes(
-        body.latePunchUpToMinutes ?? body.latePunchAboveMinutes ?? existingConfig.latePunchUpToMinutes ?? existingConfig.latePunchAboveMinutes,
-        60
-      )
-    ),
+    latePunchAboveMinutes: String(normalizeLatePenaltyMinutes(body.latePunchAboveMinutes ?? existingConfig.latePunchAboveMinutes, 60)),
     penaltyForLateAboveLimit:
       normalizeAttendancePenaltyDayValue(body.penaltyForLateAboveLimit ?? existingConfig.penaltyForLateAboveLimit, 0.5),
     earlyGoUpToMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoUpToMinutes ?? existingConfig.earlyGoUpToMinutes, 30)),
@@ -318,12 +313,7 @@ export async function PUT(req: NextRequest) {
       String(normalizeLatePenaltyCount(body.repeatEarlyGoDaysInMonth ?? existingConfig.repeatEarlyGoDaysInMonth, 3)),
     penaltyForRepeatEarlyGo:
       normalizeAttendancePenaltyDayValue(body.penaltyForRepeatEarlyGo ?? existingConfig.penaltyForRepeatEarlyGo, 0.5),
-    earlyGoAboveMinutes: String(
-      normalizeLatePenaltyMinutes(
-        body.earlyGoUpToMinutes ?? body.earlyGoAboveMinutes ?? existingConfig.earlyGoUpToMinutes ?? existingConfig.earlyGoAboveMinutes,
-        30
-      )
-    ),
+    earlyGoAboveMinutes: String(normalizeLatePenaltyMinutes(body.earlyGoAboveMinutes ?? existingConfig.earlyGoAboveMinutes, 30)),
     penaltyForEarlyGoAboveLimit:
       normalizeAttendancePenaltyDayValue(body.penaltyForEarlyGoAboveLimit ?? existingConfig.penaltyForEarlyGoAboveLimit, 0.5),
   };

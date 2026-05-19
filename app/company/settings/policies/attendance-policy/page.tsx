@@ -213,8 +213,8 @@ export default function NewAttendancePolicyPage() {
       penaltyForLateAboveLimit: normalizePenaltySelection(result.penaltyForLateAboveLimit),
       penaltyForRepeatEarlyGo: normalizePenaltySelection(result.penaltyForRepeatEarlyGo),
       penaltyForEarlyGoAboveLimit: normalizePenaltySelection(result.penaltyForEarlyGoAboveLimit),
-      latePunchAboveMinutes: String(result.latePunchUpToMinutes || result.latePunchAboveMinutes || baseState.latePunchUpToMinutes),
-      earlyGoAboveMinutes: String(result.earlyGoUpToMinutes || result.earlyGoAboveMinutes || baseState.earlyGoUpToMinutes),
+      latePunchAboveMinutes: String(result.latePunchAboveMinutes || baseState.latePunchAboveMinutes),
+      earlyGoAboveMinutes: String(result.earlyGoAboveMinutes || baseState.earlyGoAboveMinutes),
     };
     setDraft(nextPolicy);
     const policiesResponse = await fetch("/api/company/policies?policy_type=attendance", {
@@ -595,10 +595,14 @@ export default function NewAttendancePolicyPage() {
                 )}
               </Field>
               <Field label="Late Arrival Above (mins)">
-                <TextInput
-                  value={draft.latePunchAboveMinutes}
-                  disabled
-                />
+                {draft.latePunchRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.latePunchAboveMinutes}
+                    disabled
+                  />
+                )}
               </Field>
               <Field label="Attendance Value After Late Above Limit">
                 {draft.latePunchRule === "flag_only" ? (
@@ -661,10 +665,14 @@ export default function NewAttendancePolicyPage() {
                 )}
               </Field>
               <Field label="Early Go Above (mins)">
-                <TextInput
-                  value={draft.earlyGoAboveMinutes}
-                  disabled
-                />
+                {draft.earlyGoRule === "flag_only" ? (
+                  <PolicyDisabledFieldValue />
+                ) : (
+                  <TextInput
+                    value={draft.earlyGoAboveMinutes}
+                    disabled
+                  />
+                )}
               </Field>
               <Field label="Attendance Value After Early Go Above Limit">
                 {draft.earlyGoRule === "flag_only" ? (
