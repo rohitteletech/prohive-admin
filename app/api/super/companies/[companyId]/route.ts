@@ -2,6 +2,36 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
+type CompanyDetailRow = {
+  id: string;
+  name: string | null;
+  code: string | null;
+  size_of_employees: string | null;
+  authorized_name: string | null;
+  mobile: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  pin_code: string | null;
+  plan_type: string | null;
+  plan_start: string | null;
+  plan_end: string | null;
+  status: string | null;
+  admin_email: string | null;
+  gst: string | null;
+  business_nature: string | null;
+  company_tagline: string | null;
+  created_at: string | null;
+};
+
+type CompanyDeleteRow = {
+  id: string;
+  name: string | null;
+  code: string | null;
+  admin_email: string | null;
+};
+
 function superAdminAllowList() {
   const raw = process.env.SUPERADMIN_EMAILS || process.env.NEXT_PUBLIC_SUPERADMIN_EMAILS || "";
   return raw
@@ -59,6 +89,66 @@ async function findAuthUserIdByEmail(admin: NonNullable<ReturnType<typeof getSup
   return { userId: null, error: null as string | null };
 }
 
+export async function GET(req: NextRequest, contextArg: { params: Promise<{ companyId: string }> }) {
+  const auth = await authenticateSuperAdmin(req);
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.error }, { status: auth.status });
+  }
+
+  const { companyId } = await contextArg.params;
+  const normalizedCompanyId = String(companyId || "").trim();
+  if (!normalizedCompanyId) {
+    return NextResponse.json({ error: "Company id is required." }, { status: 400 });
+  }
+
+  const admin = getSupabaseAdminClient();
+  if (!admin) {
+    return NextResponse.json(
+      { error: "Supabase service role key is missing or invalid. Use the service_role secret key." },
+      { status: 500 }
+    );
+  }
+
+  const { data, error: companyError } = await admin
+    .from("companies")
+    .select(
+      [
+        "id",
+        "name",
+        "code",
+        "size_of_employees",
+        "authorized_name",
+        "mobile",
+        "address",
+        "city",
+        "state",
+        "country",
+        "pin_code",
+        "plan_type",
+        "plan_start",
+        "plan_end",
+        "status",
+        "admin_email",
+        "gst",
+        "business_nature",
+        "company_tagline",
+        "created_at",
+      ].join(",")
+    )
+    .eq("id", normalizedCompanyId)
+    .maybeSingle();
+  const company = (data || null) as CompanyDetailRow | null;
+
+  if (companyError) {
+    return NextResponse.json({ error: companyError.message || "Unable to load company." }, { status: 400 });
+  }
+  if (!company?.id) {
+    return NextResponse.json({ error: "Company not found." }, { status: 404 });
+  }
+
+  return NextResponse.json({ company });
+}
+
 export async function DELETE(req: NextRequest, contextArg: { params: Promise<{ companyId: string }> }) {
   const auth = await authenticateSuperAdmin(req);
   if (!auth.ok) {
@@ -79,11 +169,12 @@ export async function DELETE(req: NextRequest, contextArg: { params: Promise<{ c
     );
   }
 
-  const { data: company, error: companyError } = await admin
+  const { data, error: companyError } = await admin
     .from("companies")
     .select("id,name,code,admin_email")
     .eq("id", normalizedCompanyId)
     .maybeSingle();
+  const company = (data || null) as CompanyDeleteRow | null;
 
   if (companyError) {
     return NextResponse.json({ error: companyError.message || "Unable to load company." }, { status: 400 });
